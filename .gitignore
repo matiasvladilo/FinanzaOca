@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# build
+.next/
+out/
+build/
+
+# env – NUNCA subir credenciales
+.env
+.env.local
+.env.*.local
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# misc
+.DS_Store
+*.pem
+
+# Claude Code internal
+.agents/
+.claude/
+tsconfig.tsbuildinfo
