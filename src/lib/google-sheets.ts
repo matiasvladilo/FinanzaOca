@@ -4,6 +4,7 @@
  * SOLO se usa en Server Components o Route Handlers (nunca en 'use client').
  */
 
+import 'server-only';
 import { google } from 'googleapis';
 
 // ── Autenticación con Service Account ─────────────────────────────────────────
