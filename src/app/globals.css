@@ -1,36 +1,33 @@
 @import "tailwindcss";
 
+/* ── Dark mode: activa cuando <html> tiene la clase .dark ────────────────── */
+@variant dark (&:where(.dark, .dark *));
+
+/* ── Variables de color ──────────────────────────────────────────────────── */
 :root {
-  --background: #f5f6fa;
-  --foreground: #111827;
+  --bg-base:    #f5f6fa;
+  --chart-grid: #f0f0f0;
+  --chart-axis: #9CA3AF;
+}
+
+.dark {
+  --bg-base:    #0f172a;
+  --chart-grid: #334155;
+  --chart-axis: #64748b;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg-base);
+  color: var(--text-primary, #111827);
   font-family: Inter, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+.dark ::-webkit-scrollbar-thumb { background: #475569; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
