@@ -16,14 +16,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" suppressHydrationWarning>
       <head>
-        {/* Script inline: aplica .dark ANTES del render para evitar flash */}
+        {/* Sin flash: aplica la clase de tema antes de que React hidrate */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{const t=localStorage.getItem('theme');if(t==='dark'||(t===null&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}`,
+            __html: `try{const t=localStorage.getItem('theme');if(t==='dark'){document.documentElement.classList.add('dark')}else if(t==='dracula'){document.documentElement.classList.add('dracula')}else if(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches){document.documentElement.classList.add('dark')}}catch(e){}`,
           }}
         />
       </head>
-      <body className={`${inter.className} bg-[var(--bg-base)] min-h-screen`}>
+      <body className={`${inter.className} min-h-screen`} style={{ background: 'var(--bg)', color: 'var(--text)' }}>
         <ThemeProvider>
           <Sidebar />
           <div className="ml-[200px] min-h-screen flex flex-col">

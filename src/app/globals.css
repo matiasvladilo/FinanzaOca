@@ -1,24 +1,83 @@
 @import "tailwindcss";
 
-/* ── Dark mode: activa cuando <html> tiene la clase .dark ────────────────── */
+/* ── Dark mode: activa solo en .dark ────────────────────────────────────── */
 @variant dark (&:where(.dark, .dark *));
 
-/* ── Variables de color ──────────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   TEMA: LIGHT (default)
+══════════════════════════════════════════════════════════════════════════ */
 :root {
-  --bg-base:    #f5f6fa;
-  --chart-grid: #f0f0f0;
-  --chart-axis: #9CA3AF;
+  --bg:             #f5f6fa;
+  --card:           #ffffff;
+  --border:         #f3f4f6;
+  --border-2:       #e5e7eb;
+  --text:           #111827;
+  --text-2:         #6b7280;
+  --text-3:         #9ca3af;
+  --sidebar-bg:     #ffffff;
+  --sidebar-border: #f3f4f6;
+  --header-bg:      #ffffff;
+  --hover:          #f9fafb;
+  --active-bg:      #eff6ff;
+  --active-text:    #2563eb;
+  --divider:        #f9fafb;
+  --skeleton:       #f3f4f6;
+  --chart-grid:     #f0f0f0;
+  --chart-axis:     #9CA3AF;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   TEMA: DARK
+══════════════════════════════════════════════════════════════════════════ */
 .dark {
-  --bg-base:    #0f172a;
-  --chart-grid: #334155;
-  --chart-axis: #64748b;
+  --bg:             #0f172a;
+  --card:           #1e293b;
+  --border:         #334155;
+  --border-2:       #475569;
+  --text:           #f1f5f9;
+  --text-2:         #94a3b8;
+  --text-3:         #64748b;
+  --sidebar-bg:     #1e293b;
+  --sidebar-border: #334155;
+  --header-bg:      #1e293b;
+  --hover:          #334155;
+  --active-bg:      #172554;
+  --active-text:    #60a5fa;
+  --divider:        #334155;
+  --skeleton:       #334155;
+  --chart-grid:     #334155;
+  --chart-axis:     #64748b;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   TEMA: DRACULA
+══════════════════════════════════════════════════════════════════════════ */
+.dracula {
+  --bg:             #282a36;
+  --card:           #44475a;
+  --border:         #6272a4;
+  --border-2:       #6272a4;
+  --text:           #f8f8f2;
+  --text-2:         #cdd6f4;
+  --text-3:         #6272a4;
+  --sidebar-bg:     #21222c;
+  --sidebar-border: #44475a;
+  --header-bg:      #21222c;
+  --hover:          rgba(98,114,164,0.25);
+  --active-bg:      rgba(189,147,249,0.18);
+  --active-text:    #bd93f9;
+  --divider:        #44475a;
+  --skeleton:       #44475a;
+  --chart-grid:     #44475a;
+  --chart-axis:     #6272a4;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BASE
+══════════════════════════════════════════════════════════════════════════ */
 body {
-  background: var(--bg-base);
-  color: var(--text-primary, #111827);
+  background: var(--bg);
+  color: var(--text);
   font-family: Inter, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -26,8 +85,68 @@ body {
 
 * { box-sizing: border-box; }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   OVERRIDES GLOBALES — aplican a TODAS las páginas automáticamente.
+   Usan selectores de doble clase para superar la especificidad de Tailwind.
+   Esto permite que todas las páginas funcionen en dark/dracula sin
+   necesitar agregar dark: a cada componente.
+══════════════════════════════════════════════════════════════════════════ */
+
+/* Fondos */
+:is(.dark, .dracula) .bg-white   { background-color: var(--card); }
+:is(.dark, .dracula) .bg-gray-50 { background-color: var(--bg); }
+:is(.dark, .dracula) .bg-gray-100 { background-color: var(--hover); }
+:is(.dark, .dracula) .bg-gray-200 { background-color: var(--divider); }
+
+/* Layout especiales */
+.dark aside, .dracula aside   { background-color: var(--sidebar-bg) !important; border-color: var(--sidebar-border) !important; }
+.dark header, .dracula header { background-color: var(--header-bg) !important; border-color: var(--border) !important; }
+
+/* Texto */
+:is(.dark, .dracula) .text-gray-900 { color: var(--text); }
+:is(.dark, .dracula) .text-gray-800 { color: var(--text); }
+:is(.dark, .dracula) .text-gray-700 { color: var(--text-2); }
+:is(.dark, .dracula) .text-gray-600 { color: var(--text-2); }
+:is(.dark, .dracula) .text-gray-500 { color: var(--text-3); }
+:is(.dark, .dracula) .text-gray-400 { color: var(--text-3); }
+:is(.dark, .dracula) .text-gray-300 { color: var(--text-2); }
+
+/* Bordes */
+:is(.dark, .dracula) .border-gray-50  { border-color: var(--divider); }
+:is(.dark, .dracula) .border-gray-100 { border-color: var(--border); }
+:is(.dark, .dracula) .border-gray-200 { border-color: var(--border-2); }
+
+/* Hover sobre filas/items */
+:is(.dark, .dracula) .hover\:bg-gray-50:hover  { background-color: var(--hover); }
+:is(.dark, .dracula) .hover\:bg-gray-100:hover { background-color: var(--hover); }
+
+/* Divide lines */
+:is(.dark, .dracula) .divide-gray-100 > * + * { border-color: var(--divider); }
+:is(.dark, .dracula) .divide-gray-200 > * + * { border-color: var(--border); }
+
+/* Badges / pills que usan bg-gray-* sin colores específicos */
+:is(.dark, .dracula) .bg-gray-50.text-gray-600 { background-color: var(--hover); color: var(--text-2); }
+
+/* Inputs */
+:is(.dark, .dracula) input,
+:is(.dark, .dracula) textarea,
+:is(.dark, .dracula) select {
+  background-color: var(--card);
+  color: var(--text);
+  border-color: var(--border-2);
+}
+
+/* Dracula: accentos azules → morado */
+.dracula .text-blue-600 { color: #bd93f9; }
+.dracula .text-blue-500 { color: #bd93f9; }
+.dracula .bg-blue-600   { background-color: #bd93f9; }
+.dracula .bg-blue-50    { background-color: rgba(189,147,249,0.15); }
+.dracula .border-blue-400 { border-color: #bd93f9; }
+.dracula .ring-blue-500   { --tw-ring-color: #bd93f9; }
+
+/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
-.dark ::-webkit-scrollbar-thumb { background: #475569; }
+:is(.dark, .dracula) ::-webkit-scrollbar-thumb { background: var(--border-2); }
 ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
