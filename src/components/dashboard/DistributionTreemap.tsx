@@ -2,17 +2,34 @@
 
 import clsx from 'clsx';
 import type { SucursalDistribucion } from '@/types';
-import { formatCLP } from '@/lib/mock-data';
 
 interface Props {
   data: SucursalDistribucion[];
   onSucursalClick?: (nombre: string) => void;
   activeSucursal?: string;
+  loading?: boolean;
 }
 
-const blueShades = ['bg-blue-700', 'bg-blue-500', 'bg-blue-400', 'bg-blue-300'];
+function formatCLPInt(v: number) {
+  return `$${Math.round(v).toLocaleString('es-CL')}`;
+}
 
-export default function DistributionTreemap({ data, onSucursalClick, activeSucursal }: Props) {
+function Skeleton() {
+  return (
+    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex flex-col h-full">
+      <div className="mb-4 h-10 bg-gray-100 rounded-xl animate-pulse" />
+      <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="bg-gray-100 rounded-xl animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function DistributionTreemap({ data, onSucursalClick, activeSucursal, loading }: Props) {
+  if (loading) return <Skeleton />;
+
   const isSingle = data.length === 1;
 
   return (
@@ -21,7 +38,7 @@ export default function DistributionTreemap({ data, onSucursalClick, activeSucur
         <div>
           <h3 className="text-[14px] font-bold text-gray-900">Distribución por Sucursal</h3>
           <p className="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">
-            Clic para filtrar el dashboard
+            Clic para filtrar
           </p>
         </div>
         {activeSucursal && activeSucursal !== 'Todas' && (
@@ -34,39 +51,49 @@ export default function DistributionTreemap({ data, onSucursalClick, activeSucur
         )}
       </div>
 
-      <div className={clsx('flex-1 gap-2', isSingle ? 'flex' : 'grid grid-cols-2 grid-rows-2')}>
-        {data.map((sucursal, i) => {
-          const isActive = activeSucursal === sucursal.nombre;
-          return (
-            <div
-              key={sucursal.nombre}
-              onClick={() => onSucursalClick?.(sucursal.nombre)}
-              className={clsx(
-                'rounded-xl flex flex-col justify-between p-4 cursor-pointer transition-all duration-200',
-                isSingle ? 'flex-1' : '',
-                blueShades[i] ?? 'bg-blue-200',
-                isActive ? 'ring-2 ring-white ring-offset-2 ring-offset-blue-500 scale-[0.98]' : 'hover:opacity-90 hover:scale-[0.99]'
-              )}
-            >
-              <div>
-                <p className="text-white font-bold text-[11px] tracking-widest uppercase">
-                  {sucursal.nombre}
-                </p>
-                <p className="text-white text-[22px] font-bold mt-1">
-                  {formatCLP(sucursal.valor)}
+      {data.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[12px] text-gray-400">Sin datos</p>
+        </div>
+      ) : (
+        <div className={clsx('flex-1 gap-2', isSingle ? 'flex' : 'grid grid-cols-2 grid-rows-2')}>
+          {data.map((suc, i) => {
+            const isActive = activeSucursal === suc.nombre;
+            return (
+              <div
+                key={suc.nombre}
+                onClick={() => onSucursalClick?.(suc.nombre)}
+                style={{ backgroundColor: suc.color }}
+                className={clsx(
+                  'rounded-xl flex flex-col justify-between p-4 cursor-pointer transition-all duration-200',
+                  isSingle ? 'flex-1' : '',
+                  isActive
+                    ? 'ring-2 ring-white ring-offset-2 scale-[0.98]'
+                    : 'hover:opacity-90 hover:scale-[0.99]'
+                )}
+              >
+                <div>
+                  <p className="text-white font-bold text-[10px] tracking-widest uppercase">
+                    {suc.nombre}
+                  </p>
+                  <p className="text-white text-[18px] font-bold mt-1 leading-tight">
+                    {formatCLPInt(suc.valor)}
+                  </p>
+                </div>
+                <p className="text-white/80 text-[10px] font-semibold uppercase tracking-wide">
+                  {suc.porcentaje}% del total
                 </p>
               </div>
-              <p className="text-white/80 text-[10px] font-semibold uppercase tracking-wide">
-                {sucursal.porcentaje}% del total
-              </p>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mt-4 flex items-center justify-between">
-        <p className="text-[10px] text-gray-400 uppercase tracking-widest">Integridad de composición</p>
-        <p className="text-[11px] font-bold text-green-600">100% valorizado</p>
+        <p className="text-[10px] text-gray-400 uppercase tracking-widest">Total acumulado</p>
+        <p className="text-[11px] font-bold text-blue-600">
+          {formatCLPInt(data.reduce((s, d) => s + d.valor, 0))}
+        </p>
       </div>
     </div>
   );

@@ -1,4 +1,8 @@
-export type Sucursal = 'PV' | 'La Reina' | 'PT' | 'Bilbao' | 'Todas';
+/**
+ * Sucursal es string abierto para soportar nuevos locales dinámicamente.
+ * 'Todas' es el valor especial para "sin filtro".
+ */
+export type Sucursal = string;
 
 export interface KPIData {
   ventasBrutas: number;
