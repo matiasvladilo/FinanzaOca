@@ -2,5 +2,9 @@
   command = "npm run build"
   publish = ".next"
 
+[build.environment]
+  # Los nombres de pestañas no son secretos reales; omitir del secrets scan
+  SECRETS_SCAN_OMIT_KEYS = "TAB_FACTURAS,TAB_VENTAS,TAB_MERMA"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"

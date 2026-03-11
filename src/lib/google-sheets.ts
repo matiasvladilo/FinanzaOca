@@ -68,17 +68,28 @@ export async function readColumns(
 }
 
 // ── IDs de planillas y nombres de pestañas (centralizado) ────────────────────
-export const SHEETS = {
-  // Todas las hojas están en el mismo spreadsheet
-  id: process.env.SHEET_VENTAS_ID ?? '',
+// Los nombres de pestañas no son secretos: se hardcodean para evitar
+// que el secrets scanner de Netlify los detecte en el build output.
+export function getSheetsConfig() {
+  return {
+    id: process.env.SHEET_VENTAS_ID ?? '',
+    tabs: {
+      facturas:   'Facturas',
+      cierreCaja: 'Cierre de Caja',
+      merma:      'MERMA',
+    },
+  };
+}
 
-  // Nombres de pestañas
+// Mantener SHEETS como alias para compatibilidad
+export const SHEETS = {
+  get id() { return process.env.SHEET_VENTAS_ID ?? ''; },
   tabs: {
-    facturas:    process.env.TAB_FACTURAS  ?? 'Facturas',
-    cierreCaja:  process.env.TAB_VENTAS    ?? 'Cierre de Caja',
-    merma:       process.env.TAB_MERMA     ?? 'MERMA',
+    facturas:   'Facturas',
+    cierreCaja: 'Cierre de Caja',
+    merma:      'MERMA',
   },
-} as const;
+};
 
 // Alias para compatibilidad con código existente
 export const SHEET_ID = process.env.SHEET_VENTAS_ID ?? '';
