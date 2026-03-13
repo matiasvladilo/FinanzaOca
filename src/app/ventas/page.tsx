@@ -189,15 +189,21 @@ type DiaCaja = { fecha: string; local: string; ventas: number; efectivo: number;
 type DiaGasto = { fecha: string; sucursal: string; monto: number; proveedor?: string; subtipo?: string };
 
 // Obtiene el lunes de la semana de una fecha ISO
+// FIX: no usar toISOString() — da fecha UTC, en UTC-3 devuelve domingo en lugar de lunes
 function getLunesSemana(isoDate: string): string {
-  const d = new Date(isoDate + 'T00:00:00');
-  if (isNaN(d.getTime())) return isoDate;
-  const day = d.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
-  const diff = day === 0 ? -6 : 1 - day;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diff);
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
+  const [y, m, d] = isoDate.split('-').map(Number);
+  const date = new Date(y, m - 1, d, 0, 0, 0, 0);
+  if (isNaN(date.getTime())) return isoDate;
+  const day = date.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(y, m - 1, d + diffToMonday, 0, 0, 0, 0);
   if (isNaN(monday.getTime())) return isoDate;
-  return monday.toISOString().slice(0, 10);
+  // Construir YYYY-MM-DD desde partes LOCALES — nunca toISOString() (da UTC)
+  const my = monday.getFullYear();
+  const mm = String(monday.getMonth() + 1).padStart(2, '0');
+  const md = String(monday.getDate()).padStart(2, '0');
+  return `${my}-${mm}-${md}`;
 }
 
 function formatDayLabel(iso: string): string {
@@ -294,7 +300,7 @@ export default function VentasPage() {
       }
       const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
       const allDays = [...new Set([...Object.keys(diasVentas), ...Object.keys(diasGastos)])]
-        .filter(d => ISO_RE.test(d) && !isNaN(new Date(d).getTime()))
+        .filter(d => { if (!ISO_RE.test(d)) return false; const [_y,_m,_day]=d.split('-').map(Number); return !isNaN(new Date(_y,_m-1,_day).getTime()); })
         .sort();
       let data: { fecha: string; ventas: number; gastos: number }[];
       if (allDays.length <= 31) {

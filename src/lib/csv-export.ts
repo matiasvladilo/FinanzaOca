@@ -16,7 +16,10 @@ export function exportToCSV(rows: Record<string, any>[], filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${filename}_${new Date().toISOString().slice(0, 10)}.csv`;
+  // toISOString() da fecha UTC — en Chile (UTC-3) puede ser ayer. Usar partes locales.
+  const _now = new Date();
+  const _localDate = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
+  a.download = `${filename}_${_localDate}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

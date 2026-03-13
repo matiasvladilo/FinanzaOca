@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, getPeriodoRange, findHeader } from '@/lib/data/parsers';
+import { buildDateRange, filterByDateRange } from '@/lib/date-utils';
 
 const COLORES_MERMA = ['#3B82F6', '#8B5CF6', '#06B6D4', '#10B981', '#F97316', '#EF4444', '#D1D5DB'];
 
@@ -79,29 +80,18 @@ export async function GET(req: NextRequest) {
     // ── Rango de fechas ──────────────────────────────────────────────────────
     let desde: Date | null = null;
     let hasta: Date | null = null;
-    // Parsear como fecha local (no UTC) para evitar desfase de timezone
-    if (fechaDesdeParam) {
-      const [y, m, d] = fechaDesdeParam.split('-').map(Number);
-      desde = new Date(y, m - 1, d, 0, 0, 0, 0);
-    }
-    if (fechaHastaParam) {
-      const [y, m, d] = fechaHastaParam.split('-').map(Number);
-      hasta = new Date(y, m - 1, d, 23, 59, 59, 999);
-    }
-    if (periodoParam && !fechaDesdeParam && !fechaHastaParam) {
+    if (fechaDesdeParam || fechaHastaParam) {
+      // buildDateRange construye fechas en hora LOCAL (evita el bug UTC de new Date('YYYY-MM-DD'))
+      ({ desde, hasta } = buildDateRange(fechaDesdeParam, fechaHastaParam));
+    } else if (periodoParam) {
       const range = getPeriodoRange(periodoParam);
       desde = range.desde;
       hasta = range.hasta;
     }
 
-    // Filtrar por fecha — excluir registros sin fecha cuando hay filtro activo
+    // filterByDateRange excluye registros sin fecha cuando hay filtro activo
     if (desde || hasta) {
-      registros = registros.filter(r => {
-        if (!r.date) return false;          // sin fecha: excluir cuando hay filtro de rango
-        if (desde && r.date < desde) return false;
-        if (hasta && r.date > hasta) return false;
-        return true;
-      });
+      registros = registros.filter(r => filterByDateRange(r.date, desde, hasta));
     }
 
     // ── Locales disponibles ──────────────────────────────────────────────────
