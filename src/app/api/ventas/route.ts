@@ -12,7 +12,7 @@ import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { withCache } from '@/lib/data/cache';
 
-const CACHE_KEY = 'ventas';
+const CACHE_KEY = 'ventas-v4';
 
 async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:Z5000`);
@@ -26,20 +26,26 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
     medioPago: findHeader(headers, 'Medio de Pago'),
     // PT no tiene "Total Factura" — usa "Columna 8" en su lugar
     monto:     findHeader(headers, 'Total Factura', 'Columna 8', 'Total'),
-    // Cada local tiene un nombre distinto para la fecha
-    fecha:     findHeader(headers, 'FECHA EMITIDA', 'Fecha emitida', 'Fecha', 'FECHA'),
+    // Fecha primaria (col B) — si vacía, usar FECHA EMITIDA como fallback
+    fecha:     findHeader(headers, 'Fecha', 'FECHA'),
+    fechaAlt:  findHeader(headers, 'FECHA EMITIDA', 'Fecha emitida'),
     mes:       findHeader(headers, 'Mes', 'MES', 'mes'),
   };
 
   return dataRows
     .filter(row => row[idx.monto])
     .map((row, i) => {
-      const fecha   = parseFecha(row[idx.fecha] ?? '');
+      // Usar "Fecha" principal; si el año es inválido caer a "FECHA EMITIDA"
+      let fecha = parseFecha(row[idx.fecha] ?? '');
+      if (fecha.anio < 2000 && idx.fechaAlt >= 0) {
+        const alt = parseFecha(row[idx.fechaAlt] ?? '');
+        if (alt.anio >= 2000) fecha = alt;
+      }
       const mesCol  = idx.mes >= 0 ? parseInt(row[idx.mes] ?? '0', 10) : 0;
       const mes     = mesCol || fecha.mes;
       return {
         id:        i + 1,
-        sucursal:  nombre,             // nombre canónico forzado por sheet
+        sucursal:  nombre,
         tipo:      (row[idx.tipo] ?? 'GASTO').toUpperCase(),
         subtipo:   row[idx.subtipo]   ?? '',
         proveedor: row[idx.proveedor] ?? '',
@@ -67,9 +73,10 @@ async function fetchVentas() {
 
   if (registros.length === 0) return null;
 
-  const gastos   = registros.filter(r => r.tipo !== 'INGRESO');
+  // Gastos = TODAS las filas de facturas (el sheet suma GASTO+INGRESO sin filtrar por tipo)
+  const gastos   = registros; // todas las filas
   const ingresos = registros.filter(r => r.tipo === 'INGRESO');
-  const totalGastos   = gastos.reduce((s, r)   => s + r.monto, 0);
+  const totalGastos   = gastos.reduce((s, r) => s + r.monto, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.monto, 0);
 
   // ── Por mes ─────────────────────────────────────────────────────────────
@@ -78,8 +85,7 @@ async function fetchVentas() {
     if (!r.mes || r.anio < 2000) continue;
     const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
     if (!porMes[key]) porMes[key] = { mes: r.mes, anio: r.anio, ventas: 0, gastos: 0 };
-    if (r.tipo === 'INGRESO') porMes[key].ventas += r.monto;
-    else                      porMes[key].gastos += r.monto;
+    porMes[key].gastos += r.monto; // suma todo (GASTO + INGRESO = total facturas)
   }
 
   const chartData = Object.entries(porMes)
@@ -93,9 +99,17 @@ async function fetchVentas() {
   const porSucursal: Record<string, { ventas: number; gastos: number; transacciones: number }> = {};
   for (const r of registros) {
     if (!porSucursal[r.sucursal]) porSucursal[r.sucursal] = { ventas: 0, gastos: 0, transacciones: 0 };
-    if (r.tipo === 'INGRESO') porSucursal[r.sucursal].ventas += r.monto;
-    else                      porSucursal[r.sucursal].gastos += r.monto;
+    porSucursal[r.sucursal].gastos += r.monto; // total facturas (GASTO+INGRESO)
     porSucursal[r.sucursal].transacciones++;
+  }
+
+  // ── Gastos por mes + sucursal (para filtrar gráfico por local) ───────────
+  const gastosPorMesSucursal: Record<string, Record<string, number>> = {};
+  for (const r of registros) {
+    if (!r.mes || r.anio < 2000) continue;
+    const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
+    if (!gastosPorMesSucursal[r.sucursal]) gastosPorMesSucursal[r.sucursal] = {};
+    gastosPorMesSucursal[r.sucursal][key] = (gastosPorMesSucursal[r.sucursal][key] ?? 0) + r.monto;
   }
 
   // ── Top proveedores ─────────────────────────────────────────────────────
@@ -126,6 +140,7 @@ async function fetchVentas() {
     },
     chartData,
     gastosPorMes,
+    gastosPorMesSucursal,
     porSucursal,
     topProveedores,
     porMedioPago,

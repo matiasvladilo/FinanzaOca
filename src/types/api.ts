@@ -80,6 +80,7 @@ export interface VentasResponse {
   kpi: VentasKPI | null;
   chartData: VentasChartPoint[];
   gastosPorMes: Record<string, number>;
+  gastosPorMesSucursal: Record<string, Record<string, number>>;
   porSucursal: Record<string, SucursalSlice>;
   topProveedores: { nombre: string; monto: number }[];
   porMedioPago: Record<string, number>;

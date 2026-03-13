@@ -116,12 +116,16 @@ export default function DashboardPage() {
         color: getSucursalColor(nombre, i),
       }));
 
+    const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
     const realChartData = mesesDisponibles.map((key, i) => {
       const mes = parseInt(key.split('-')[1], 10);
       const ventas = sucursal === 'Todas'
         ? (chartData[i]?.ventas ?? 0)
         : (porLocalMes[sucursal]?.[key]?.ventas ?? 0);
-      return { dia: MESES_SHORT[mes] + ' ' + key.split('-')[0], ventas, gastos: gastosPorMes[key] ?? 0 };
+      const gastos = sucursal === 'Todas'
+        ? (gastosPorMes[key] ?? 0)
+        : (gastosPorMesSucursal[sucursal]?.[key] ?? 0);
+      return { dia: MESES_SHORT[mes] + ' ' + key.split('-')[0], ventas, gastos };
     });
 
     let medioPagoMontos = {
