@@ -12,7 +12,7 @@ import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { withCache } from '@/lib/data/cache';
 
-const CACHE_KEY = 'ventas-v4';
+const CACHE_KEY = 'ventas-v5';
 
 async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:Z5000`);
@@ -24,8 +24,8 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
     subtipo:   findHeader(headers, 'Subtipo Doc'),
     proveedor: findHeader(headers, 'Proveedor/Cliente'),
     medioPago: findHeader(headers, 'Medio de Pago'),
-    // PT no tiene "Total Factura" — usa "Columna 8" en su lugar
-    monto:     findHeader(headers, 'Total Factura', 'Columna 8', 'Total'),
+    // PT usa "Monto"; La Reina/PV/Bilbao usan "Total Factura"
+    monto:     findHeader(headers, 'Total Factura', 'Monto', 'Columna 8', 'Total'),
     // Fecha primaria (col B) — si vacía, usar FECHA EMITIDA como fallback
     fecha:     findHeader(headers, 'Fecha', 'FECHA'),
     fechaAlt:  findHeader(headers, 'FECHA EMITIDA', 'Fecha emitida'),
