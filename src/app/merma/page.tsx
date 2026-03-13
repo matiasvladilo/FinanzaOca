@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toLocalDate } from '@/lib/date-utils';
 import {
   PieChart,
   Pie,
@@ -72,6 +73,50 @@ const TIPO_BADGE_COLORS = [
 type SheetMermaKPI = { totalMerma: number; totalRegistros: number; tipoMasFrecuente: string; montoMayor: number };
 type SheetMermaTipo = { nombre: string; monto: number; porcentaje: number; color: string };
 type SheetMermaRegistro = { id: number; producto: string; tipo: string; monto: number; fecha: string; local?: string };
+type CierreCajaLocal = { ventas: number; efectivo: number; tarjeta: number; transf: number };
+type CierreCajaData = {
+  ok: boolean;
+  porLocal: Record<string, CierreCajaLocal>;
+  porLocalMes: Record<string, Record<string, CierreCajaLocal>>;
+};
+
+/**
+ * Retorna las claves YYYY-MM relevantes para el período/rango activo.
+ * Array vacío = sin filtro = usar totales acumulados.
+ */
+function getMesesPeriodo(periodo: string, fechaDesde: string, fechaHasta: string): string[] {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const mesKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+
+  if (fechaDesde || fechaHasta) {
+    const desde = fechaDesde ? toLocalDate(fechaDesde) : null;
+    const hasta  = fechaHasta  ? toLocalDate(fechaHasta)  : null;
+    const start = desde ?? hasta!;
+    const end   = hasta  ?? desde!;
+    const cur   = new Date(start.getFullYear(), start.getMonth(), 1);
+    const meses: string[] = [];
+    while (cur <= end) {
+      meses.push(mesKey(cur));
+      cur.setMonth(cur.getMonth() + 1);
+    }
+    return meses;
+  }
+
+  switch (periodo) {
+    case 'mes': return [mesKey(now)];
+    case 'mes_anterior': return [mesKey(new Date(now.getFullYear(), now.getMonth() - 1, 1))];
+    case 'anio':  return Array.from({ length: now.getMonth() + 1 }, (_, i) => `${now.getFullYear()}-${pad(i + 1)}`);
+    case '7d':
+    case '14d': {
+      const dias = periodo === '7d' ? 6 : 13;
+      const inicio = new Date(now); inicio.setDate(now.getDate() - dias);
+      const meses = new Set([mesKey(inicio), mesKey(now)]);
+      return [...meses];
+    }
+    default: return []; // sin filtro → totales acumulados
+  }
+}
 
 // --- Modal: Registrar Merma ---
 function RegistrarMermaModal({ onClose }: { onClose: () => void }) {
@@ -207,6 +252,7 @@ export default function MermaPage() {
   const [sheetRegistros, setSheetRegistros] = useState<SheetMermaRegistro[]>([]);
   const [localesDisponibles, setLocalesDisponibles] = useState<string[]>([]);
   const [loadingSheet, setLoadingSheet] = useState(true);
+  const [ccData, setCcData] = useState<CierreCajaData | null>(null);
 
   const fetchData = useCallback(() => {
     setLoadingSheet(true);
@@ -234,6 +280,14 @@ export default function MermaPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Cierre-caja: se carga una sola vez (tiene todos los meses y locales)
+  useEffect(() => {
+    fetch('/api/cierre-caja')
+      .then(r => r.json())
+      .then(data => { if (data.ok) setCcData(data); })
+      .catch(() => {});
+  }, []);
+
   // Opciones para los dropdowns
   const periodoOpts = PERIODOS;
   const localOpts = localesDisponibles.length > 0
@@ -253,6 +307,28 @@ export default function MermaPage() {
     setFechaHasta('');
     setShowDatePicker(false);
   };
+
+  // ── % Merma vs Ventas (fórmula: totalMerma / totalVentas × 100) ──────────
+  const porcentajeMerma = useMemo(() => {
+    if (!sheetKPI || !ccData?.porLocal) return null;
+    const { porLocal, porLocalMes } = ccData;
+    const meses = getMesesPeriodo(periodo, fechaDesde, fechaHasta);
+    const locales = localFiltro
+      ? [localFiltro]
+      : Object.keys(porLocal);
+
+    let totalVentas = 0;
+    if (meses.length === 0) {
+      // Sin filtro de período → usar ventas acumuladas totales
+      for (const local of locales) totalVentas += porLocal[local]?.ventas ?? 0;
+    } else {
+      for (const local of locales) {
+        for (const mes of meses) totalVentas += porLocalMes[local]?.[mes]?.ventas ?? 0;
+      }
+    }
+    if (totalVentas === 0) return null;
+    return (sheetKPI.totalMerma / totalVentas) * 100;
+  }, [sheetKPI, ccData, periodo, fechaDesde, fechaHasta, localFiltro]);
 
   // ── Datos para UI ────────────────────────────────────────────────────────
   const categoriasActivas = sheetTipos.length > 0
@@ -476,14 +552,22 @@ export default function MermaPage() {
               </div>
             </div>
             <div className="flex items-end gap-2 mb-3">
-              <p className="text-[30px] font-black text-gray-900 leading-none">2.8%</p>
-              <span className="text-[12px] font-bold text-green-600 flex items-center gap-0.5 pb-1">
-                <TrendingDown className="w-3 h-3" />-0.2%
-              </span>
+              <p className="text-[30px] font-black text-gray-900 leading-none">
+                {loadingSheet || !ccData ? '...' : porcentajeMerma !== null ? porcentajeMerma.toFixed(2) + '%' : '—'}
+              </p>
+              {porcentajeMerma !== null && (
+                <span className={`text-[12px] font-bold flex items-center gap-0.5 pb-1 ${porcentajeMerma <= 3 ? 'text-green-600' : 'text-red-500'}`}>
+                  {porcentajeMerma <= 3 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                  {porcentajeMerma <= 3 ? 'OK' : 'Alto'}
+                </span>
+              )}
             </div>
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex-1 bg-gray-100 rounded-full h-2 mr-3">
-                <div className="h-2 rounded-full bg-green-500" style={{ width: '56%' }} />
+                <div
+                  className={`h-2 rounded-full transition-all ${porcentajeMerma !== null && porcentajeMerma > 3 ? 'bg-red-500' : 'bg-green-500'}`}
+                  style={{ width: porcentajeMerma !== null ? `${Math.min((porcentajeMerma / 3) * 100, 100)}%` : '0%' }}
+                />
               </div>
               <span className="text-[10px] font-bold text-gray-400 uppercase">Target &lt;3%</span>
             </div>
