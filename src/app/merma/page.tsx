@@ -36,12 +36,6 @@ const categoriasMock = [
   { nombre: 'Otros', valor: 400000, color: '#D1D5DB', porcentaje: 10 },
 ];
 
-const motivosData = [
-  { name: 'Expirado', value: 45, color: '#EF4444' },
-  { name: 'Dañado', value: 25, color: '#F97316' },
-  { name: 'Calidad', value: 20, color: '#EAB308' },
-  { name: 'Producción', value: 10, color: '#D1D5DB' },
-];
 
 const sparklineData = [
   { v: 0.8 }, { v: 1.1 }, { v: 0.9 }, { v: 1.0 }, { v: 1.2 }, { v: 1.4 }, { v: 1.5 },
@@ -65,12 +59,14 @@ const PERIODOS = [
   { label: 'Este año', value: 'anio' },
 ];
 
-const motivoBadge: Record<string, string> = {
-  Expirado: 'bg-red-100 text-red-600',
-  Calidad: 'bg-orange-100 text-orange-600',
-  Dañado: 'bg-gray-100 text-gray-600',
-  Producción: 'bg-yellow-100 text-yellow-700',
-};
+const TIPO_BADGE_COLORS = [
+  'bg-blue-100 text-blue-700',
+  'bg-purple-100 text-purple-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-green-100 text-green-700',
+  'bg-orange-100 text-orange-700',
+  'bg-red-100 text-red-700',
+];
 
 // --- Types ---
 type SheetMermaKPI = { totalMerma: number; totalRegistros: number; tipoMasFrecuente: string; montoMayor: number };
@@ -263,6 +259,9 @@ export default function MermaPage() {
     ? sheetTipos.map(t => ({ nombre: t.nombre, valor: t.monto, color: t.color, porcentaje: t.porcentaje }))
     : categoriasMock;
   const maxCategoria = Math.max(...categoriasActivas.map(c => c.valor), 1);
+
+  // Donut "Merma por Tipo" — usa los mismos datos reales que el panel de categorías
+  const motivosDonutData = categoriasActivas.map(c => ({ name: c.nombre, value: c.porcentaje, color: c.color }));
 
   const registrosSheet = sheetRegistros.length > 0
     ? sheetRegistros.map(r => ({
@@ -574,65 +573,75 @@ export default function MermaPage() {
             </div>
           </div>
 
-          {/* Merma por Motivo */}
+          {/* Merma por Tipo */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[14px] font-bold text-gray-900">Merma por Motivo</h3>
-              <button className="text-[12px] font-semibold text-blue-600 hover:text-blue-800 transition-colors">
-                Ver detalles
-              </button>
+              <h3 className="text-[14px] font-bold text-gray-900">Merma por Tipo</h3>
+              {filtrosActivos > 0 && (
+                <span className="text-[10px] font-semibold px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full">
+                  {periodoLabel}{localFiltro ? ` · ${localFiltro}` : ''}
+                </span>
+              )}
             </div>
 
-            <div className="flex items-center gap-6">
-              {/* Donut */}
-              <div className="relative w-44 h-44 flex-shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={motivosData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={52}
-                      outerRadius={72}
-                      dataKey="value"
-                      startAngle={90}
-                      endAngle={-270}
-                      strokeWidth={2}
-                      stroke="#fff"
-                    >
-                      {motivosData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => [`${value}%`, '']}
-                      contentStyle={{ borderRadius: '12px', fontSize: '12px', border: '1px solid #e5e7eb' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-                {/* Center label */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <p className="text-[20px] font-black text-gray-900 leading-none">100%</p>
-                  <p className="text-[9px] text-gray-400 font-medium tracking-widest uppercase mt-0.5">TOTAL</p>
+            {loadingSheet ? (
+              <div className="flex items-center justify-center h-44">
+                <div className="w-24 h-24 rounded-full border-4 border-gray-100 animate-pulse" />
+              </div>
+            ) : motivosDonutData.length === 0 ? (
+              <p className="text-[12px] text-gray-400 text-center py-10">Sin datos</p>
+            ) : (
+              <div className="flex items-center gap-6">
+                {/* Donut */}
+                <div className="relative w-44 h-44 flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={motivosDonutData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={52}
+                        outerRadius={72}
+                        dataKey="value"
+                        startAngle={90}
+                        endAngle={-270}
+                        strokeWidth={2}
+                        stroke="#fff"
+                      >
+                        {motivosDonutData.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => [`${value}%`, '']}
+                        contentStyle={{ borderRadius: '12px', fontSize: '12px', border: '1px solid #e5e7eb' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Center label */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <p className="text-[20px] font-black text-gray-900 leading-none">100%</p>
+                    <p className="text-[9px] text-gray-400 font-medium tracking-widest uppercase mt-0.5">TOTAL</p>
+                  </div>
+                </div>
+
+                {/* Legend */}
+                <div className="flex-1 space-y-3">
+                  {motivosDonutData.map((m) => (
+                    <div key={m.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: m.color }}
+                        />
+                        <span className="text-[12px] text-gray-600">{m.name}</span>
+                      </div>
+                      <span className="text-[12px] font-bold text-gray-800">{m.value}%</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              {/* Legend */}
-              <div className="flex-1 space-y-3">
-                {motivosData.map((m) => (
-                  <div key={m.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: m.color }}
-                      />
-                      <span className="text-[12px] text-gray-600">{m.name}</span>
-                    </div>
-                    <span className="text-[12px] font-bold text-gray-800">{m.value}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -694,7 +703,7 @@ export default function MermaPage() {
                     <p className="text-[12px] text-gray-500">{r.local || '—'}</p>
                   )}
                   <p className="text-[12px] font-semibold text-gray-700">{r.cantidad} u</p>
-                  <span className={clsx('text-[11px] font-semibold px-2.5 py-1 rounded-full w-fit', motivoBadge[r.motivo] ?? 'bg-gray-100 text-gray-600')}>
+                  <span className={clsx('text-[11px] font-semibold px-2.5 py-1 rounded-full w-fit', TIPO_BADGE_COLORS[categoriasActivas.findIndex(c => c.nombre === r.motivo) % TIPO_BADGE_COLORS.length] ?? 'bg-gray-100 text-gray-600')}>
                     {r.motivo}
                   </span>
                   <p className="text-[12px] font-bold text-gray-800">${r.costo.toLocaleString('es-CL')}</p>

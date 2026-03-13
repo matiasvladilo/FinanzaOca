@@ -23,8 +23,8 @@ async function fetchLocalMerma(nombre: string, sheetId: string, tab: string) {
 
   const [headers, ...data] = rows;
   const idx = {
-    // PT tiene "Columna 1" donde debería estar PRODUCTO — no hay nombre de producto en PT
-    producto: findHeader(headers, 'PRODUCTO', 'Producto', 'producto'),
+    // PT usa "Columna 1" como header de producto
+    producto: findHeader(headers, 'PRODUCTO', 'Producto', 'producto', 'Columna 1'),
     // Todos tienen "TIPO " con espacio extra o "TIPO" sin espacio
     tipo:     findHeader(headers, 'TIPO', 'tipo', 'Tipo'),
     monto:    findHeader(headers, 'MONTO', 'monto', 'Monto'),
