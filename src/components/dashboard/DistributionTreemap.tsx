@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import clsx from 'clsx';
 import type { SucursalDistribucion } from '@/types';
 
@@ -14,7 +15,7 @@ function formatCLPInt(v: number) {
   return '$' + Math.round(v).toLocaleString('es-CL');
 }
 
-function Skeleton() {
+function TreemapSkeleton() {
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col h-full">
       <div className="mb-4 h-10 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
@@ -27,8 +28,8 @@ function Skeleton() {
   );
 }
 
-export default function DistributionTreemap({ data, onSucursalClick, activeSucursal, loading }: Props) {
-  if (loading) return <Skeleton />;
+function DistributionTreemap({ data, onSucursalClick, activeSucursal, loading }: Props) {
+  if (loading) return <TreemapSkeleton />;
 
   const isSingle = data.length === 1;
 
@@ -56,7 +57,7 @@ export default function DistributionTreemap({ data, onSucursalClick, activeSucur
           <p className="text-[12px] text-gray-400 dark:text-gray-500">Sin datos</p>
         </div>
       ) : (
-        <div className={clsx('flex-1 gap-2', isSingle ? 'flex' : 'grid grid-cols-2 grid-rows-2')}>
+        <div className={clsx('flex-1 gap-2 min-h-[160px]', isSingle ? 'flex' : 'grid grid-cols-2 grid-rows-2')}>
           {data.map((suc) => {
             const isActive = activeSucursal === suc.nombre;
             return (
@@ -65,7 +66,7 @@ export default function DistributionTreemap({ data, onSucursalClick, activeSucur
                 onClick={() => onSucursalClick?.(suc.nombre)}
                 style={{ backgroundColor: suc.color }}
                 className={clsx(
-                  'rounded-xl flex flex-col justify-between p-4 cursor-pointer transition-all duration-200',
+                  'rounded-xl flex flex-col justify-between p-3 lg:p-4 cursor-pointer transition-all duration-200',
                   isSingle ? 'flex-1' : '',
                   isActive
                     ? 'ring-2 ring-white ring-offset-2 scale-[0.98]'
@@ -73,14 +74,14 @@ export default function DistributionTreemap({ data, onSucursalClick, activeSucur
                 )}
               >
                 <div>
-                  <p className="text-white font-bold text-[10px] tracking-widest uppercase">
+                  <p className="text-white font-bold text-[9px] lg:text-[10px] tracking-widest uppercase">
                     {suc.nombre}
                   </p>
-                  <p className="text-white text-[18px] font-bold mt-1 leading-tight">
+                  <p className="text-white text-[14px] lg:text-[18px] font-bold mt-1 leading-tight">
                     {formatCLPInt(suc.valor)}
                   </p>
                 </div>
-                <p className="text-white/80 text-[10px] font-semibold uppercase tracking-wide">
+                <p className="text-white/80 text-[9px] lg:text-[10px] font-semibold uppercase tracking-wide">
                   {suc.porcentaje}% del total
                 </p>
               </div>
@@ -98,3 +99,6 @@ export default function DistributionTreemap({ data, onSucursalClick, activeSucur
     </div>
   );
 }
+
+// React.memo: evita re-renders cuando props no cambian
+export default memo(DistributionTreemap);

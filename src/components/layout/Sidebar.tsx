@@ -17,65 +17,87 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const isActive = (href: string) => pathname === href;
 
   return (
-    <aside
-      className="fixed left-0 top-0 h-screen w-[200px] flex flex-col z-40 shadow-sm border-r transition-colors"
-      style={{ background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border)' }}
-    >
-      {/* Logo */}
-      <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--sidebar-border)' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-md flex-shrink-0">
-            <BarChart3 className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <p className="text-[13px] font-bold leading-tight" style={{ color: 'var(--text)' }}>Admin Panel</p>
-            <p className="text-[10px] leading-tight" style={{ color: 'var(--text-3)' }}>FinanzasOca</p>
+    <>
+      {/* ── Desktop sidebar (md+) ─────────────────────────────────────────── */}
+      <aside
+        className="fixed left-0 top-0 h-screen w-[200px] flex-col z-40 shadow-sm border-r transition-colors hidden md:flex"
+        style={{ background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border)' }}
+      >
+        {/* Logo */}
+        <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--sidebar-border)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-md flex-shrink-0">
+              <BarChart3 className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <p className="text-[13px] font-bold leading-tight" style={{ color: 'var(--text)' }}>Admin Panel</p>
+              <p className="text-[10px] leading-tight" style={{ color: 'var(--text-3)' }}>FinanzasOca</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          {navItems.map(({ label, href, icon: Icon }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
+                style={active
+                  ? { background: 'var(--active-bg)', color: 'var(--active-text)' }
+                  : { color: 'var(--text-3)' }}
+                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--hover)'; e.currentTarget.style.color = 'var(--text)'; } }}
+                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = ''; e.currentTarget.style.color = 'var(--text-3)'; } }}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? 'var(--active-text)' : 'var(--text-3)' }} />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* User */}
+        <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-orange-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              AM
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--text)' }}>Alex Martinez</p>
+              <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>Super Admin</p>
+            </div>
+            <button className="flex-shrink-0 transition-colors" style={{ color: 'var(--text-3)' }}>
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* ── Mobile bottom navigation (< md) ──────────────────────────────── */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-40 flex md:hidden border-t"
+        style={{ background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border)' }}
+      >
         {navItems.map(({ label, href, icon: Icon }) => {
-          const isActive = pathname === href;
+          const active = isActive(href);
           return (
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
-              style={isActive
-                ? { background: 'var(--active-bg)', color: 'var(--active-text)' }
-                : { color: 'var(--text-3)' }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--hover)'; if (!isActive) e.currentTarget.style.color = 'var(--text)'; }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = ''; if (!isActive) e.currentTarget.style.color = 'var(--text-3)'; }}
+              className="flex-1 flex flex-col items-center justify-center py-2.5 gap-1 transition-colors"
+              style={{ color: active ? 'var(--active-text)' : 'var(--text-3)' }}
             >
-              <Icon
-                className="w-4 h-4 flex-shrink-0"
-                style={{ color: isActive ? 'var(--active-text)' : 'var(--text-3)' }}
-              />
-              {label}
+              <Icon className="w-5 h-5" />
+              <span className="text-[9px] font-semibold tracking-wide">{label}</span>
             </Link>
           );
         })}
       </nav>
-
-      {/* User */}
-      <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-orange-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-            AM
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--text)' }}>Alex Martinez</p>
-            <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>Super Admin</p>
-          </div>
-          <button className="flex-shrink-0 transition-colors" style={{ color: 'var(--text-3)' }}>
-            <Settings className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-    </aside>
+    </>
   );
 }

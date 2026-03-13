@@ -19,19 +19,34 @@ function getAuth() {
 }
 
 // ── Función genérica: leer un rango de cualquier planilla ─────────────────────
+/**
+ * Lee un rango de una planilla con reintentos automáticos.
+ * Hasta 3 intentos con backoff exponencial (1s, 2s, 4s).
+ */
 export async function readSheet(
   sheetId: string,
-  range: string          // ej: 'Hoja1!A:F'  o  'Ventas!A2:D100'
+  range: string,         // ej: 'Hoja1!A:F'  o  'Ventas!A2:D100'
+  maxRetries = 3,
 ): Promise<string[][]> {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: sheetId,
-    range,
-  });
-
-  return (response.data.values as string[][]) ?? [];
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range,
+      });
+      return (response.data.values as string[][]) ?? [];
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastError;
 }
 
 // ── Función genérica: leer columnas específicas por nombre de encabezado ──────
@@ -67,29 +82,39 @@ export async function readColumns(
   });
 }
 
-// ── IDs de planillas y nombres de pestañas (centralizado) ────────────────────
-// Los nombres de pestañas no son secretos: se hardcodean para evitar
-// que el secrets scanner de Netlify los detecte en el build output.
-export function getSheetsConfig() {
-  return {
-    id: process.env.SHEET_VENTAS_ID ?? '',
-    tabs: {
-      facturas:   'Facturas',
-      cierreCaja: 'Cierre de Caja',
-      merma:      'MERMA',
-    },
-  };
+// ── Nombres de pestañas (iguales en los 4 locales) ───────────────────────────
+export const TABS = {
+  facturas:   'Facturas',
+  cierreCaja: 'Cierre de Caja',
+  merma:      'MERMA',
+} as const;
+
+// ── Configuración multi-local ─────────────────────────────────────────────────
+// Cada local tiene su propio spreadsheet con las mismas pestañas.
+// Los IDs vienen de variables de entorno server-side.
+export interface LocalSheetConfig {
+  nombre: string;   // nombre canónico del local
+  id: string;       // spreadsheet ID
+  tabs: typeof TABS;
 }
 
-// Mantener SHEETS como alias para compatibilidad
+export function getLocalesConfig(): LocalSheetConfig[] {
+  return [
+    { nombre: 'La Reina', id: process.env.SHEET_LA_REINA_ID ?? '', tabs: TABS },
+    { nombre: 'PV',       id: process.env.SHEET_PV_ID       ?? '', tabs: TABS },
+    { nombre: 'PT',       id: process.env.SHEET_PT_ID       ?? '', tabs: TABS },
+    { nombre: 'Bilbao',   id: process.env.SHEET_BILBAO_ID   ?? '', tabs: TABS },
+  ].filter(l => l.id); // excluir locales sin ID configurado
+}
+
+// ── Alias de compatibilidad (no romper código existente) ─────────────────────
+export function getSheetsConfig() {
+  return { id: process.env.SHEET_VENTAS_ID ?? '', tabs: TABS };
+}
+
 export const SHEETS = {
   get id() { return process.env.SHEET_VENTAS_ID ?? ''; },
-  tabs: {
-    facturas:   'Facturas',
-    cierreCaja: 'Cierre de Caja',
-    merma:      'MERMA',
-  },
+  tabs: TABS,
 };
 
-// Alias para compatibilidad con código existente
 export const SHEET_ID = process.env.SHEET_VENTAS_ID ?? '';

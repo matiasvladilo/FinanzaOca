@@ -16,10 +16,11 @@ export interface SucursalConfig {
  * automáticamente un color del pool de fallback.
  */
 export const SUCURSAL_CONFIG: Record<string, SucursalConfig> = {
-  'PV':       { color: '#1D4ED8', colorLight: '#DBEAFE', label: 'Providencia' },
-  'La Reina': { color: '#2563EB', colorLight: '#DBEAFE', label: 'La Reina' },
-  'PT':       { color: '#3B82F6', colorLight: '#EFF6FF', label: 'Puente' },
-  'Bilbao':   { color: '#60A5FA', colorLight: '#F0F9FF', label: 'Bilbao' },
+  // Colores visualmente distintos para identificación rápida en gráficos multi-local
+  'PV':       { color: '#2563EB', colorLight: '#DBEAFE', label: 'Providencia' },   // azul
+  'La Reina': { color: '#059669', colorLight: '#D1FAE5', label: 'La Reina' },      // verde
+  'PT':       { color: '#D97706', colorLight: '#FEF3C7', label: 'Puente' },        // ámbar
+  'Bilbao':   { color: '#DC2626', colorLight: '#FEE2E2', label: 'Bilbao' },        // rojo
   // ─── Agregar nuevos locales aquí ───────────────────────────────────────────
   // 'Nueva Sucursal': { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Nueva Sucursal' },
 };

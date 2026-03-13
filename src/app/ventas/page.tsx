@@ -11,7 +11,7 @@ import {
 import {
   Search, Bell, Calendar, ChevronDown, MapPin,
   Download, TrendingUp, TrendingDown,
-  Minus, DollarSign, ShoppingCart,
+  DollarSign, ShoppingCart,
   BarChart2, Receipt, Activity, LayoutGrid,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -65,19 +65,6 @@ const rawData: Record<Periodo, { fecha: string; ventas: number; gastos: number }
 };
 
 
-const productos = [
-  { id: 1, nombre: 'Pan de Molde Premium',    categoria: 'Bakery',  unidades: 842,  revenue: 33680000, costo: 12800000, margen: 38, tendencia: 'up' },
-  { id: 2, nombre: 'Combo Desayuno XXL',      categoria: 'Pastry',  unidades: 1204, revenue: 18060000, costo: 9900000,  margen: 45, tendencia: 'up' },
-  { id: 3, nombre: 'Pack Bebidas Artesanal',  categoria: 'Cafe',    unidades: 560,  revenue: 14560000, costo: 11070000, margen: 24, tendencia: 'down' },
-  { id: 4, nombre: 'Hallulla Integral',       categoria: 'Bakery',  unidades: 3800, revenue: 9500000,  costo: 5700000,  margen: 40, tendencia: 'up' },
-  { id: 5, nombre: 'Marraqueta Clásica',      categoria: 'Bakery',  unidades: 124,  revenue: 31000000, costo: 25420000, margen: 18, tendencia: 'flat' },
-];
-
-const categoriaColor: Record<string, string> = {
-  Bakery: 'text-blue-500', Pastry: 'text-purple-500', Cafe: 'text-cyan-500',
-};
-const margenBadge = (m: number) =>
-  m >= 35 ? 'bg-green-100 text-green-700' : m >= 22 ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-500';
 
 const fmt = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : `$${(v / 1000).toFixed(0)}k`;
 const fmtFull = (v: number) => `$${v.toLocaleString('es-CL')}`;
@@ -95,24 +82,25 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   const comp = payload.filter((p: any) => String(p.dataKey).endsWith('Comp'));
   const fechaComp = payload[0]?.payload?.fechaComp;
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg px-4 py-3 text-[12px]">
-      <p className="font-semibold text-gray-600 mb-2">{label}</p>
+    <div className="rounded-xl shadow-lg px-4 py-3 text-[12px]"
+      style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
+      <p className="font-semibold mb-2" style={{ color: 'var(--text-2)' }}>{label}</p>
       {main.map((p: any) => (
         <div key={p.name} className="flex items-center gap-2 mb-1">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color ?? p.fill }} />
-          <span className="text-gray-500">{p.name}:</span>
-          <span className="font-bold text-gray-800">{fmtFull(p.value)}</span>
+          <span style={{ color: 'var(--text-3)' }}>{p.name}:</span>
+          <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(p.value)}</span>
         </div>
       ))}
       {comp.length > 0 && (
         <>
-          <div className="border-t border-dashed border-gray-200 my-1.5" />
-          {fechaComp && <p className="text-[10px] text-gray-400 mb-1">{fechaComp}</p>}
+          <div className="border-t border-dashed my-1.5" style={{ borderColor: 'var(--border)' }} />
+          {fechaComp && <p className="text-[10px] mb-1" style={{ color: 'var(--text-3)' }}>{fechaComp}</p>}
           {comp.map((p: any) => (
             <div key={p.name} className="flex items-center gap-2 mb-1">
               <span className="w-2.5 h-2.5 rounded-full opacity-50" style={{ backgroundColor: p.color ?? p.fill }} />
-              <span className="text-gray-400">{p.name}:</span>
-              <span className="font-semibold text-gray-500">{fmtFull(p.value)}</span>
+              <span style={{ color: 'var(--text-3)' }}>{p.name}:</span>
+              <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{fmtFull(p.value)}</span>
             </div>
           ))}
         </>
@@ -136,18 +124,18 @@ function InteractiveChart({
 
   const commonChildren = (
     <>
-      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-      <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
-      <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} tickFormatter={yFmt} width={52} />
+      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+      <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} />
+      <YAxis tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} tickFormatter={yFmt} width={52} />
       <Tooltip content={<CustomTooltip />} />
       <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
-        formatter={(v) => <span style={{ color: '#6B7280' }}>{v}</span>} />
+        formatter={(v) => <span style={{ color: 'var(--chart-axis)' }}>{v}</span>} />
     </>
   );
 
   if (tipo === 'area') return (
     <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={data}>
+      <AreaChart data={data} style={{ background: 'transparent' }}>
         <defs>
           <linearGradient id="gV" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15} /><stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
@@ -167,7 +155,7 @@ function InteractiveChart({
 
   if (tipo === 'linea') return (
     <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={data}>
+      <LineChart data={data} style={{ background: 'transparent' }}>
         {commonChildren}
         {showVentas && <Line type="monotone" dataKey="ventas" name="Ventas" stroke="#3B82F6" strokeWidth={2.5} dot={{ r: 3, fill: '#3B82F6', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
         {showGastos && <Line type="monotone" dataKey="gastos" name="Gastos" stroke="#EF4444" strokeWidth={2.5} dot={{ r: 3, fill: '#EF4444', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
@@ -179,7 +167,7 @@ function InteractiveChart({
 
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={data} barCategoryGap="30%" barGap={2}>
+      <BarChart data={data} barCategoryGap="30%" barGap={2} style={{ background: 'transparent' }}>
         {commonChildren}
         {showVentas && <Bar dataKey="ventas" name="Ventas" fill="#3B82F6" radius={[4, 4, 0, 0]} />}
         {showGastos && <Bar dataKey="gastos" name="Gastos" fill="#EF4444" radius={[4, 4, 0, 0]} />}
@@ -198,15 +186,17 @@ function keyToLabel(key: string) {
 }
 type MesSlice = { ventas: number; efectivo: number; tarjeta: number; transf: number };
 type DiaCaja = { fecha: string; local: string; ventas: number; efectivo: number; tarjeta: number; transf: number };
-type DiaGasto = { fecha: string; sucursal: string; monto: number };
+type DiaGasto = { fecha: string; sucursal: string; monto: number; proveedor?: string; subtipo?: string };
 
 // Obtiene el lunes de la semana de una fecha ISO
 function getLunesSemana(isoDate: string): string {
   const d = new Date(isoDate + 'T00:00:00');
+  if (isNaN(d.getTime())) return isoDate;
   const day = d.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
   const diff = day === 0 ? -6 : 1 - day;
   const monday = new Date(d);
   monday.setDate(d.getDate() + diff);
+  if (isNaN(monday.getTime())) return isoDate;
   return monday.toISOString().slice(0, 10);
 }
 
@@ -225,8 +215,6 @@ export default function VentasPage() {
   const [sucursalOpen, setSucursalOpen] = useState(false);
   const [metrica, setMetrica] = useState<Metrica>('ambos');
   const [tipoGrafico, setTipoGrafico] = useState<TipoGrafico>('area');
-  const [filtroCategoria, setFiltroCategoria] = useState('Todas');
-
   // ── Estado raw desde Sheets ──────────────────────────────
   const [rawLocalMes, setRawLocalMes] = useState<Record<string, Record<string, MesSlice>>>({});
   const [rawGastosMes, setRawGastosMes] = useState<Record<string, number>>({});
@@ -293,11 +281,19 @@ export default function VentasPage() {
       }
       for (const r of rawDiasGastos) {
         if (!r.fecha) continue;
+        if (sucursal !== 'Todas' && r.sucursal !== sucursal) continue;
         if (fDesde && r.fecha < fDesde) continue;
         if (fHasta && r.fecha > fHasta) continue;
         diasGastos[r.fecha] = (diasGastos[r.fecha] ?? 0) + r.monto;
+        if (r.sucursal) {
+          if (!porLocal[r.sucursal]) porLocal[r.sucursal] = { ventas: 0, gastos: 0 };
+          porLocal[r.sucursal].gastos += r.monto;
+        }
       }
-      const allDays = [...new Set([...Object.keys(diasVentas), ...Object.keys(diasGastos)])].sort();
+      const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+      const allDays = [...new Set([...Object.keys(diasVentas), ...Object.keys(diasGastos)])]
+        .filter(d => ISO_RE.test(d) && !isNaN(new Date(d).getTime()))
+        .sort();
       let data: { fecha: string; ventas: number; gastos: number }[];
       if (allDays.length <= 31) {
         data = allDays.map(d => ({ fecha: formatDayLabel(d), ventas: diasVentas[d] ?? 0, gastos: diasGastos[d] ?? 0 }));
@@ -327,9 +323,19 @@ export default function VentasPage() {
           byMes[mes].ventas += d.ventas;
         }
       }
-      for (const mes of meses) {
-        if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
-        byMes[mes].gastos = rawGastosMes[mes] ?? 0;
+      if (sucursal === 'Todas') {
+        for (const mes of meses) {
+          if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
+          byMes[mes].gastos = rawGastosMes[mes] ?? 0;
+        }
+      } else {
+        for (const r of rawDiasGastos) {
+          if (!r.fecha || r.sucursal !== sucursal) continue;
+          const mes = r.fecha.slice(0, 7);
+          if (!meses.includes(mes)) continue;
+          if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
+          byMes[mes].gastos += r.monto;
+        }
       }
       return meses.map(m => ({ fecha: keyToLabel(m), ventas: byMes[m]?.ventas ?? 0, gastos: byMes[m]?.gastos ?? 0 }));
     }
@@ -350,6 +356,44 @@ export default function VentasPage() {
       }));
     }
 
+    // ── Helper: top proveedores filtrado ─────────────────────────────────────
+    function buildTopProveedores(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes') {
+      const provMap: Record<string, number> = {};
+      for (const r of rawDiasGastos) {
+        if (!r.fecha || !r.proveedor) continue;
+        if (sucursal !== 'Todas' && r.sucursal !== sucursal) continue;
+        if (modo === 'dia') {
+          if (fDesde && r.fecha < fDesde) continue;
+          if (fHasta && r.fecha > fHasta) continue;
+        } else {
+          const mes = r.fecha.slice(0, 7);
+          if (mDesde && mes < mDesde) continue;
+          if (mHasta && mes > mHasta) continue;
+        }
+        provMap[r.proveedor] = (provMap[r.proveedor] ?? 0) + r.monto;
+      }
+      return Object.entries(provMap).sort(([, a], [, b]) => b - a).slice(0, 8).map(([nombre, monto]) => ({ nombre, monto }));
+    }
+
+    // ── Helper: transacciones (cierres de caja) filtrado ─────────────────────
+    function buildTransacciones(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes') {
+      let count = 0;
+      for (const r of rawDiasCaja) {
+        if (!r.fecha) continue;
+        if (sucursal !== 'Todas' && r.local !== sucursal) continue;
+        if (modo === 'dia') {
+          if (fDesde && r.fecha < fDesde) continue;
+          if (fHasta && r.fecha > fHasta) continue;
+        } else {
+          const mes = r.fecha.slice(0, 7);
+          if (mDesde && mes < mDesde) continue;
+          if (mHasta && mes > mHasta) continue;
+        }
+        count++;
+      }
+      return count;
+    }
+
     // ── Modo día/semana ───────────────────────────────────────────────────────
     if (modoFiltro === 'dia') {
       const { data: dataA, porLocal } = buildDayChart(fechaDesde, fechaHasta);
@@ -363,7 +407,9 @@ export default function VentasPage() {
       }
       const totalVentas = dataA.reduce((s, r) => s + r.ventas, 0);
       const totalGastos = dataA.reduce((s, r) => s + r.gastos, 0);
-      return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: compEnabled };
+      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia');
+      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia');
+      return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: compEnabled, totalTransacciones, topProveedores };
     }
 
     // ── Modo mes ─────────────────────────────────────────────────────────────
@@ -389,8 +435,18 @@ export default function VentasPage() {
         porLocalFiltrado[local].ventas += d.ventas;
       }
     }
+    // Gastos por sucursal filtrados por el mismo rango de meses
+    for (const r of rawDiasGastos) {
+      if (!r.fecha || !r.sucursal) continue;
+      const mes = r.fecha.slice(0, 7);
+      if (!mesesFiltrados.includes(mes)) continue;
+      if (!porLocalFiltrado[r.sucursal]) porLocalFiltrado[r.sucursal] = { ventas: 0, gastos: 0 };
+      porLocalFiltrado[r.sucursal].gastos += r.monto;
+    }
 
-    return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp: compEnabled };
+    const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes');
+    const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes');
+    return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp: compEnabled, totalTransacciones, topProveedores };
   }, [rawLocalMes, rawGastosMes, rawDiasCaja, rawDiasGastos, sucursal,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compEnabled, compMesDesde, compMesHasta, compFechaDesde, compFechaHasta]);
@@ -405,38 +461,18 @@ export default function VentasPage() {
   const chartData = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
   const sucursalesDisponibles = ['Todas', ...Object.keys(rawLocalMes)];
 
-  const productosFiltrados = useMemo(() =>
-    filtroCategoria === 'Todas' ? productos : productos.filter(p => p.categoria === filtroCategoria),
-    [filtroCategoria]
-  );
-
   const handleExportChart = () => {
     exportToCSV(chartData.map(d => ({ Fecha: d.fecha, Ventas: d.ventas, Gastos: d.gastos })), 'ventas_gastos');
     toast('Datos del gráfico exportados');
   };
 
-  const handleExportProductos = () => {
-    exportToCSV(
-      productosFiltrados.map(p => ({
-        Producto: p.nombre,
-        Categoría: p.categoria,
-        Unidades: p.unidades,
-        'Ingresos CLP': p.revenue,
-        'Costo CLP': p.costo,
-        'Margen %': p.margen,
-        Tendencia: p.tendencia,
-      })),
-      'ventas_productos'
-    );
-    toast('Tabla de productos exportada');
-  };
-
   return (
-    <div className="flex flex-col flex-1 min-h-screen bg-gray-50">
+    <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
 
       {/* ── Header ── */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-100 sticky top-0 z-30">
-        <h1 className="text-[18px] font-bold text-gray-900">Ventas & Gastos</h1>
+      <header className="flex items-center justify-between px-6 py-4 sticky top-0 z-30 transition-colors"
+        style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
+        <h1 className="text-[18px] font-bold" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
         <div className="flex items-center gap-3">
           {/* Filtro de fecha */}
           <div className="relative">
@@ -628,14 +664,14 @@ export default function VentasPage() {
               icon: <BarChart2 className="w-4 h-4 text-green-600" />, bg: 'bg-green-50',
             },
             {
-              label: 'Transacciones', value: '3.022', comp: null, deltaPct: null,
+              label: 'Transacciones', value: loadingSheet ? '...' : filteredData.totalTransacciones.toLocaleString('es-CL'), comp: null, deltaPct: null,
               icon: <ShoppingCart className="w-4 h-4 text-purple-600" />, bg: 'bg-purple-50',
             },
           ].map(k => {
             const delta = k.deltaPct !== null ? parseFloat(k.deltaPct) : null;
             const pos = delta === null ? true : delta >= 0;
             return (
-            <div key={k.label} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <div key={k.label} className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">{k.label}</p>
                 <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center', k.bg)}>{k.icon}</div>
@@ -659,7 +695,7 @@ export default function VentasPage() {
         </div>
 
         {/* ── Gráfico interactivo ── */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
           {/* Controles */}
           <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
             <div className="flex items-center gap-2">
@@ -737,9 +773,9 @@ export default function VentasPage() {
         <div className="grid grid-cols-3 gap-5">
 
           {/* Performance por Sucursal */}
-          <div className="col-span-1 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <div className="col-span-1 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-[14px] font-bold text-gray-900">Por Sucursal</h3>
+              <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Por Sucursal</h3>
               <div className="flex items-center gap-3 text-[10px] text-gray-400">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Ventas</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Gastos</span>
@@ -749,7 +785,7 @@ export default function VentasPage() {
               {(() => {
                 const lista = Object.entries(filteredData.porLocalFiltrado).map(([nombre, d]) => ({ nombre, ...d }));
                 if (!lista.length) return <p className="text-[11px] text-gray-400">Sin datos</p>;
-                const maxV = Math.max(...lista.map(s => s.ventas), 1);
+                const maxV = Math.max(...lista.map(s => Math.max(s.ventas, s.gastos)), 1);
                 return lista.map(s => (
                   <div key={s.nombre}>
                     <div className="flex items-center justify-between mb-1">
@@ -768,52 +804,59 @@ export default function VentasPage() {
             </div>
           </div>
 
-          {/* Tabla Productos */}
-          <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          {/* Top Proveedores (datos reales del Sheet) */}
+          <div className="col-span-2 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[14px] font-bold text-gray-900">Rendimiento de Productos</h3>
-              <div className="flex items-center gap-2">
-                {/* Filtro categoría */}
-                <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1">
-                  {['Todas', 'Bakery', 'Pastry', 'Cafe'].map(cat => (
-                    <button key={cat} onClick={() => setFiltroCategoria(cat)}
-                      className={clsx('px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all',
-                        filtroCategoria === cat ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-                <button onClick={handleExportProductos} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
-                  <Download className="w-3 h-3" />CSV
-                </button>
-              </div>
+              <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Top Proveedores</h3>
+              <button
+                onClick={() => {
+                  exportToCSV(filteredData.topProveedores.map((p, i) => ({
+                    '#': i + 1, Proveedor: p.nombre, 'Monto CLP': p.monto,
+                    '% del Total': gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) + '%' : '—',
+                  })), 'top_proveedores');
+                  toast('Top proveedores exportado');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
+                <Download className="w-3 h-3" />CSV
+              </button>
             </div>
 
-            {/* Table head */}
-            <div className="grid grid-cols-6 gap-2 pb-2 border-b border-gray-100">
-              {['Producto', 'Cat.', 'Unidades', 'Revenue', 'Costo', 'Margen'].map(c => (
+            <div className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 pb-2 border-b" style={{ borderColor: 'var(--border)' }}>
+              {['#', 'Proveedor', 'Monto', '%'].map(c => (
                 <p key={c} className="text-[9px] font-bold tracking-widest text-gray-400 uppercase">{c}</p>
               ))}
             </div>
 
-            <div className="divide-y divide-gray-50">
-              {productosFiltrados.map(p => (
-                <div key={p.id} className="grid grid-cols-6 gap-2 py-3 items-center hover:bg-gray-50/50 rounded-lg transition-colors">
-                  <div className="flex items-center gap-2">
-                    {p.tendencia === 'up' && <TrendingUp className="w-3 h-3 text-green-500 flex-shrink-0" />}
-                    {p.tendencia === 'down' && <TrendingDown className="w-3 h-3 text-red-500 flex-shrink-0" />}
-                    {p.tendencia === 'flat' && <Minus className="w-3 h-3 text-gray-400 flex-shrink-0" />}
-                    <p className="text-[11px] font-semibold text-gray-800 truncate">{p.nombre}</p>
+            <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+              {loadingSheet ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 py-2.5 animate-pulse">
+                    <div className="h-3 bg-gray-200 rounded w-4" />
+                    <div className="h-3 bg-gray-200 rounded" />
+                    <div className="h-3 bg-gray-200 rounded" />
+                    <div className="h-3 bg-gray-200 rounded w-8" />
                   </div>
-                  <p className={clsx('text-[11px] font-medium', categoriaColor[p.categoria])}>{p.categoria}</p>
-                  <p className="text-[11px] font-semibold text-gray-700">{p.unidades.toLocaleString('es-CL')}</p>
-                  <p className="text-[11px] font-bold text-gray-800">{fmt(p.revenue)}</p>
-                  <p className="text-[11px] font-semibold text-red-500">{fmt(p.costo)}</p>
-                  <span className={clsx('text-[10px] font-bold px-2 py-1 rounded-full w-fit', margenBadge(p.margen))}>
-                    {p.margen}%
-                  </span>
-                </div>
-              ))}
+                ))
+              ) : filteredData.topProveedores.length === 0 ? (
+                <p className="text-[11px] text-gray-400 py-4 text-center">Sin datos para el período seleccionado</p>
+              ) : (
+                filteredData.topProveedores.map((p, i) => {
+                  const pct = gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) : '0';
+                  return (
+                    <div key={p.nombre} className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 py-2.5 items-center hover:bg-gray-50/30 rounded-lg transition-colors">
+                      <span className="text-[11px] font-bold text-gray-400">#{i + 1}</span>
+                      <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--text)' }}>{p.nombre || '(sin nombre)'}</p>
+                      <p className="text-[11px] font-bold text-red-500">{fmtFull(p.monto)}</p>
+                      <div className="flex items-center gap-1">
+                        <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                          <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${Math.min(parseFloat(pct), 100)}%` }} />
+                        </div>
+                        <span className="text-[9px] text-gray-400 w-6 text-right">{pct}%</span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

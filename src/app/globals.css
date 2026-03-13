@@ -144,6 +144,13 @@ body {
 .dracula .border-blue-400 { border-color: #bd93f9; }
 .dracula .ring-blue-500   { --tw-ring-color: #bd93f9; }
 
+/* Recharts — fondo transparente siempre */
+.recharts-wrapper,
+.recharts-surface,
+.recharts-wrapper svg {
+  background: transparent !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

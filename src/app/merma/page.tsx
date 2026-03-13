@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   PieChart,
   Pie,
@@ -20,13 +20,16 @@ import {
   TrendingUp,
   DollarSign,
   Percent,
+  MapPin,
+  CalendarDays,
+  X,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 
-// --- Data ---
-const categorias = [
+// --- Data mock (fallback) ---
+const categoriasMock = [
   { nombre: 'Bakery (Panadería)', valor: 1850000, color: '#3B82F6', porcentaje: 43 },
   { nombre: 'Pastry (Pastelería)', valor: 1200000, color: '#8B5CF6', porcentaje: 28 },
   { nombre: 'Cafe (Bebidas/Café)', valor: 800000, color: '#06B6D4', porcentaje: 19 },
@@ -44,15 +47,23 @@ const sparklineData = [
   { v: 0.8 }, { v: 1.1 }, { v: 0.9 }, { v: 1.0 }, { v: 1.2 }, { v: 1.4 }, { v: 1.5 },
 ];
 
-const registros = [
-  { id: 1, timestamp: 'Hoy, 10:45 AM', producto: 'Croissant Mantequilla', categoria: 'Bakery', cantidad: 12, motivo: 'Expirado', costo: 48000 },
-  { id: 2, timestamp: 'Hoy, 08:30 AM', producto: 'Latte Macchiato XL', categoria: 'Cafe', cantidad: 2, motivo: 'Calidad', costo: 14500 },
-  { id: 3, timestamp: 'Ayer, 06:15 PM', producto: 'Tarta de Queso', categoria: 'Pastry', cantidad: 1, motivo: 'Dañado', costo: 25000 },
-  { id: 4, timestamp: 'Ayer, 11:20 AM', producto: 'Pan Artesanal', categoria: 'Bakery', cantidad: 8, motivo: 'Expirado', costo: 64000 },
-  { id: 5, timestamp: 'Ayer, 09:00 AM', producto: 'Muffin Arándanos', categoria: 'Pastry', cantidad: 6, motivo: 'Calidad', costo: 18000 },
+const registrosMock = [
+  { id: 1, timestamp: 'Hoy, 10:45 AM', producto: 'Croissant Mantequilla', categoria: 'Bakery', cantidad: 12, motivo: 'Expirado', costo: 48000, local: '' },
+  { id: 2, timestamp: 'Hoy, 08:30 AM', producto: 'Latte Macchiato XL', categoria: 'Cafe', cantidad: 2, motivo: 'Calidad', costo: 14500, local: '' },
+  { id: 3, timestamp: 'Ayer, 06:15 PM', producto: 'Tarta de Queso', categoria: 'Pastry', cantidad: 1, motivo: 'Dañado', costo: 25000, local: '' },
+  { id: 4, timestamp: 'Ayer, 11:20 AM', producto: 'Pan Artesanal', categoria: 'Bakery', cantidad: 8, motivo: 'Expirado', costo: 64000, local: '' },
+  { id: 5, timestamp: 'Ayer, 09:00 AM', producto: 'Muffin Arándanos', categoria: 'Pastry', cantidad: 6, motivo: 'Calidad', costo: 18000, local: '' },
 ];
 
-const PERIODOS = ['Últimos 7 días', 'Últimos 14 días', 'Este mes', 'Mes anterior'];
+// Periodos disponibles con sus códigos para la API
+const PERIODOS = [
+  { label: 'Todos los períodos', value: '' },
+  { label: 'Últimos 7 días', value: '7d' },
+  { label: 'Últimos 14 días', value: '14d' },
+  { label: 'Este mes', value: 'mes' },
+  { label: 'Mes anterior', value: 'mes_anterior' },
+  { label: 'Este año', value: 'anio' },
+];
 
 const motivoBadge: Record<string, string> = {
   Expirado: 'bg-red-100 text-red-600',
@@ -61,13 +72,10 @@ const motivoBadge: Record<string, string> = {
   Producción: 'bg-yellow-100 text-yellow-700',
 };
 
-// --- Custom Donut Label ---
-const DonutCenter = ({ cx, cy }: any) => (
-  <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
-    <tspan x={cx} dy="-6" fontSize="22" fontWeight="800" fill="#111827">100%</tspan>
-    <tspan x={cx} dy="18" fontSize="10" fill="#9CA3AF">TOTAL</tspan>
-  </text>
-);
+// --- Types ---
+type SheetMermaKPI = { totalMerma: number; totalRegistros: number; tipoMasFrecuente: string; montoMayor: number };
+type SheetMermaTipo = { nombre: string; monto: number; porcentaje: number; color: string };
+type SheetMermaRegistro = { id: number; producto: string; tipo: string; monto: number; fecha: string; local?: string };
 
 // --- Modal: Registrar Merma ---
 function RegistrarMermaModal({ onClose }: { onClose: () => void }) {
@@ -124,45 +132,138 @@ function RegistrarMermaModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// --- Tipos para datos reales ---
-type SheetMermaKPI = { totalMerma: number; totalRegistros: number; tipoMasFrecuente: string };
-type SheetMermaTipo = { nombre: string; monto: number; porcentaje: number; color: string };
-type SheetMermaRegistro = { id: number; producto: string; tipo: string; monto: number; fecha: string };
+// --- Dropdown genérico ---
+function FilterDropdown({
+  icon,
+  label,
+  value,
+  options,
+  onChange,
+  placeholder,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  options: { label: string; value: string }[];
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find(o => o.value === value);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={clsx(
+          'flex items-center gap-2 border rounded-full px-3.5 py-2 text-[12px] font-medium transition-all',
+          value
+            ? 'border-blue-500 bg-blue-50 text-blue-700'
+            : 'border-gray-200 bg-white text-gray-600 hover:border-blue-400',
+        )}
+      >
+        <span className="text-current opacity-70">{icon}</span>
+        <span>{selected?.label ?? placeholder ?? label}</span>
+        <ChevronDown className="w-3 h-3 text-gray-400 ml-0.5" />
+      </button>
+
+      {open && (
+        <>
+          {/* overlay */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-20 min-w-[180px]">
+            {options.map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => { onChange(opt.value); setOpen(false); }}
+                className={clsx(
+                  'w-full text-left px-4 py-2.5 text-[12px] hover:bg-blue-50 transition-colors flex items-center justify-between gap-3',
+                  value === opt.value ? 'text-blue-600 font-semibold bg-blue-50/60' : 'text-gray-700',
+                )}
+              >
+                {opt.label}
+                {value === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // --- Main Page ---
 export default function MermaPage() {
-  const [periodo, setPeriodo] = useState('Últimos 7 días');
-  const [periodoOpen, setPeriodoOpen] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // ── Datos reales desde Google Sheets ──────────────────
+  // ── Filtros ──────────────────────────────────────────────────────────────
+  const [periodo, setPeriodo] = useState('');          // '' = todos
+  const [localFiltro, setLocalFiltro] = useState('');  // '' = todos
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // ── Datos desde Google Sheets ─────────────────────────────────────────────
   const [sheetKPI, setSheetKPI] = useState<SheetMermaKPI | null>(null);
   const [sheetTipos, setSheetTipos] = useState<SheetMermaTipo[]>([]);
   const [sheetRegistros, setSheetRegistros] = useState<SheetMermaRegistro[]>([]);
+  const [localesDisponibles, setLocalesDisponibles] = useState<string[]>([]);
   const [loadingSheet, setLoadingSheet] = useState(true);
 
-  useEffect(() => {
-    fetch('/api/merma-data')
+  const fetchData = useCallback(() => {
+    setLoadingSheet(true);
+    const params = new URLSearchParams();
+    if (localFiltro) params.set('local', localFiltro);
+    if (periodo)     params.set('periodo', periodo);
+    if (fechaDesde)  params.set('fechaDesde', fechaDesde);
+    if (fechaHasta)  params.set('fechaHasta', fechaHasta);
+
+    const url = `/api/merma-data${params.size > 0 ? '?' + params.toString() : ''}`;
+
+    fetch(url)
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
           setSheetKPI(data.kpi);
           setSheetTipos(data.porTipo ?? []);
           setSheetRegistros(data.ultimosRegistros ?? []);
+          if (data.locales?.length > 1) setLocalesDisponibles(data.locales);
         }
       })
       .catch(() => {})
       .finally(() => setLoadingSheet(false));
-  }, []);
+  }, [localFiltro, periodo, fechaDesde, fechaHasta]);
 
-  // Usa datos reales si están disponibles, mock si no
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Opciones para los dropdowns
+  const periodoOpts = PERIODOS;
+  const localOpts = localesDisponibles.length > 0
+    ? [
+        { label: 'Todos los locales', value: '' },
+        ...localesDisponibles.filter(l => l !== 'Todos').map(l => ({ label: l, value: l })),
+      ]
+    : [{ label: 'Todos los locales', value: '' }];
+
+  // Número de filtros activos
+  const filtrosActivos = [localFiltro, periodo, fechaDesde, fechaHasta].filter(Boolean).length;
+
+  const clearFiltros = () => {
+    setPeriodo('');
+    setLocalFiltro('');
+    setFechaDesde('');
+    setFechaHasta('');
+    setShowDatePicker(false);
+  };
+
+  // ── Datos para UI ────────────────────────────────────────────────────────
   const categoriasActivas = sheetTipos.length > 0
     ? sheetTipos.map(t => ({ nombre: t.nombre, valor: t.monto, color: t.color, porcentaje: t.porcentaje }))
-    : categorias;
-  const maxCategoria = Math.max(...categoriasActivas.map((c) => c.valor), 1);
+    : categoriasMock;
+  const maxCategoria = Math.max(...categoriasActivas.map(c => c.valor), 1);
 
-  // Registros para la tabla
   const registrosSheet = sheetRegistros.length > 0
     ? sheetRegistros.map(r => ({
         id: r.id,
@@ -172,34 +273,53 @@ export default function MermaPage() {
         cantidad: 1,
         motivo: r.tipo,
         costo: r.monto,
+        local: r.local ?? '',
       }))
-    : registros;
+    : registrosMock;
 
-  const registrosVisibles = showAll ? registrosSheet : registrosSheet.slice(0, 4);
+  // Filtramos por búsqueda local (client-side)
+  const registrosFiltrados = registrosSheet.filter(r => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      r.producto.toLowerCase().includes(q) ||
+      r.categoria.toLowerCase().includes(q) ||
+      r.motivo.toLowerCase().includes(q) ||
+      r.local.toLowerCase().includes(q)
+    );
+  });
+
+  const registrosVisibles = showAll ? registrosFiltrados : registrosFiltrados.slice(0, 4);
 
   const handleCSV = () => {
     exportToCSV(
-      registrosSheet.map(r => ({
+      registrosFiltrados.map(r => ({
         Fecha: r.timestamp,
         Producto: r.producto,
         Tipo: r.categoria,
         'Monto CLP': r.costo,
+        Local: r.local,
       })),
       'merma_registros'
     );
     toast('Registros de merma exportados');
   };
 
+  // Label para el filtro de período activo
+  const periodoLabel = PERIODOS.find(p => p.value === periodo)?.label ?? 'Todos los períodos';
+
   return (
     <div className="flex flex-col flex-1 min-h-screen bg-gray-50 relative">
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-100 sticky top-0 z-30">
         <h1 className="text-[18px] font-bold text-gray-900">Dashboard de Merma</h1>
-        <div className="flex items-center gap-3 flex-1 max-w-xs mx-6">
+        <div className="flex items-center gap-2 flex-1 max-w-xs mx-6">
           <div className="flex items-center gap-2 w-full bg-gray-100 rounded-full px-3 py-2">
             <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <input
               type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
               placeholder="Buscar producto o registro..."
               className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400"
             />
@@ -210,6 +330,117 @@ export default function MermaPage() {
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
         </button>
       </header>
+
+      {/* ── Barra de Filtros ───────────────────────────────────────────────── */}
+      <div className="sticky top-[61px] z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-6 py-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mr-1">Filtrar:</span>
+
+          {/* Filtro por período */}
+          <FilterDropdown
+            icon={<CalendarDays className="w-3.5 h-3.5" />}
+            label="Período"
+            value={periodo}
+            options={periodoOpts}
+            onChange={v => { setPeriodo(v); if (v) { setFechaDesde(''); setFechaHasta(''); setShowDatePicker(false); } }}
+            placeholder="Todos los períodos"
+          />
+
+          {/* Filtro por local */}
+          {localOpts.length > 1 && (
+            <FilterDropdown
+              icon={<MapPin className="w-3.5 h-3.5" />}
+              label="Local"
+              value={localFiltro}
+              options={localOpts}
+              onChange={setLocalFiltro}
+              placeholder="Todos los locales"
+            />
+          )}
+
+          {/* Rango de fechas personalizado */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDatePicker(o => !o)}
+              className={clsx(
+                'flex items-center gap-2 border rounded-full px-3.5 py-2 text-[12px] font-medium transition-all',
+                (fechaDesde || fechaHasta)
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 bg-white text-gray-600 hover:border-blue-400',
+              )}
+            >
+              <CalendarDays className="w-3.5 h-3.5 opacity-70" />
+              {fechaDesde || fechaHasta
+                ? `${fechaDesde || '...'} → ${fechaHasta || '...'}`
+                : 'Rango personalizado'}
+              <ChevronDown className="w-3 h-3 text-gray-400 ml-0.5" />
+            </button>
+
+            {showDatePicker && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowDatePicker(false)} />
+                <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-20 p-4 min-w-[280px]">
+                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">Rango de fechas</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Desde</label>
+                      <input
+                        type="date"
+                        value={fechaDesde}
+                        onChange={e => { setFechaDesde(e.target.value); setPeriodo(''); }}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[12px] outline-none focus:border-blue-400 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Hasta</label>
+                      <input
+                        type="date"
+                        value={fechaHasta}
+                        onChange={e => { setFechaHasta(e.target.value); setPeriodo(''); }}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[12px] outline-none focus:border-blue-400 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowDatePicker(false)}
+                    className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[12px] font-semibold transition-colors"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Indicador de filtros activos + limpiar */}
+          {filtrosActivos > 0 && (
+            <button
+              onClick={clearFiltros}
+              className="flex items-center gap-1.5 ml-1 text-[12px] font-semibold text-red-500 hover:text-red-700 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              Limpiar filtros
+              <span className="bg-red-100 text-red-600 rounded-full w-4 h-4 text-[10px] flex items-center justify-center font-bold">
+                {filtrosActivos}
+              </span>
+            </button>
+          )}
+
+          {/* Indicador de carga */}
+          {loadingSheet && (
+            <span className="ml-auto text-[11px] text-gray-400 animate-pulse">Actualizando...</span>
+          )}
+
+          {/* Resumen del filtro activo */}
+          {!loadingSheet && sheetKPI && (
+            <span className="ml-auto text-[11px] text-gray-500 font-medium">
+              {sheetKPI.totalRegistros} registro{sheetKPI.totalRegistros !== 1 ? 's' : ''}
+              {filtrosActivos > 0 ? ` · ${periodoLabel}` : ''}
+              {localFiltro ? ` · ${localFiltro}` : ''}
+            </span>
+          )}
+        </div>
+      </div>
 
       <main className="flex-1 px-6 py-5 space-y-5 pb-24">
 
@@ -232,7 +463,9 @@ export default function MermaPage() {
                 <TrendingDown className="w-3 h-3" />-5.2%
               </span>
             </div>
-            <p className="text-[11px] text-gray-400">Mes actual vs anterior</p>
+            <p className="text-[11px] text-gray-400">
+              {filtrosActivos > 0 ? `${sheetKPI?.totalRegistros ?? '—'} registros filtrados` : 'Mes actual vs anterior'}
+            </p>
           </div>
 
           {/* % Merma vs Ventas */}
@@ -295,51 +528,49 @@ export default function MermaPage() {
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-[14px] font-bold text-gray-900">Merma por Categoría</h3>
-              <div className="relative">
-                <button
-                  onClick={() => setPeriodoOpen(!periodoOpen)}
-                  className="flex items-center gap-2 border border-gray-200 rounded-full px-3 py-1.5 text-[11px] font-medium text-gray-600 hover:border-blue-400 transition-colors"
-                >
-                  {periodo}
-                  <ChevronDown className="w-3 h-3 text-gray-400" />
-                </button>
-                {periodoOpen && (
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-20 min-w-[150px]">
-                    {PERIODOS.map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => { setPeriodo(p); setPeriodoOpen(false); }}
-                        className={clsx(
-                          'w-full text-left px-4 py-2.5 text-[12px] hover:bg-blue-50 transition-colors',
-                          periodo === p ? 'text-blue-600 font-semibold' : 'text-gray-700'
-                        )}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {/* Badge de filtros activos */}
+              {filtrosActivos > 0 && (
+                <span className="text-[10px] font-semibold px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full">
+                  {periodoLabel}
+                  {localFiltro ? ` · ${localFiltro}` : ''}
+                </span>
+              )}
             </div>
 
             <div className="space-y-4">
-              {categoriasActivas.map((cat) => (
-                <div key={cat.nombre}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[12px] text-gray-700 font-medium">{cat.nombre}</span>
-                    <span className="text-[12px] font-bold text-gray-800">${cat.valor.toLocaleString('es-CL')}</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2.5">
-                    <div
-                      className="h-2.5 rounded-full transition-all duration-700"
-                      style={{
-                        width: `${(cat.valor / maxCategoria) * 100}%`,
-                        backgroundColor: cat.color,
-                      }}
-                    />
-                  </div>
+              {loadingSheet ? (
+                <div className="space-y-3">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="animate-pulse">
+                      <div className="flex justify-between mb-1.5">
+                        <div className="h-3 bg-gray-100 rounded w-32" />
+                        <div className="h-3 bg-gray-100 rounded w-20" />
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2.5" />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : categoriasActivas.length === 0 ? (
+                <p className="text-[12px] text-gray-400 text-center py-6">Sin datos para el filtro seleccionado</p>
+              ) : (
+                categoriasActivas.map((cat) => (
+                  <div key={cat.nombre}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[12px] text-gray-700 font-medium">{cat.nombre}</span>
+                      <span className="text-[12px] font-bold text-gray-800">${cat.valor.toLocaleString('es-CL')}</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2.5">
+                      <div
+                        className="h-2.5 rounded-full transition-all duration-700"
+                        style={{
+                          width: `${(cat.valor / maxCategoria) * 100}%`,
+                          backgroundColor: cat.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -408,7 +639,16 @@ export default function MermaPage() {
         {/* Registros Recientes */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-5">
-            <h3 className="text-[14px] font-bold text-gray-900">Registros de Merma Recientes</h3>
+            <div>
+              <h3 className="text-[14px] font-bold text-gray-900">Registros de Merma</h3>
+              {filtrosActivos > 0 && (
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Mostrando {registrosFiltrados.length} resultado{registrosFiltrados.length !== 1 ? 's' : ''}
+                  {localFiltro ? ` · ${localFiltro}` : ''}
+                  {periodo ? ` · ${periodoLabel}` : ''}
+                </p>
+              )}
+            </div>
             <button onClick={handleCSV} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-[12px] font-semibold transition-colors shadow-sm">
               <Download className="w-3.5 h-3.5" />
               Descargar CSV
@@ -416,8 +656,11 @@ export default function MermaPage() {
           </div>
 
           {/* Table header */}
-          <div className="grid grid-cols-6 gap-3 pb-3 border-b border-gray-100">
-            {['Timestamp', 'Producto', 'Categoría', 'Cantidad', 'Motivo', 'Costo Est.'].map((col) => (
+          <div className={clsx(
+            'pb-3 border-b border-gray-100 grid gap-3',
+            localesDisponibles.length > 1 ? 'grid-cols-7' : 'grid-cols-6'
+          )}>
+            {['Timestamp', 'Producto', 'Categoría', ...(localesDisponibles.length > 1 ? ['Local'] : []), 'Cantidad', 'Motivo', 'Costo Est.'].map((col) => (
               <p key={col} className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">
                 {col}
               </p>
@@ -426,23 +669,43 @@ export default function MermaPage() {
 
           {/* Rows */}
           <div className="divide-y divide-gray-50">
-            {registrosVisibles.map((r) => (
-              <div key={r.id} className="grid grid-cols-6 gap-3 py-3.5 items-center hover:bg-gray-50/50 rounded-lg transition-colors">
-                <p className="text-[12px] text-gray-400">{r.timestamp}</p>
-                <p className="text-[12px] font-semibold text-gray-800">{r.producto}</p>
-                <p className="text-[12px] text-gray-600">{r.categoria}</p>
-                <p className="text-[12px] font-semibold text-gray-700">{r.cantidad} u</p>
-                <span className={clsx('text-[11px] font-semibold px-2.5 py-1 rounded-full w-fit', motivoBadge[r.motivo] ?? 'bg-gray-100 text-gray-600')}>
-                  {r.motivo}
-                </span>
-                <p className="text-[12px] font-bold text-gray-800">${r.costo.toLocaleString('es-CL')}</p>
+            {loadingSheet ? (
+              [1,2,3,4].map(i => (
+                <div key={i} className={clsx('py-3.5 grid gap-3 animate-pulse', localesDisponibles.length > 1 ? 'grid-cols-7' : 'grid-cols-6')}>
+                  {Array.from({ length: localesDisponibles.length > 1 ? 7 : 6 }).map((_, j) => (
+                    <div key={j} className="h-3 bg-gray-100 rounded" />
+                  ))}
+                </div>
+              ))
+            ) : registrosVisibles.length === 0 ? (
+              <div className="py-10 text-center">
+                <p className="text-[13px] text-gray-400">No hay registros para el filtro seleccionado.</p>
               </div>
-            ))}
+            ) : (
+              registrosVisibles.map((r) => (
+                <div key={r.id} className={clsx(
+                  'py-3.5 items-center hover:bg-gray-50/50 rounded-lg transition-colors grid gap-3',
+                  localesDisponibles.length > 1 ? 'grid-cols-7' : 'grid-cols-6'
+                )}>
+                  <p className="text-[12px] text-gray-400">{r.timestamp}</p>
+                  <p className="text-[12px] font-semibold text-gray-800">{r.producto}</p>
+                  <p className="text-[12px] text-gray-600">{r.categoria}</p>
+                  {localesDisponibles.length > 1 && (
+                    <p className="text-[12px] text-gray-500">{r.local || '—'}</p>
+                  )}
+                  <p className="text-[12px] font-semibold text-gray-700">{r.cantidad} u</p>
+                  <span className={clsx('text-[11px] font-semibold px-2.5 py-1 rounded-full w-fit', motivoBadge[r.motivo] ?? 'bg-gray-100 text-gray-600')}>
+                    {r.motivo}
+                  </span>
+                  <p className="text-[12px] font-bold text-gray-800">${r.costo.toLocaleString('es-CL')}</p>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="pt-4 border-t border-gray-100 text-center">
             <button onClick={() => setShowAll(v => !v)} className="text-[12px] text-blue-600 font-semibold hover:text-blue-800 transition-colors">
-              {showAll ? 'Ver menos' : 'Ver todos los registros'}
+              {showAll ? 'Ver menos' : `Ver todos los registros (${registrosFiltrados.length})`}
             </button>
           </div>
         </div>

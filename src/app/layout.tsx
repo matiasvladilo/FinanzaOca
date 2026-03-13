@@ -26,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} min-h-screen`} style={{ background: 'var(--bg)', color: 'var(--text)' }}>
         <ThemeProvider>
           <Sidebar />
-          <div className="ml-[200px] min-h-screen flex flex-col">
+          <div className="ml-0 md:ml-[200px] min-h-screen flex flex-col pb-16 md:pb-0">
             {children}
           </div>
           <ToastContainer />
