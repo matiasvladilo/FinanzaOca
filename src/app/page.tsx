@@ -98,11 +98,15 @@ export default function DashboardPage() {
 
     const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
 
+    const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
     let totalGastos = 0;
     if (sucursal === 'Todas') {
       totalGastos = hasMes ? (gastosPorMes[mesFiltro] ?? 0) : (vData?.kpi?.totalGastos ?? 0);
+    } else if (hasMes) {
+      // Usar gastosPorMesSucursal del server (usa col "mes" del sheet — más preciso)
+      totalGastos = gastosPorMesSucursal[sucursal]?.[mesFiltro] ?? 0;
     } else {
-      totalGastos = gastosPorSucursal[sucursal]?.gastos ?? 0;
+      totalGastos = vData?.porSucursal?.[sucursal]?.gastos ?? 0;
     }
 
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
@@ -116,7 +120,6 @@ export default function DashboardPage() {
         color: getSucursalColor(nombre, i),
       }));
 
-    const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
     const realChartData = mesesDisponibles.map((key, i) => {
       const mes = parseInt(key.split('-')[1], 10);
       const ventas = sucursal === 'Todas'
