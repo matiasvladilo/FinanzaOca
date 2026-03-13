@@ -218,6 +218,7 @@ export default function VentasPage() {
   // ── Estado raw desde Sheets ──────────────────────────────
   const [rawLocalMes, setRawLocalMes] = useState<Record<string, Record<string, MesSlice>>>({});
   const [rawGastosMes, setRawGastosMes] = useState<Record<string, number>>({});
+  const [rawGastosMesSucursal, setRawGastosMesSucursal] = useState<Record<string, Record<string, number>>>({});
   const [rawDiasCaja, setRawDiasCaja] = useState<DiaCaja[]>([]);
   const [rawDiasGastos, setRawDiasGastos] = useState<DiaGasto[]>([]);
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
@@ -250,6 +251,7 @@ export default function VentasPage() {
         if (facturas.ok) {
           setRawGastosMes(gastosPorMes);
           setRawDiasGastos(facturas.registrosDiariosGastos ?? []);
+          setRawGastosMesSucursal(facturas.gastosPorMesSucursal ?? {});
         }
 
         // Unión de meses de ambas fuentes (YYYY-MM), ordenados
@@ -329,12 +331,10 @@ export default function VentasPage() {
           byMes[mes].gastos = rawGastosMes[mes] ?? 0;
         }
       } else {
-        for (const r of rawDiasGastos) {
-          if (!r.fecha || r.sucursal !== sucursal) continue;
-          const mes = r.fecha.slice(0, 7);
-          if (!meses.includes(mes)) continue;
+        // Usar gastosPorMesSucursal del server (basado en col 'mes' del sheet — más preciso)
+        for (const mes of meses) {
           if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
-          byMes[mes].gastos += r.monto;
+          byMes[mes].gastos = rawGastosMesSucursal[sucursal]?.[mes] ?? 0;
         }
       }
       return meses.map(m => ({ fecha: keyToLabel(m), ventas: byMes[m]?.ventas ?? 0, gastos: byMes[m]?.gastos ?? 0 }));
@@ -435,19 +435,20 @@ export default function VentasPage() {
         porLocalFiltrado[local].ventas += d.ventas;
       }
     }
-    // Gastos por sucursal filtrados por el mismo rango de meses
-    for (const r of rawDiasGastos) {
-      if (!r.fecha || !r.sucursal) continue;
-      const mes = r.fecha.slice(0, 7);
-      if (!mesesFiltrados.includes(mes)) continue;
-      if (!porLocalFiltrado[r.sucursal]) porLocalFiltrado[r.sucursal] = { ventas: 0, gastos: 0 };
-      porLocalFiltrado[r.sucursal].gastos += r.monto;
+    // Gastos por sucursal — usar gastosPorMesSucursal del server (más preciso que filtrar por fecha.iso)
+    for (const local of Object.keys(rawGastosMesSucursal)) {
+      for (const mes of mesesFiltrados) {
+        const g = rawGastosMesSucursal[local]?.[mes] ?? 0;
+        if (!g) continue;
+        if (!porLocalFiltrado[local]) porLocalFiltrado[local] = { ventas: 0, gastos: 0 };
+        porLocalFiltrado[local].gastos += g;
+      }
     }
 
     const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes');
     const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes');
     return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp: compEnabled, totalTransacciones, topProveedores };
-  }, [rawLocalMes, rawGastosMes, rawDiasCaja, rawDiasGastos, sucursal,
+  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, sucursal,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compEnabled, compMesDesde, compMesHasta, compFechaDesde, compFechaHasta]);
 

@@ -206,9 +206,14 @@ export default function FactorIndicePage() {
     const tv = diasCaja
       .filter((r: any) => r.fecha?.startsWith(mesSeleccionado) && (todasSucs || sucSel.includes(r.local)))
       .reduce((s: number, r: any) => s + r.ventas, 0);
-    const tg = diasGastos
-      .filter((r: any) => r.fecha?.startsWith(mesSeleccionado) && (todasSucs || sucSel.includes(r.sucursal)))
-      .reduce((s: number, r: any) => s + r.monto, 0);
+    // Usar gastosPorMesSucursal del server (usa col 'mes' del sheet — más preciso que filtrar por fecha.iso)
+    const gastosMesSuc: Record<string, Record<string, number>> = ventasData?.gastosPorMesSucursal ?? {};
+    let tg = 0;
+    if (todasSucs) {
+      tg = ventasData?.gastosPorMes?.[mesSeleccionado] ?? 0;
+    } else {
+      for (const suc of sucSel) tg += gastosMesSuc[suc]?.[mesSeleccionado] ?? 0;
+    }
     const f = tv > 0 ? parseFloat(((tg / tv) * 100).toFixed(1)) : null;
     return { factorGlobal: f, totalVentas: tv, totalGastos: tg };
   }, [cierreCajaData, ventasData, mesSeleccionado, sucSel, allSucs]);
