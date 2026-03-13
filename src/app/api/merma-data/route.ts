@@ -79,8 +79,15 @@ export async function GET(req: NextRequest) {
     // ── Rango de fechas ──────────────────────────────────────────────────────
     let desde: Date | null = null;
     let hasta: Date | null = null;
-    if (fechaDesdeParam) { desde = new Date(fechaDesdeParam); desde.setHours(0, 0, 0, 0); }
-    if (fechaHastaParam) { hasta = new Date(fechaHastaParam); hasta.setHours(23, 59, 59, 999); }
+    // Parsear como fecha local (no UTC) para evitar desfase de timezone
+    if (fechaDesdeParam) {
+      const [y, m, d] = fechaDesdeParam.split('-').map(Number);
+      desde = new Date(y, m - 1, d, 0, 0, 0, 0);
+    }
+    if (fechaHastaParam) {
+      const [y, m, d] = fechaHastaParam.split('-').map(Number);
+      hasta = new Date(y, m - 1, d, 23, 59, 59, 999);
+    }
     if (periodoParam && !fechaDesdeParam && !fechaHastaParam) {
       const range = getPeriodoRange(periodoParam);
       desde = range.desde;
