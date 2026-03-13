@@ -87,11 +87,12 @@ export async function GET(req: NextRequest) {
       hasta = range.hasta;
     }
 
-    // Filtrar por fecha
+    // Filtrar por fecha — excluir registros sin fecha cuando hay filtro activo
     if (desde || hasta) {
       registros = registros.filter(r => {
-        if (desde && r.date && r.date < desde) return false;
-        if (hasta && r.date && r.date > hasta) return false;
+        if (!r.date) return false;          // sin fecha: excluir cuando hay filtro de rango
+        if (desde && r.date < desde) return false;
+        if (hasta && r.date > hasta) return false;
         return true;
       });
     }
