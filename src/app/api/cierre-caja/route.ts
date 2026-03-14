@@ -19,32 +19,49 @@ async function fetchLocalCierreCaja(nombre: string, sheetId: string, tab: string
 
   const [headers, ...data] = rows;
   const idx = {
-    fecha:      findHeader(headers, 'Fecha', 'FECHA'),
+    fecha:      findHeader(headers, 'Fecha', 'FECHA', 'fecha'),
     mes:        findHeader(headers, 'Mes', 'MES', 'mes'),
-    efectivo:   findHeader(headers, 'Efectivo Final'),
-    tarjeta:    findHeader(headers, 'Tarjeta'),
-    transf:     findHeader(headers, 'Transferencias'),
-    totalVenta: findHeader(headers, 'Total Venta'),
+    efectivo:   findHeader(headers, 'Efectivo Final', 'Efectivo', 'EFECTIVO', 'Efectivo final', 'Caja Efectivo'),
+    tarjeta:    findHeader(headers, 'Tarjeta', 'Tarjetas', 'TARJETA', 'Débito', 'Debito', 'Caja Tarjeta'),
+    transf:     findHeader(headers, 'Transferencias', 'Transferencia', 'TRANSFERENCIAS', 'Transf', 'Caja Transferencia'),
+    totalVenta: findHeader(headers, 'Total Venta', 'Total Ventas', 'TOTAL VENTA', 'TOTAL VENTAS', 'Total', 'Venta Total', 'Ventas Total', 'Venta'),
   };
 
+  // Warn in dev when a critical header isn't found
+  if (idx.totalVenta === -1) {
+    console.warn(`[cierre-caja] "${nombre}": columna Total Venta no encontrada. Headers: ${headers.join(', ')}`);
+  }
+
   return data
-    .filter(r => r[idx.totalVenta])
+    .filter(r => {
+      // Si tenemos columna de totalVenta, filtrar por ella; si no, exigir al menos fecha
+      if (idx.totalVenta !== -1) return r[idx.totalVenta];
+      return r[idx.fecha] ?? r[0]; // fila no vacía
+    })
     .map((r, i) => {
-      const fecha = parseFecha(r[idx.fecha] ?? '');
-      const mes   = parseInt(r[idx.mes] ?? '0', 10) || fecha.mes;
+      const fecha    = parseFecha(r[idx.fecha] ?? '');
+      const mes      = parseInt(r[idx.mes] ?? '0', 10) || fecha.mes;
+      const efectivo = parseMonto(r[idx.efectivo] ?? '');
+      const tarjeta  = parseMonto(r[idx.tarjeta]  ?? '');
+      const transf   = parseMonto(r[idx.transf]   ?? '');
+      // Fallback: si no hay columna Total Venta, sumar los medios de pago
+      const totalVenta = idx.totalVenta !== -1
+        ? parseMonto(r[idx.totalVenta] ?? '')
+        : efectivo + tarjeta + transf;
       return {
-        id:         i + 1,
-        local:      nombre,           // nombre canónico forzado por sheet
-        fecha:      r[idx.fecha] ?? '',
-        fechaISO:   fecha.iso,
+        id:   i + 1,
+        local: nombre,
+        fecha:     r[idx.fecha] ?? '',
+        fechaISO:  fecha.iso,
         mes,
-        anio:       fecha.anio,
-        efectivo:   parseMonto(r[idx.efectivo]   ?? ''),
-        tarjeta:    parseMonto(r[idx.tarjeta]    ?? ''),
-        transf:     parseMonto(r[idx.transf]     ?? ''),
-        totalVenta: parseMonto(r[idx.totalVenta] ?? ''),
+        anio:      fecha.anio,
+        efectivo,
+        tarjeta,
+        transf,
+        totalVenta,
       };
-    });
+    })
+    .filter(r => r.totalVenta > 0); // descartar filas vacías
 }
 
 async function fetchCierreCaja() {

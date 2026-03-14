@@ -12,9 +12,11 @@ import {
   Search, Bell, Calendar, ChevronDown, MapPin,
   Download, TrendingUp, TrendingDown,
   DollarSign, ShoppingCart,
-  BarChart2, Receipt, Activity, LayoutGrid,
+  BarChart2, Receipt, Activity, LayoutGrid, GitCompare,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { PeriodSelect } from '@/components/ui/PeriodSelect';
+import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 
@@ -217,8 +219,8 @@ function formatWeekLabel(iso: string): string {
 
 // ─── Página principal ─────────────────────────────────────
 export default function VentasPage() {
-  const [sucursal, setSucursal] = useState('Todas');
-  const [sucursalOpen, setSucursalOpen] = useState(false);
+  const [localSel, setLocalSel] = useState<string[]>([]);
+  const [localOpen, setLocalOpen] = useState(false);
   const [metrica, setMetrica] = useState<Metrica>('ambos');
   const [tipoGrafico, setTipoGrafico] = useState<TipoGrafico>('area');
   // ── Estado raw desde Sheets ──────────────────────────────
@@ -230,16 +232,13 @@ export default function VentasPage() {
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
   const [mesDesde, setMesDesde] = useState('');
   const [mesHasta, setMesHasta] = useState('');
+  const [mesPill, setMesPill] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
-  // 'mes' = filtro por rango de meses | 'dia' = filtro por día/semana exacta
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
-  // Comparación
-  const [compEnabled, setCompEnabled] = useState(false);
-  const [compMesDesde, setCompMesDesde] = useState('');
-  const [compMesHasta, setCompMesHasta] = useState('');
-  const [compFechaDesde, setCompFechaDesde] = useState('');
-  const [compFechaHasta, setCompFechaHasta] = useState('');
+  // Comparación por período
+  const [compOn, setCompOn] = useState(false);
+  const [compMes, setCompMes] = useState('');
   const [dateOpen, setDateOpen] = useState(false);
   const [loadingSheet, setLoadingSheet] = useState(true);
 
@@ -274,13 +273,13 @@ export default function VentasPage() {
   // ── Datos filtrados ──────────────────────────────────────
   const filteredData = useMemo(() => {
     // ── Helper: chart data para un rango de días ─────────────────────────────
-    function buildDayChart(fDesde: string, fHasta: string) {
+    function buildDayChart(fDesde: string, fHasta: string, localFilter: string | null = null) {
       const diasVentas: Record<string, number> = {};
       const diasGastos: Record<string, number> = {};
       const porLocal: Record<string, { ventas: number; gastos: number }> = {};
       for (const r of rawDiasCaja) {
         if (!r.fecha) continue;
-        if (sucursal !== 'Todas' && r.local !== sucursal) continue;
+        if (localFilter !== null && r.local !== localFilter) continue;
         if (fDesde && r.fecha < fDesde) continue;
         if (fHasta && r.fecha > fHasta) continue;
         diasVentas[r.fecha] = (diasVentas[r.fecha] ?? 0) + r.ventas;
@@ -289,7 +288,7 @@ export default function VentasPage() {
       }
       for (const r of rawDiasGastos) {
         if (!r.fecha) continue;
-        if (sucursal !== 'Todas' && r.sucursal !== sucursal) continue;
+        if (localFilter !== null && r.sucursal !== localFilter) continue;
         if (fDesde && r.fecha < fDesde) continue;
         if (fHasta && r.fecha > fHasta) continue;
         diasGastos[r.fecha] = (diasGastos[r.fecha] ?? 0) + r.monto;
@@ -319,8 +318,8 @@ export default function VentasPage() {
     }
 
     // ── Helper: chart data para un rango de meses ────────────────────────────
-    function buildMonthChart(mDesde: string, mHasta: string) {
-      const locals = sucursal === 'Todas' ? Object.keys(rawLocalMes) : [sucursal];
+    function buildMonthChart(mDesde: string, mHasta: string, localFilter: string | null = null) {
+      const locals = localFilter !== null ? [localFilter] : Object.keys(rawLocalMes);
       const meses = mesesDisponibles.filter(m => (!mDesde || m >= mDesde) && (!mHasta || m <= mHasta));
       const byMes: Record<string, { ventas: number; gastos: number }> = {};
       for (const local of locals) {
@@ -331,16 +330,15 @@ export default function VentasPage() {
           byMes[mes].ventas += d.ventas;
         }
       }
-      if (sucursal === 'Todas') {
+      if (localFilter === null) {
         for (const mes of meses) {
           if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
           byMes[mes].gastos = rawGastosMes[mes] ?? 0;
         }
       } else {
-        // Usar gastosPorMesSucursal del server (basado en col 'mes' del sheet — más preciso)
         for (const mes of meses) {
           if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
-          byMes[mes].gastos = rawGastosMesSucursal[sucursal]?.[mes] ?? 0;
+          byMes[mes].gastos = rawGastosMesSucursal[localFilter]?.[mes] ?? 0;
         }
       }
       return meses.map(m => ({ fecha: keyToLabel(m), ventas: byMes[m]?.ventas ?? 0, gastos: byMes[m]?.gastos ?? 0 }));
@@ -363,11 +361,11 @@ export default function VentasPage() {
     }
 
     // ── Helper: top proveedores filtrado ─────────────────────────────────────
-    function buildTopProveedores(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes') {
+    function buildTopProveedores(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
       const provMap: Record<string, number> = {};
       for (const r of rawDiasGastos) {
         if (!r.fecha || !r.proveedor) continue;
-        if (sucursal !== 'Todas' && r.sucursal !== sucursal) continue;
+        if (localFilter !== null && r.sucursal !== localFilter) continue;
         if (modo === 'dia') {
           if (fDesde && r.fecha < fDesde) continue;
           if (fHasta && r.fecha > fHasta) continue;
@@ -382,11 +380,11 @@ export default function VentasPage() {
     }
 
     // ── Helper: transacciones (cierres de caja) filtrado ─────────────────────
-    function buildTransacciones(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes') {
+    function buildTransacciones(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
       let count = 0;
       for (const r of rawDiasCaja) {
         if (!r.fecha) continue;
-        if (sucursal !== 'Todas' && r.local !== sucursal) continue;
+        if (localFilter !== null && r.local !== localFilter) continue;
         if (modo === 'dia') {
           if (fDesde && r.fecha < fDesde) continue;
           if (fHasta && r.fecha > fHasta) continue;
@@ -400,30 +398,40 @@ export default function VentasPage() {
       return count;
     }
 
+    // ── Determinar modo de comparación ───────────────────────────────────────
+    const localFilter = localSel.length === 1 ? localSel[0] : null;
+    const isLocalComp = localSel.length === 2;
+    const isPeriodComp = !isLocalComp && compOn && !!compMes;
+
     // ── Modo día/semana ───────────────────────────────────────────────────────
     if (modoFiltro === 'dia') {
-      const { data: dataA, porLocal } = buildDayChart(fechaDesde, fechaHasta);
+      const { data: dataA, porLocal } = buildDayChart(fechaDesde, fechaHasta, localFilter);
       let chartData: ChartRow[] = dataA;
       let totalVentasComp = 0, totalGastosComp = 0;
-      if (compEnabled) {
-        const { data: dataB } = buildDayChart(compFechaDesde, compFechaHasta);
+      if (isLocalComp) {
+        const { data: dataB } = buildDayChart(fechaDesde, fechaHasta, localSel[1]);
         totalVentasComp = dataB.reduce((s, r) => s + r.ventas, 0);
         totalGastosComp = dataB.reduce((s, r) => s + r.gastos, 0);
         chartData = mergeWithComp(dataA, dataB);
       }
       const totalVentas = dataA.reduce((s, r) => s + r.ventas, 0);
       const totalGastos = dataA.reduce((s, r) => s + r.gastos, 0);
-      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia');
-      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia');
-      return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: compEnabled, totalTransacciones, topProveedores };
+      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', localFilter);
+      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localFilter);
+      return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: isLocalComp, totalTransacciones, topProveedores };
     }
 
     // ── Modo mes ─────────────────────────────────────────────────────────────
-    const dataA = buildMonthChart(mesDesde, mesHasta);
+    const dataA = buildMonthChart(mesDesde, mesHasta, localFilter);
     let chartData: ChartRow[] = dataA;
     let totalVentasComp = 0, totalGastosComp = 0;
-    if (compEnabled) {
-      const dataB = buildMonthChart(compMesDesde, compMesHasta);
+    if (isLocalComp) {
+      const dataB = buildMonthChart(mesDesde, mesHasta, localSel[1]);
+      totalVentasComp = dataB.reduce((s, r) => s + r.ventas, 0);
+      totalGastosComp = dataB.reduce((s, r) => s + r.gastos, 0);
+      chartData = mergeWithComp(dataA, dataB);
+    } else if (isPeriodComp) {
+      const dataB = buildMonthChart(compMes, compMes, localFilter);
       totalVentasComp = dataB.reduce((s, r) => s + r.ventas, 0);
       totalGastosComp = dataB.reduce((s, r) => s + r.gastos, 0);
       chartData = mergeWithComp(dataA, dataB);
@@ -433,7 +441,8 @@ export default function VentasPage() {
 
     const mesesFiltrados = mesesDisponibles.filter(m => (!mesDesde || m >= mesDesde) && (!mesHasta || m <= mesHasta));
     const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
-    for (const local of Object.keys(rawLocalMes)) {
+    const localsToShow = localSel.length > 0 ? localSel : Object.keys(rawLocalMes);
+    for (const local of localsToShow) {
       for (const mes of mesesFiltrados) {
         const d = rawLocalMes[local]?.[mes];
         if (!d) continue;
@@ -441,8 +450,8 @@ export default function VentasPage() {
         porLocalFiltrado[local].ventas += d.ventas;
       }
     }
-    // Gastos por sucursal — usar gastosPorMesSucursal del server (más preciso que filtrar por fecha.iso)
     for (const local of Object.keys(rawGastosMesSucursal)) {
+      if (localSel.length > 0 && !localSel.includes(local)) continue;
       for (const mes of mesesFiltrados) {
         const g = rawGastosMesSucursal[local]?.[mes] ?? 0;
         if (!g) continue;
@@ -451,12 +460,13 @@ export default function VentasPage() {
       }
     }
 
-    const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes');
-    const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes');
-    return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp: compEnabled, totalTransacciones, topProveedores };
-  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, sucursal,
+    const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes', localFilter);
+    const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localFilter);
+    const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
+    return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores };
+  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, localSel,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
-      compEnabled, compMesDesde, compMesHasta, compFechaDesde, compFechaHasta]);
+      compOn, compMes]);
 
   const ventasReal = filteredData.totalVentas;
   const gastosReal = filteredData.totalGastos;
@@ -466,7 +476,8 @@ export default function VentasPage() {
   const margen = ventasReal > 0 ? (((ventasReal - gastosReal) / ventasReal) * 100).toFixed(1) : '0.0';
   const margenComp = ventasComp > 0 ? (((ventasComp - gastosComp) / ventasComp) * 100).toFixed(1) : null;
   const chartData = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
-  const sucursalesDisponibles = ['Todas', ...Object.keys(rawLocalMes)];
+  const localesDisponibles = Object.keys(rawLocalMes);
+  const isLocalComp = localSel.length === 2;
 
   const handleExportChart = () => {
     exportToCSV(chartData.map(d => ({ Fecha: d.fecha, Ventas: d.ventas, Gastos: d.gastos })), 'ventas_gastos');
@@ -481,130 +492,67 @@ export default function VentasPage() {
         style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
         <h1 className="text-[18px] font-bold" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
         <div className="flex items-center gap-3">
-          {/* Filtro de fecha */}
+
+          {/* Período mes */}
+          <PeriodSelect
+            label="Período"
+            value={mesPill}
+            options={mesesDisponibles.map(m => ({ label: keyToLabel(m), value: m }))}
+            onChange={v => {
+              setMesPill(v);
+              if (v) {
+                setMesDesde(v); setMesHasta(v);
+              } else if (mesesDisponibles.length) {
+                setMesDesde(mesesDisponibles[0]);
+                setMesHasta(mesesDisponibles[mesesDisponibles.length - 1]);
+              }
+              setModoFiltro('mes');
+              setFechaDesde(''); setFechaHasta('');
+            }}
+            allLabel="Todos los meses"
+          />
+
+          {/* Rango días */}
           <div className="relative">
             <button
               onClick={() => setDateOpen(!dateOpen)}
               className={clsx(
-                'flex items-center gap-2 border rounded-full px-3 py-2 text-[12px] text-gray-700 hover:border-blue-400 transition-colors bg-white',
-                modoFiltro === 'dia' ? 'border-blue-400 text-blue-600' : 'border-gray-200'
+                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                modoFiltro === 'dia' || fechaDesde || fechaHasta
+                  ? 'bg-blue-600 border-blue-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600'
               )}
             >
-              <Calendar className={clsx('w-3.5 h-3.5', modoFiltro === 'dia' ? 'text-blue-500' : 'text-gray-400')} />
-              {modoFiltro === 'dia'
-                ? <span>{fechaDesde || '…'} – {fechaHasta || '…'}</span>
-                : <span>{mesDesde ? keyToLabel(mesDesde) : '—'} – {mesHasta ? keyToLabel(mesHasta) : '—'}</span>
-              }
-              <ChevronDown className="w-3 h-3 text-gray-400" />
+              <Calendar className="w-3.5 h-3.5 opacity-80" />
+              <span className="font-semibold text-[11px]">
+                {modoFiltro === 'dia' && (fechaDesde || fechaHasta)
+                  ? `${fechaDesde || '…'} – ${fechaHasta || '…'}`
+                  : 'Rango días'}
+              </span>
+              <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
             {dateOpen && (
-              <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 p-3 min-w-[280px]">
-                {/* Tabs */}
-                <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1 mb-3">
-                  <button
-                    onClick={() => setModoFiltro('mes')}
-                    className={clsx('flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all',
-                      modoFiltro === 'mes' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-                    Por mes
-                  </button>
-                  <button
-                    onClick={() => setModoFiltro('dia')}
-                    className={clsx('flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all',
-                      modoFiltro === 'dia' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-                    Día / semana
-                  </button>
-                </div>
-
-                {modoFiltro === 'mes' ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-[10px] text-gray-400 mb-1">Desde</p>
-                      <select value={mesDesde} onChange={e => setMesDesde(e.target.value)}
-                        className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400">
-                        {mesesDisponibles.map(m => <option key={m} value={m}>{keyToLabel(m)}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-gray-400 mb-1">Hasta</p>
-                      <select value={mesHasta} onChange={e => setMesHasta(e.target.value)}
-                        className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400">
-                        {mesesDisponibles.map(m => <option key={m} value={m}>{keyToLabel(m)}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                ) : (
+              <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 p-3 min-w-[240px]">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Rango de días</p>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-[10px] text-gray-400 mb-1">Desde</p>
-                        <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-                          className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-gray-400 mb-1">Hasta</p>
-                        <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-                          className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-1.5">≤ 31 días → vista diaria · &gt; 31 días → semanal</p>
-                    {(fechaDesde || fechaHasta) && (
-                      <button onClick={() => { setFechaDesde(''); setFechaHasta(''); }}
-                        className="mt-1.5 text-[10px] text-red-400 hover:text-red-600 font-semibold">
-                        Limpiar fechas
-                      </button>
-                    )}
+                    <p className="text-[10px] text-gray-400 mb-1">Desde</p>
+                    <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); setMesPill(''); }}
+                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
                   </div>
-                )}
-
-                {/* Comparación */}
-                <div className="border-t border-gray-100 mt-3 pt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Comparar con</p>
-                    <button
-                      onClick={() => setCompEnabled(!compEnabled)}
-                      className={clsx('relative w-8 h-4 rounded-full transition-colors',
-                        compEnabled ? 'bg-blue-500' : 'bg-gray-300')}>
-                      <span className={clsx('absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform',
-                        compEnabled ? 'translate-x-4' : 'translate-x-0.5')} />
-                    </button>
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-1">Hasta</p>
+                    <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); setMesPill(''); }}
+                      className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
                   </div>
-                  {compEnabled && (
-                    modoFiltro === 'mes' ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-[10px] text-gray-400 mb-1">Desde</p>
-                          <select value={compMesDesde} onChange={e => setCompMesDesde(e.target.value)}
-                            className="w-full text-[12px] border border-blue-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400 bg-blue-50/40">
-                            <option value="">—</option>
-                            {mesesDisponibles.map(m => <option key={m} value={m}>{keyToLabel(m)}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-gray-400 mb-1">Hasta</p>
-                          <select value={compMesHasta} onChange={e => setCompMesHasta(e.target.value)}
-                            className="w-full text-[12px] border border-blue-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400 bg-blue-50/40">
-                            <option value="">—</option>
-                            {mesesDisponibles.map(m => <option key={m} value={m}>{keyToLabel(m)}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-[10px] text-gray-400 mb-1">Desde</p>
-                          <input type="date" value={compFechaDesde} onChange={e => setCompFechaDesde(e.target.value)}
-                            className="w-full text-[12px] border border-blue-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400 bg-blue-50/40" />
-                        </div>
-                        <div>
-                          <p className="text-[10px] text-gray-400 mb-1">Hasta</p>
-                          <input type="date" value={compFechaHasta} onChange={e => setCompFechaHasta(e.target.value)}
-                            className="w-full text-[12px] border border-blue-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400 bg-blue-50/40" />
-                        </div>
-                      </div>
-                    )
-                  )}
                 </div>
-
+                <p className="text-[10px] text-gray-400 mt-1.5">≤ 31 días → diario · &gt; 31 días → semanal</p>
+                {(fechaDesde || fechaHasta) && (
+                  <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setModoFiltro('mes'); }}
+                    className="mt-1.5 text-[10px] text-red-400 hover:text-red-600 font-semibold">
+                    Limpiar fechas
+                  </button>
+                )}
                 <button onClick={() => setDateOpen(false)}
                   className="mt-3 w-full text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg py-1.5 transition-colors">
                   Aplicar
@@ -613,28 +561,108 @@ export default function VentasPage() {
             )}
           </div>
 
-          {/* Sucursal dropdown */}
+          {/* Locales multi-select (hasta 2 para comparar) */}
           <div className="relative">
             <button
-              onClick={() => setSucursalOpen(!sucursalOpen)}
-              className="flex items-center gap-2 border border-gray-200 rounded-full px-3 py-2 text-[12px] text-gray-700 hover:border-blue-400 transition-colors bg-white"
+              onClick={() => setLocalOpen(!localOpen)}
+              className={clsx(
+                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                isLocalComp
+                  ? 'bg-purple-600 border-purple-600 text-white'
+                  : localSel.length === 1
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
+              )}
             >
-              <MapPin className="w-3.5 h-3.5 text-gray-400" />
-              <span>{sucursal === 'Todas' ? 'Todas las sucursales' : sucursal}</span>
-              <ChevronDown className="w-3 h-3 text-gray-400" />
+              <MapPin className="w-3.5 h-3.5 opacity-80" />
+              <span className="font-semibold text-[11px]">
+                {localSel.length === 0
+                  ? 'Todos los locales'
+                  : localSel.length === 1
+                    ? localSel[0]
+                    : `${localSel[0]} vs ${localSel[1]}`}
+              </span>
+              <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
-            {sucursalOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 min-w-[180px]">
-                {sucursalesDisponibles.map(s => (
-                  <button key={s} onClick={() => { setSucursal(s); setSucursalOpen(false); }}
-                    className={clsx('w-full text-left px-4 py-2.5 text-[12px] hover:bg-blue-50 transition-colors',
-                      sucursal === s ? 'text-blue-600 font-semibold bg-blue-50' : 'text-gray-700')}>
-                    {s === 'Todas' ? 'Todas las sucursales' : s}
+            {localOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[220px] rounded-2xl shadow-xl overflow-hidden"
+                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+                  <p className="text-[11px] font-bold" style={{ color: 'var(--text)' }}>
+                    Seleccionar locales
+                    {isLocalComp && <span className="ml-1.5 text-purple-500">· Comparando</span>}
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>Elegí hasta 2 para comparar entre sí</p>
+                </div>
+                {localSel.length > 0 && (
+                  <button onClick={() => setLocalSel([])}
+                    className="w-full text-left px-4 py-2 text-[11px] font-medium text-red-400 hover:text-red-600 transition-colors"
+                    style={{ borderBottom: '1px solid var(--border)' }}>
+                    Limpiar selección
                   </button>
-                ))}
+                )}
+                {localesDisponibles.map(local => {
+                  const isA = localSel[0] === local;
+                  const isB = localSel[1] === local;
+                  const selected = isA || isB;
+                  const disabled = !selected && localSel.length >= 2;
+                  return (
+                    <button key={local}
+                      onClick={() => {
+                        if (disabled) return;
+                        setLocalSel(prev => prev.includes(local) ? prev.filter(l => l !== local) : [...prev, local]);
+                      }}
+                      className={clsx('w-full text-left px-4 py-2.5 text-[12px] flex items-center gap-3 transition-colors',
+                        disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50/10')}
+                    >
+                      <span className={clsx(
+                        'w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 text-[10px] font-black border',
+                        isA ? 'bg-blue-500 border-blue-500 text-white' :
+                        isB ? 'bg-purple-500 border-purple-500 text-white' :
+                        'border-gray-300'
+                      )}>
+                        {isA ? 'A' : isB ? 'B' : ''}
+                      </span>
+                      <span className="font-medium" style={{
+                        color: isA ? '#3B82F6' : isB ? '#8B5CF6' : 'var(--text)',
+                      }}>{local}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
+
+          {/* Comparar por período (solo cuando no hay comparación de locales) */}
+          {!isLocalComp && (
+            <>
+              <button
+                onClick={() => {
+                  const next = !compOn;
+                  setCompOn(next);
+                  if (next && !compMes && mesesDisponibles.length >= 2) {
+                    setCompMes(mesesDisponibles[mesesDisponibles.length - 2]);
+                  }
+                }}
+                className={clsx(
+                  'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                  compOn
+                    ? 'bg-purple-600 border-purple-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
+                )}
+              >
+                <GitCompare className="w-3.5 h-3.5 opacity-80" />
+                <span className="font-semibold text-[11px]">Comparar</span>
+              </button>
+              {compOn && (
+                <select value={compMes} onChange={e => setCompMes(e.target.value)}
+                  className="border border-purple-300 bg-purple-50 rounded-xl px-3 py-2 text-[11px] font-semibold text-purple-700 outline-none">
+                  <option value="">— mes —</option>
+                  {mesesDisponibles.map(m => <option key={m} value={m}>{keyToLabel(m)}</option>)}
+                </select>
+              )}
+            </>
+          )}
 
           <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 w-44">
             <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
@@ -700,6 +728,54 @@ export default function VentasPage() {
             );
           })}
         </div>
+
+        {/* ── Panel de Comparación ── */}
+        {hasComp && (
+          <ComparisonPanel
+            labelA={
+              isLocalComp
+                ? localSel[0]
+                : modoFiltro === 'dia' && (fechaDesde || fechaHasta)
+                  ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
+                  : mesDesde
+                    ? (mesDesde === mesHasta ? keyToLabel(mesDesde) : `${keyToLabel(mesDesde)} – ${keyToLabel(mesHasta)}`)
+                    : 'Período A'
+            }
+            labelB={
+              isLocalComp
+                ? localSel[1]
+                : compMes
+                  ? keyToLabel(compMes)
+                  : 'Período B'
+            }
+            colorA="#3B82F6"
+            colorB="#8B5CF6"
+            loading={loadingSheet}
+            metrics={[
+              {
+                label: 'Ventas',
+                valueA: ventasReal,
+                valueB: ventasComp,
+                format: fmtFull,
+                higherIsBetter: true,
+              },
+              {
+                label: 'Gastos',
+                valueA: gastosReal,
+                valueB: gastosComp,
+                format: fmtFull,
+                higherIsBetter: false,
+              },
+              {
+                label: 'Margen %',
+                valueA: parseFloat(margen),
+                valueB: margenComp !== null ? parseFloat(margenComp) : null,
+                format: v => v.toFixed(1) + '%',
+                higherIsBetter: true,
+              },
+            ]}
+          />
+        )}
 
         {/* ── Gráfico interactivo ── */}
         <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>

@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Store, Receipt, TrendingUp, Building2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Store, Receipt, TrendingUp, Building2, Calendar, ChevronDown, X, GitCompare } from 'lucide-react';
+import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
+import clsx from 'clsx';
 import Header from '@/components/layout/Header';
 import DailyPerformanceChart from '@/components/dashboard/DailyPerformanceChart';
 import DistributionTreemap from '@/components/dashboard/DistributionTreemap';
@@ -13,6 +15,7 @@ import InsightsPanel from '@/components/insights/InsightsPanel';
 import type { DashboardFilters } from '@/types';
 import type { CierreCajaResponse, VentasResponse } from '@/types/api';
 import { toast } from '@/components/ui/Toast';
+import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { exportToCSV } from '@/lib/csv-export';
 import { getSucursalColor, sortSucursales } from '@/config/sucursales';
 import { computeTrendInsights, computeMarginInsight } from '@/lib/analytics/trends';
@@ -44,6 +47,16 @@ const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucurs
 export default function DashboardPage() {
   const [filters, setFilters]   = useState<DashboardFilters>(defaultFilters);
   const [mesFiltro, setMesFiltro] = useState<string>('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
+  const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
+  const [dateOpen, setDateOpen] = useState(false);
+  const [mesComp, setMesComp]       = useState('');       // mes de comparación
+  const [compOn, setCompOn]         = useState(false);    // toggle comparación
+  const [compareType, setCompareType] = useState<'mes' | 'local'>('mes');
+  const [localA, setLocalA]         = useState('');
+  const [localB, setLocalB]         = useState('');
+  const dateRef = useRef<HTMLDivElement>(null);
   const [ccData, setCcData]     = useState<CierreCajaResponse | null>(null);
   const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -62,6 +75,16 @@ export default function DashboardPage() {
     }).catch(() => toast('Error cargando datos', 'error'))
       .finally(() => setLoading(false));
   }, []);
+
+  // Cierra el date picker al hacer click fuera
+  useEffect(() => {
+    if (!dateOpen) return;
+    function handler(e: MouseEvent) {
+      if (dateRef.current && !dateRef.current.contains(e.target as Node)) setDateOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dateOpen]);
 
   // ── Cálculos del dashboard (memoizados) ──────────────────────────────────
   const computed = useMemo(() => {
@@ -158,6 +181,98 @@ export default function DashboardPage() {
     };
   }, [ccData, vData, filters.sucursal, mesFiltro]);
 
+  // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
+  const computedDateRange = useMemo(() => {
+    if (modoFiltro !== 'dia' || (!fechaDesde && !fechaHasta)) return null;
+    if (!ccData?.ok) return null;
+    const sucursal = filters.sucursal;
+    const dias     = (ccData as any).registrosDiarios ?? [];
+    const gastosDias = vData?.registrosDiariosGastos ?? [];
+
+    const ventasPorLocal: Record<string, number> = {};
+    let ef = 0, tar = 0, tr = 0;
+    for (const r of dias) {
+      if (!r.fecha) continue;
+      if (fechaDesde && r.fecha < fechaDesde) continue;
+      if (fechaHasta && r.fecha > fechaHasta) continue;
+      if (sucursal !== 'Todas' && r.local !== sucursal) continue;
+      ventasPorLocal[r.local] = (ventasPorLocal[r.local] ?? 0) + r.ventas;
+      ef += r.efectivo ?? 0; tar += r.tarjeta ?? 0; tr += r.transf ?? 0;
+    }
+    const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
+
+    const gastosPorSucursal: Record<string, { gastos: number }> = {};
+    let totalGastos = 0;
+    for (const r of gastosDias) {
+      if (!r.fecha) continue;
+      if (fechaDesde && r.fecha < fechaDesde) continue;
+      if (fechaHasta && r.fecha > fechaHasta) continue;
+      if (sucursal !== 'Todas' && r.sucursal !== sucursal) continue;
+      totalGastos += r.monto;
+      if (r.sucursal) {
+        if (!gastosPorSucursal[r.sucursal]) gastosPorSucursal[r.sucursal] = { gastos: 0 };
+        gastosPorSucursal[r.sucursal].gastos += r.monto;
+      }
+    }
+    const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
+    const distribucion = Object.entries(ventasPorLocal)
+      .filter(([, v]) => v > 0).sort(([, a], [, b]) => b - a)
+      .map(([nombre, valor], i) => ({
+        nombre, valor,
+        porcentaje: totalVentas > 0 ? Math.round((valor / totalVentas) * 100) : 0,
+        color: getSucursalColor(nombre, i),
+      }));
+    return {
+      totalVentas, totalGastos, margen, distribucion, gastosPorSucursal,
+      realChartData: computed?.realChartData ?? [],
+      topSucursal: distribucion[0] ?? null,
+      medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
+    };
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursal, computed]);
+
+  // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
+  const activeData = computedDateRange ?? computed;
+
+  // ── Comparación de período ────────────────────────────────────────────────
+  const computedComp = useMemo(() => {
+    if (!compOn || compareType !== 'mes' || !mesComp || !ccData?.ok) return null;
+    const { porLocal, porLocalMes } = ccData;
+    const gastosPorMes = vData?.gastosPorMes ?? {};
+    const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
+    const sucursal = filters.sucursal;
+
+    let totalVentas = 0;
+    for (const local of Object.keys(porLocal)) {
+      if (sucursal !== 'Todas' && local !== sucursal) continue;
+      totalVentas += porLocalMes[local]?.[mesComp]?.ventas ?? 0;
+    }
+    const totalGastos = sucursal === 'Todas'
+      ? (gastosPorMes[mesComp] ?? 0)
+      : (gastosPorMesSucursal[sucursal]?.[mesComp] ?? 0);
+
+    return { totalVentas, totalGastos };
+  }, [ccData, vData, mesComp, compOn, compareType, filters.sucursal]);
+
+  // ── Comparación de locales (mismo período) ────────────────────────────────
+  const computedCompLocal = useMemo(() => {
+    if (!compOn || compareType !== 'local' || !localA || !localB || !ccData?.ok) return null;
+    const { porLocalMes, porLocal } = ccData;
+    const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
+    const mes = mesFiltro;
+
+    const getData = (local: string) => {
+      const totalVentas = mes
+        ? (porLocalMes[local]?.[mes]?.ventas ?? 0)
+        : Object.values(porLocalMes[local] ?? {}).reduce((s, m) => s + m.ventas, 0);
+      const totalGastos = mes
+        ? (gastosPorMesSucursal[local]?.[mes] ?? 0)
+        : Object.values(gastosPorMesSucursal[local] ?? {}).reduce((s, v) => s + v, 0);
+      return { totalVentas, totalGastos };
+    };
+
+    return { dataA: getData(localA), dataB: getData(localB) };
+  }, [ccData, vData, compOn, compareType, localA, localB, mesFiltro]);
+
   // ── Insights automáticos (memoizados) ────────────────────────────────────
   const insights = useMemo(() => {
     if (!ccData?.ok || !mesFiltro) return [];
@@ -206,7 +321,16 @@ export default function DashboardPage() {
     toast('Reporte exportado');
   };
 
-  const periodoLabel = mesFiltro ? mesLabel(mesFiltro) : 'Acumulado';
+  const periodoLabel = modoFiltro === 'dia' && (fechaDesde || fechaHasta)
+    ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
+    : mesFiltro ? mesLabel(mesFiltro) : 'Acumulado';
+
+  // Deltas vs comparación
+  const ventasDelta = (compOn && computedComp && activeData && computedComp.totalVentas > 0)
+    ? ((activeData.totalVentas - computedComp.totalVentas) / computedComp.totalVentas) * 100 : null;
+  const gastosDelta = (compOn && computedComp && activeData && computedComp.totalGastos > 0)
+    ? ((activeData.totalGastos - computedComp.totalGastos) / computedComp.totalGastos) * 100 : null;
+  const compLabel = mesComp ? `vs ${mesLabel(mesComp)}` : '';
 
   return (
     <div className="flex flex-col flex-1">
@@ -219,70 +343,242 @@ export default function DashboardPage() {
 
       <main className="flex-1 px-4 lg:px-6 py-4 lg:py-5 space-y-4 lg:space-y-5 pb-6">
 
-        {/* ── Filtros de período ──────────────────────────────────────────── */}
+        {/* ── Filtros ─────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mr-1">
-            Período:
-          </span>
-          <button
-            onClick={() => setMesFiltro('')}
-            className={'px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all border ' + (
-              mesFiltro === ''
-                ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-gray-900 dark:border-white'
-                : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500'
-            )}
-          >
-            Todo
-          </button>
-          {ccData?.mesesDisponibles.slice().sort().map(key => (
+          {/* Selector de mes */}
+          {modoFiltro === 'mes' && (
+            <PeriodSelect
+              label="Período"
+              value={mesFiltro}
+              options={(ccData?.mesesDisponibles ?? []).slice().sort().map(key => ({ label: mesLabel(key), value: key }))}
+              onChange={v => { setMesFiltro(v); setModoFiltro('mes'); }}
+              allLabel="Todos los meses"
+            />
+          )}
+
+          {/* Botón rango de días */}
+          <div className="relative" ref={dateRef}>
             <button
-              key={key}
-              onClick={() => setMesFiltro(key === mesFiltro ? '' : key)}
-              className={'px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all border ' + (
-                mesFiltro === key
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-blue-300 hover:text-blue-600 dark:hover:text-blue-400'
+              onClick={() => setDateOpen(o => !o)}
+              className={clsx(
+                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                modoFiltro === 'dia'
+                  ? 'bg-blue-600 border-blue-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
               )}
             >
-              {mesLabel(key)}
+              <Calendar className="w-3.5 h-3.5 opacity-80" />
+              <span className="font-semibold text-[11px]">
+                {modoFiltro === 'dia' && (fechaDesde || fechaHasta)
+                  ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
+                  : 'Rango días'}
+              </span>
+              <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
-          ))}
+            {dateOpen && (
+              <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-4 min-w-[260px]">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3">Rango de fechas</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Desde</label>
+                    <input type="date" value={fechaDesde}
+                      onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Hasta</label>
+                    <input type="date" value={fechaHasta}
+                      onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors" />
+                  </div>
+                </div>
+                {modoFiltro === 'dia' && (
+                  <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setModoFiltro('mes'); setDateOpen(false); }}
+                    className="mt-3 text-[11px] text-red-400 hover:text-red-600 font-semibold flex items-center gap-1">
+                    <X className="w-3 h-3" /> Limpiar y volver a mes
+                  </button>
+                )}
+                <button onClick={() => setDateOpen(false)}
+                  className="mt-3 w-full text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg py-1.5 transition-colors">
+                  Aplicar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Separador */}
+          <span className="border-l border-gray-200 h-4 mx-1" />
+
+          {/* Toggle comparación */}
+          <button
+            onClick={() => {
+              const next = !compOn;
+              setCompOn(next);
+              if (next) {
+                const meses = (ccData?.mesesDisponibles ?? []).slice().sort();
+                const idx = mesFiltro ? meses.indexOf(mesFiltro) : meses.length - 1;
+                if (!mesComp) setMesComp(idx > 0 ? meses[idx - 1] : meses[0] ?? '');
+                const sucs = Object.keys(ccData?.porLocal ?? {});
+                if (!localA && sucs.length >= 1) setLocalA(sucs[0]);
+                if (!localB && sucs.length >= 2) setLocalB(sucs[1]);
+              }
+            }}
+            className={clsx(
+              'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+              compOn
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
+            )}
+          >
+            <GitCompare className="w-3.5 h-3.5 opacity-80" />
+            <span className="font-semibold text-[11px]">Comparar</span>
+          </button>
+
+          {/* Tipo de comparación + selectores */}
+          {compOn && (
+            <>
+              {/* Toggle Meses / Locales */}
+              <div className="flex items-center rounded-xl overflow-hidden border border-gray-200">
+                {(['mes', 'local'] as const).map(t => (
+                  <button key={t} onClick={() => setCompareType(t)}
+                    className={clsx(
+                      'px-3 py-2 text-[11px] font-semibold transition-all',
+                      compareType === t ? 'bg-purple-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50',
+                    )}>
+                    {t === 'mes' ? 'Meses' : 'Locales'}
+                  </button>
+                ))}
+              </div>
+
+              {compareType === 'mes' ? (
+                <PeriodSelect
+                  label="vs"
+                  value={mesComp}
+                  options={(ccData?.mesesDisponibles ?? []).slice().sort().map(key => ({ label: mesLabel(key), value: key }))}
+                  onChange={setMesComp}
+                  allLabel="Seleccionar mes"
+                />
+              ) : (
+                <>
+                  <select value={localA} onChange={e => setLocalA(e.target.value)}
+                    className="border border-blue-300 bg-blue-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-blue-700 outline-none">
+                    {sucursalesDisponibles.filter(s => s !== 'Todas').map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <span className="text-gray-400 text-[11px] font-bold">vs</span>
+                  <select value={localB} onChange={e => setLocalB(e.target.value)}
+                    className="border border-purple-300 bg-purple-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-purple-700 outline-none">
+                    {sucursalesDisponibles.filter(s => s !== 'Todas').map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </>
+          )}
         </div>
+
+        {/* ── Panel de Comparación ────────────────────────────────────────── */}
+        {compOn && (compareType === 'mes' ? !!computedComp : !!computedCompLocal) && (
+          <ComparisonPanel
+            labelA={
+              compareType === 'mes'
+                ? periodoLabel
+                : (localA || '—')
+            }
+            labelB={
+              compareType === 'mes'
+                ? (mesComp ? mesLabel(mesComp) : '—')
+                : (localB || '—')
+            }
+            colorA="#3B82F6"
+            colorB="#8B5CF6"
+            loading={loading}
+            metrics={[
+              {
+                label: 'Ventas',
+                valueA: compareType === 'mes'
+                  ? (activeData?.totalVentas ?? 0)
+                  : (computedCompLocal?.dataA.totalVentas ?? 0),
+                valueB: compareType === 'mes'
+                  ? (computedComp?.totalVentas ?? 0)
+                  : (computedCompLocal?.dataB.totalVentas ?? 0),
+                format: formatCLPInt,
+                higherIsBetter: true,
+              },
+              {
+                label: 'Gastos',
+                valueA: compareType === 'mes'
+                  ? (activeData?.totalGastos ?? 0)
+                  : (computedCompLocal?.dataA.totalGastos ?? 0),
+                valueB: compareType === 'mes'
+                  ? (computedComp?.totalGastos ?? 0)
+                  : (computedCompLocal?.dataB.totalGastos ?? 0),
+                format: formatCLPInt,
+                higherIsBetter: false,
+              },
+              {
+                label: 'Margen %',
+                valueA: (() => {
+                  const v = compareType === 'mes' ? (activeData?.totalVentas ?? 0) : (computedCompLocal?.dataA.totalVentas ?? 0);
+                  const g = compareType === 'mes' ? (activeData?.totalGastos ?? 0) : (computedCompLocal?.dataA.totalGastos ?? 0);
+                  return v > 0 ? parseFloat(((v - g) / v * 100).toFixed(1)) : null;
+                })(),
+                valueB: (() => {
+                  const v = compareType === 'mes' ? (computedComp?.totalVentas ?? 0) : (computedCompLocal?.dataB.totalVentas ?? 0);
+                  const g = compareType === 'mes' ? (computedComp?.totalGastos ?? 0) : (computedCompLocal?.dataB.totalGastos ?? 0);
+                  return v > 0 ? parseFloat(((v - g) / v * 100).toFixed(1)) : null;
+                })(),
+                format: (v) => v.toFixed(1) + '%',
+                higherIsBetter: true,
+              },
+            ]}
+          />
+        )}
 
         {/* ── KPI Cards (2 cols mobile, 4 cols desktop) ───────────────────── */}
         {loading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
             {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28" />)}
           </div>
-        ) : computed && (
+        ) : activeData && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
             <KPICard
               label="Ventas Totales"
-              value={formatCLPInt(computed.totalVentas)}
-              sub={periodoLabel}
+              value={formatCLPInt(activeData.totalVentas)}
+              sub={ventasDelta !== null
+                ? `${ventasDelta >= 0 ? '+' : ''}${ventasDelta.toFixed(1)}% ${compLabel}`
+                : periodoLabel}
+              delta={ventasDelta !== null ? String(ventasDelta) : undefined}
+              deltaPositive={ventasDelta !== null && ventasDelta >= 0}
               icon={<Store size={16} />}
               accent="blue"
             />
             <KPICard
               label="Gastos Totales"
-              value={formatCLPInt(computed.totalGastos)}
-              sub={periodoLabel}
+              value={formatCLPInt(activeData.totalGastos)}
+              sub={gastosDelta !== null
+                ? `${gastosDelta >= 0 ? '+' : ''}${gastosDelta.toFixed(1)}% ${compLabel}`
+                : periodoLabel}
+              delta={gastosDelta !== null ? String(gastosDelta) : undefined}
+              deltaPositive={gastosDelta !== null && gastosDelta < 0}
               icon={<Receipt size={16} />}
               accent="red"
             />
             <KPICard
               label="Margen Neto"
-              value={computed.margen !== null ? computed.margen.toFixed(1) + '%' : '—'}
+              value={activeData.margen !== null ? activeData.margen.toFixed(1) + '%' : '—'}
               sub="Ventas - Gastos"
-              delta={computed.margen !== null ? computed.margen.toFixed(1) + '%' : undefined}
-              deltaPositive={computed.margen !== null && computed.margen > 0}
+              delta={activeData.margen !== null ? activeData.margen.toFixed(1) + '%' : undefined}
+              deltaPositive={activeData.margen !== null && activeData.margen > 0}
               icon={<TrendingUp size={16} />}
-              accent={computed.margen !== null && computed.margen > 0 ? 'green' : 'red'}
+              accent={activeData.margen !== null && activeData.margen > 0 ? 'green' : 'red'}
             />
             <KPICard
               label="Top Sucursal"
-              value={computed.topSucursal?.nombre ?? '—'}
-              sub={computed.topSucursal ? formatCLPInt(computed.topSucursal.valor) : ''}
+              value={activeData.topSucursal?.nombre ?? '—'}
+              sub={activeData.topSucursal ? formatCLPInt(activeData.topSucursal.valor) : ''}
               icon={<Building2 size={16} />}
               accent="blue"
             />
@@ -293,14 +589,14 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
           <div className="lg:col-span-2">
             <DailyPerformanceChart
-              data={computed?.realChartData ?? []}
+              data={activeData?.realChartData ?? []}
               chartType={filters.vista === 'granular' ? 'line' : 'bar'}
               loading={loading}
             />
           </div>
           <div className="lg:col-span-1">
             <DistributionTreemap
-              data={computed?.distribucion ?? []}
+              data={activeData?.distribucion ?? []}
               onSucursalClick={(nombre) =>
                 setFilters(f => ({ ...f, sucursal: f.sucursal === nombre ? 'Todas' : nombre }))
               }
@@ -314,15 +610,15 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
           <div className="lg:col-span-2">
             <ResumenSucursales
-              distribucion={computed?.distribucion ?? []}
-              gastosPorSucursal={computed?.gastosPorSucursal ?? {}}
-              totalVentas={computed?.totalVentas ?? 0}
+              distribucion={activeData?.distribucion ?? []}
+              gastosPorSucursal={activeData?.gastosPorSucursal ?? {}}
+              totalVentas={activeData?.totalVentas ?? 0}
               loading={loading}
             />
           </div>
           <div className="lg:col-span-1">
             <PaymentBreakdown
-              medioPago={computed?.medioPago ?? { efectivo: 0, tarjeta: 0, transf: 0 }}
+              medioPago={activeData?.medioPago ?? { efectivo: 0, tarjeta: 0, transf: 0 }}
               loading={loading}
             />
           </div>

@@ -120,6 +120,10 @@ body {
 :is(.dark, .dracula) .hover\:bg-gray-50:hover  { background-color: var(--hover); }
 :is(.dark, .dracula) .hover\:bg-gray-100:hover { background-color: var(--hover); }
 
+/* Pill filter hover - mantener color de acento en dark/dracula */
+.dark .hover\:text-blue-600:hover   { color: #60a5fa; }
+.dark .hover\:border-blue-400:hover { border-color: #60a5fa; }
+
 /* Divide lines */
 :is(.dark, .dracula) .divide-gray-100 > * + * { border-color: var(--divider); }
 :is(.dark, .dracula) .divide-gray-200 > * + * { border-color: var(--border); }
@@ -139,10 +143,13 @@ body {
 /* Dracula: accentos azules → morado */
 .dracula .text-blue-600 { color: #bd93f9; }
 .dracula .text-blue-500 { color: #bd93f9; }
-.dracula .bg-blue-600   { background-color: #bd93f9; }
+.dracula .bg-blue-600   { background-color: #bd93f9; color: #282a36; }
 .dracula .bg-blue-50    { background-color: rgba(189,147,249,0.15); }
+.dracula .border-blue-600 { border-color: #bd93f9; }
 .dracula .border-blue-400 { border-color: #bd93f9; }
 .dracula .ring-blue-500   { --tw-ring-color: #bd93f9; }
+.dracula .hover\:text-blue-600:hover  { color: #bd93f9; }
+.dracula .hover\:border-blue-400:hover { border-color: #bd93f9; }
 
 /* Recharts — fondo transparente siempre */
 .recharts-wrapper,

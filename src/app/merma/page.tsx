@@ -21,11 +21,13 @@ import {
   TrendingUp,
   DollarSign,
   Percent,
-  MapPin,
   CalendarDays,
   X,
+  GitCompare,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { PeriodSelect } from '@/components/ui/PeriodSelect';
+import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 
@@ -173,66 +175,6 @@ function RegistrarMermaModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// --- Dropdown genérico ---
-function FilterDropdown({
-  icon,
-  label,
-  value,
-  options,
-  onChange,
-  placeholder,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  options: { label: string; value: string }[];
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find(o => o.value === value);
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className={clsx(
-          'flex items-center gap-2 border rounded-full px-3.5 py-2 text-[12px] font-medium transition-all',
-          value
-            ? 'border-blue-500 bg-blue-50 text-blue-700'
-            : 'border-gray-200 bg-white text-gray-600 hover:border-blue-400',
-        )}
-      >
-        <span className="text-current opacity-70">{icon}</span>
-        <span>{selected?.label ?? placeholder ?? label}</span>
-        <ChevronDown className="w-3 h-3 text-gray-400 ml-0.5" />
-      </button>
-
-      {open && (
-        <>
-          {/* overlay */}
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-20 min-w-[180px]">
-            {options.map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => { onChange(opt.value); setOpen(false); }}
-                className={clsx(
-                  'w-full text-left px-4 py-2.5 text-[12px] hover:bg-blue-50 transition-colors flex items-center justify-between gap-3',
-                  value === opt.value ? 'text-blue-600 font-semibold bg-blue-50/60' : 'text-gray-700',
-                )}
-              >
-                {opt.label}
-                {value === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // --- Main Page ---
 export default function MermaPage() {
   const [showModal, setShowModal] = useState(false);
@@ -253,6 +195,11 @@ export default function MermaPage() {
   const [localesDisponibles, setLocalesDisponibles] = useState<string[]>([]);
   const [loadingSheet, setLoadingSheet] = useState(true);
   const [ccData, setCcData] = useState<CierreCajaData | null>(null);
+
+  // ── Comparación ───────────────────────────────────────────────────────────
+  const [compOn, setCompOn]   = useState(false);
+  const [compMes, setCompMes] = useState('');            // YYYY-MM del período B
+  const [compKPI, setCompKPI] = useState<SheetMermaKPI | null>(null);
 
   const fetchData = useCallback(() => {
     setLoadingSheet(true);
@@ -284,12 +231,36 @@ export default function MermaPage() {
   useEffect(() => {
     fetch('/api/cierre-caja')
       .then(r => r.json())
-      .then(data => { if (data.ok) setCcData(data); })
+      .then(data => {
+        if (data.ok) {
+          setCcData(data);
+          // Inicializar mes de comparación al segundo más reciente
+          if (!compMes && data.mesesDisponibles?.length >= 2) {
+            const sorted = [...data.mesesDisponibles].sort();
+            setCompMes(sorted[sorted.length - 2]);
+          }
+        }
+      })
       .catch(() => {});
-  }, []);
+  }, []); // eslint-disable-line
 
-  // Opciones para los dropdowns
-  const periodoOpts = PERIODOS;
+  // Fetch datos de merma para el período de comparación
+  useEffect(() => {
+    if (!compOn || !compMes) { setCompKPI(null); return; }
+    const [y, mStr] = compMes.split('-');
+    const lastDay = new Date(parseInt(y), parseInt(mStr), 0).getDate();
+    const params = new URLSearchParams({
+      fechaDesde: `${compMes}-01`,
+      fechaHasta: `${compMes}-${String(lastDay).padStart(2, '0')}`,
+    });
+    if (localFiltro) params.set('local', localFiltro);
+    fetch(`/api/merma-data?${params}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setCompKPI(d.kpi); })
+      .catch(() => {});
+  }, [compOn, compMes, localFiltro]);
+
+  // Opciones para el dropdown de locales
   const localOpts = localesDisponibles.length > 0
     ? [
         { label: 'Todos los locales', value: '' },
@@ -307,6 +278,12 @@ export default function MermaPage() {
     setFechaHasta('');
     setShowDatePicker(false);
   };
+
+  // Lista de meses disponibles (para el selector de comparación)
+  const mesesDisp: string[] = useMemo(
+    () => (ccData as any)?.mesesDisponibles ?? [],
+    [ccData],
+  );
 
   // ── % Merma vs Ventas (fórmula: totalMerma / totalVentas × 100) ──────────
   const porcentajeMerma = useMemo(() => {
@@ -329,6 +306,28 @@ export default function MermaPage() {
     if (totalVentas === 0) return null;
     return (sheetKPI.totalMerma / totalVentas) * 100;
   }, [sheetKPI, ccData, periodo, fechaDesde, fechaHasta, localFiltro]);
+
+  // % Merma vs Ventas del período de COMPARACIÓN
+  const compPctMerma = useMemo(() => {
+    if (!compKPI || !ccData?.porLocal) return null;
+    const { porLocal, porLocalMes } = ccData;
+    const locales = localFiltro ? [localFiltro] : Object.keys(porLocal);
+    let totalVentas = 0;
+    for (const local of locales) {
+      totalVentas += porLocalMes[local]?.[compMes]?.ventas ?? 0;
+    }
+    if (totalVentas === 0) return null;
+    return (compKPI.totalMerma / totalVentas) * 100;
+  }, [compKPI, ccData, compMes, localFiltro]);
+
+  // Helpers de formato
+  const MESES_FULL: Record<string, string> = {
+    '01': 'Enero', '02': 'Febrero', '03': 'Marzo', '04': 'Abril',
+    '05': 'Mayo', '06': 'Junio', '07': 'Julio', '08': 'Agosto',
+    '09': 'Septiembre', '10': 'Octubre', '11': 'Noviembre', '12': 'Diciembre',
+  };
+  const mesLabel = (k: string) => { const [a, m] = k.split('-'); return (MESES_FULL[m] ?? m) + ' ' + a; };
+  const fmtCLP   = (v: number) => '$' + Math.round(v).toLocaleString('es-CL');
 
   // ── Datos para UI ────────────────────────────────────────────────────────
   const categoriasActivas = sheetTipos.length > 0
@@ -408,28 +407,26 @@ export default function MermaPage() {
 
       {/* ── Barra de Filtros ───────────────────────────────────────────────── */}
       <div className="sticky top-[61px] z-20 bg-white/95 backdrop-blur-sm border-b border-gray-100 px-6 py-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mr-1">Filtrar:</span>
-
-          {/* Filtro por período */}
-          <FilterDropdown
-            icon={<CalendarDays className="w-3.5 h-3.5" />}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Filtro por período - Lista desplegable */}
+          <PeriodSelect
             label="Período"
             value={periodo}
-            options={periodoOpts}
-            onChange={v => { setPeriodo(v); if (v) { setFechaDesde(''); setFechaHasta(''); setShowDatePicker(false); } }}
-            placeholder="Todos los períodos"
+            options={PERIODOS.filter(p => p.value !== '')}
+            onChange={v => { setPeriodo(v); setFechaDesde(''); setFechaHasta(''); setShowDatePicker(false); }}
+            allLabel="Todos los períodos"
           />
+
+          <span className="border-l border-gray-200 h-4 mx-1" />
 
           {/* Filtro por local */}
           {localOpts.length > 1 && (
-            <FilterDropdown
-              icon={<MapPin className="w-3.5 h-3.5" />}
+            <PeriodSelect
               label="Local"
               value={localFiltro}
-              options={localOpts}
+              options={localOpts.filter(o => o.value !== '')}
               onChange={setLocalFiltro}
-              placeholder="Todos los locales"
+              allLabel="Todos los locales"
             />
           )}
 
@@ -438,17 +435,17 @@ export default function MermaPage() {
             <button
               onClick={() => setShowDatePicker(o => !o)}
               className={clsx(
-                'flex items-center gap-2 border rounded-full px-3.5 py-2 text-[12px] font-medium transition-all',
+                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
                 (fechaDesde || fechaHasta)
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:border-blue-400',
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
               )}
             >
               <CalendarDays className="w-3.5 h-3.5 opacity-70" />
               {fechaDesde || fechaHasta
                 ? `${fechaDesde || '...'} → ${fechaHasta || '...'}`
                 : 'Rango personalizado'}
-              <ChevronDown className="w-3 h-3 text-gray-400 ml-0.5" />
+              <ChevronDown className="w-3 h-3 opacity-70 ml-0.5" />
             </button>
 
             {showDatePicker && (
@@ -487,6 +484,41 @@ export default function MermaPage() {
             )}
           </div>
 
+          <span className="border-l border-gray-200 h-4 mx-1" />
+
+          {/* Toggle comparación */}
+          <button
+            onClick={() => {
+              setCompOn(v => !v);
+              if (!compMes && mesesDisp.length >= 2) {
+                const sorted = [...mesesDisp].sort();
+                setCompMes(sorted[sorted.length - 2]);
+              }
+            }}
+            className={clsx(
+              'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+              compOn
+                ? 'bg-purple-600 border-purple-600 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
+            )}
+          >
+            <GitCompare className="w-3.5 h-3.5 opacity-80" />
+            <span className="font-semibold text-[11px]">Comparar</span>
+          </button>
+
+          {/* Selector de mes de comparación */}
+          {compOn && mesesDisp.length > 0 && (
+            <select
+              value={compMes}
+              onChange={e => setCompMes(e.target.value)}
+              className="border border-purple-300 bg-purple-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-purple-700 outline-none"
+            >
+              {[...mesesDisp].sort().map(m => (
+                <option key={m} value={m}>{mesLabel(m)}</option>
+              ))}
+            </select>
+          )}
+
           {/* Indicador de filtros activos + limpiar */}
           {filtrosActivos > 0 && (
             <button
@@ -518,6 +550,46 @@ export default function MermaPage() {
       </div>
 
       <main className="flex-1 px-6 py-5 space-y-5 pb-24">
+
+        {/* ── Panel de Comparación ─────────────────────────────────────────── */}
+        {compOn && compKPI && (
+          <ComparisonPanel
+            labelA={
+              periodo
+                ? (PERIODOS.find(p => p.value === periodo)?.label ?? 'Período A')
+                : (fechaDesde || fechaHasta)
+                  ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
+                  : 'Período actual'
+            }
+            labelB={compMes ? mesLabel(compMes) : '—'}
+            colorA="#3B82F6"
+            colorB="#8B5CF6"
+            loading={loadingSheet}
+            metrics={[
+              {
+                label: 'Total Merma',
+                valueA: sheetKPI?.totalMerma ?? null,
+                valueB: compKPI.totalMerma,
+                format: fmtCLP,
+                higherIsBetter: false,
+              },
+              {
+                label: '% vs Ventas',
+                valueA: porcentajeMerma,
+                valueB: compPctMerma,
+                format: v => v.toFixed(2) + '%',
+                higherIsBetter: false,
+              },
+              {
+                label: 'Registros',
+                valueA: sheetKPI?.totalRegistros ?? null,
+                valueB: compKPI.totalRegistros,
+                format: v => String(Math.round(v)),
+                higherIsBetter: false,
+              },
+            ]}
+          />
+        )}
 
         {/* KPI Cards */}
         <div className="grid grid-cols-3 gap-5">

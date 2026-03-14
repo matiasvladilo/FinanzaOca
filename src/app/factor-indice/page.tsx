@@ -8,9 +8,11 @@ import {
 import {
   Download, Bell, ChevronDown,
   CheckCircle2, AlertTriangle, TrendingDown, TrendingUp, X,
-  Sun, Moon, Sparkles, Check,
+  Sun, Moon, Sparkles, Check, GitCompare,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { PeriodSelect } from '@/components/ui/PeriodSelect';
+import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { useTheme } from '@/providers/ThemeProvider';
@@ -107,13 +109,15 @@ export default function FactorIndicePage() {
   const [alertList, setAlertList]   = useState(ALERTAS_INIT);
   const [showModal, setShowModal]   = useState(false);
   const [mesSeleccionado, setMes]   = useState('');
-  const [mesOpen, setMesOpen]       = useState(false);
   const [modo, setModo]             = useState<Modo>('semana');
   const [sucOpen, setSucOpen]       = useState(false);
   const [sucSel, setSucSel]         = useState<string[]>([]);   // vacío = todas
   const [cierreCajaData, setCCData] = useState<any>(null);
   const [ventasData, setVData]      = useState<any>(null);
   const [loading, setLoading]       = useState(true);
+  // ── Comparación ─────────────────────────────────────────────────────────
+  const [compOn, setCompOn]   = useState(false);
+  const [compMes2, setCompMes2] = useState('');
 
   const activeAlerts = alertList.filter(a => !a.acknowledged).length;
 
@@ -218,6 +222,28 @@ export default function FactorIndicePage() {
     return { factorGlobal: f, totalVentas: tv, totalGastos: tg };
   }, [cierreCajaData, ventasData, mesSeleccionado, sucSel, allSucs]);
 
+  // ── Factor del período de comparación ────────────────────────────────────
+  const compFactorData = useMemo(() => {
+    if (!compOn || !compMes2 || !cierreCajaData?.registrosDiarios) return null;
+    const diasCaja:   any[] = cierreCajaData.registrosDiarios   ?? [];
+    const diasGastos: any[] = ventasData?.registrosDiariosGastos ?? [];
+    const todasSucs = sucSel.length === 0 || sucSel.length === allSucs.length;
+
+    const tv = diasCaja
+      .filter((r: any) => r.fecha?.startsWith(compMes2) && (todasSucs || sucSel.includes(r.local)))
+      .reduce((s: number, r: any) => s + r.ventas, 0);
+
+    const gastosMesSuc: Record<string, Record<string, number>> = ventasData?.gastosPorMesSucursal ?? {};
+    let tg = 0;
+    if (todasSucs) {
+      tg = ventasData?.gastosPorMes?.[compMes2] ?? 0;
+    } else {
+      for (const suc of sucSel) tg += gastosMesSuc[suc]?.[compMes2] ?? 0;
+    }
+    const factor = tv > 0 ? parseFloat(((tg / tv) * 100).toFixed(1)) : null;
+    return { factor, totalVentas: tv, totalGastos: tg };
+  }, [cierreCajaData, ventasData, compMes2, compOn, sucSel, allSucs]);
+
   const isOpt       = factorGlobal !== null && factorGlobal < 50;
   const mesesDisp   = cierreCajaData?.mesesDisponibles ?? [];
   const fmt         = (v: number) => v >= 1_000_000
@@ -268,35 +294,14 @@ export default function FactorIndicePage() {
 
         <div className="flex flex-wrap items-center gap-2">
 
-          {/* Month selector */}
-          <div className="relative">
-            <button onClick={() => setMesOpen(!mesOpen)}
-              className="flex items-center gap-2 rounded-full px-4 py-2 text-[12px] transition-colors"
-              style={{ border: '1px solid var(--border-2)', background: 'var(--card)', color: 'var(--text-2)' }}>
-              <span style={{ color: 'var(--text-3)' }} className="font-medium">Mes:</span>
-              <span className="font-semibold">{mesSeleccionado ? mesLabel(mesSeleccionado) : '—'}</span>
-              <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
-            </button>
-            {mesOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setMesOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg overflow-hidden z-50 min-w-[160px]"
-                  style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                  {[...mesesDisp].sort().map((m: string) => (
-                    <button key={m} onClick={() => { setMes(m); setMesOpen(false); }}
-                      className="w-full text-left px-4 py-2.5 text-[12px] transition-colors"
-                      style={mesSeleccionado === m
-                        ? { color: 'var(--active-text)', background: 'var(--active-bg)', fontWeight: 600 }
-                        : { color: 'var(--text-2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = mesSeleccionado === m ? 'var(--active-bg)' : '')}>
-                      {mesLabel(m)}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          {/* Month selector - Lista desplegable */}
+          <PeriodSelect
+            label="Mes"
+            value={mesSeleccionado}
+            options={[...mesesDisp].sort().map((m: string) => ({ label: mesLabel(m), value: m }))}
+            onChange={setMes}
+            allLabel="Todos los meses"
+          />
 
           {/* Modo toggle */}
           <div className="flex items-center rounded-full p-1 gap-1" style={{ background: 'var(--hover)' }}>
@@ -373,6 +378,40 @@ export default function FactorIndicePage() {
           </div>
         </div>
 
+        {/* Toggle comparación */}
+        <button
+          onClick={() => {
+            const next = !compOn;
+            setCompOn(next);
+            if (next && !compMes2) {
+              const sorted = [...mesesDisp].sort();
+              const idx = mesSeleccionado ? sorted.indexOf(mesSeleccionado) : sorted.length - 1;
+              setCompMes2(idx > 0 ? sorted[idx - 1] : sorted[0] ?? '');
+            }
+          }}
+          className={clsx(
+            'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+            compOn
+              ? 'bg-purple-600 border-purple-600 text-white'
+              : 'text-gray-600 hover:border-purple-400 hover:text-purple-600',
+          )}
+          style={!compOn ? { background: 'var(--card)', borderColor: 'var(--border-2)' } : undefined}
+        >
+          <GitCompare className="w-3.5 h-3.5 opacity-80" />
+          <span className="font-semibold text-[11px]">Comparar</span>
+        </button>
+
+        {/* Selector mes de comparación */}
+        {compOn && mesesDisp.length > 0 && (
+          <PeriodSelect
+            label="vs"
+            value={compMes2}
+            options={[...mesesDisp].sort().map((m: string) => ({ label: mesLabel(m), value: m }))}
+            onChange={setCompMes2}
+            allLabel="Seleccionar mes"
+          />
+        )}
+
         {/* Export */}
         <button onClick={handleExport}
           className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold transition-colors shadow-sm"
@@ -384,6 +423,40 @@ export default function FactorIndicePage() {
 
       {/* ── Main ── */}
       <main className="flex-1 px-6 py-5 space-y-5">
+
+        {/* ── Panel de Comparación ── */}
+        {compOn && compFactorData && (
+          <ComparisonPanel
+            labelA={mesSeleccionado ? mesLabel(mesSeleccionado) : 'Período A'}
+            labelB={compMes2 ? mesLabel(compMes2) : '—'}
+            colorA="#3B82F6"
+            colorB="#8B5CF6"
+            loading={loading}
+            metrics={[
+              {
+                label: 'Factor Índice',
+                valueA: factorGlobal,
+                valueB: compFactorData.factor,
+                format: v => v.toFixed(1) + '%',
+                higherIsBetter: false,
+              },
+              {
+                label: 'Ventas',
+                valueA: totalVentas,
+                valueB: compFactorData.totalVentas,
+                format: fmt,
+                higherIsBetter: true,
+              },
+              {
+                label: 'Gastos',
+                valueA: totalGastos,
+                valueB: compFactorData.totalGastos,
+                format: fmt,
+                higherIsBetter: false,
+              },
+            ]}
+          />
+        )}
 
         {/* Top row */}
         <div className="grid grid-cols-3 gap-5">
