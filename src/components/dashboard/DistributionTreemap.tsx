@@ -6,8 +6,9 @@ import type { SucursalDistribucion } from '@/types';
 
 interface Props {
   data: SucursalDistribucion[];
-  onSucursalClick?: (nombre: string) => void;
-  activeSucursal?: string;
+  onSucursalToggle?: (nombre: string) => void;
+  onClearSelection?: () => void;
+  activeSucursales?: string[];
   loading?: boolean;
 }
 
@@ -28,10 +29,11 @@ function TreemapSkeleton() {
   );
 }
 
-function DistributionTreemap({ data, onSucursalClick, activeSucursal, loading }: Props) {
+function DistributionTreemap({ data, onSucursalToggle, onClearSelection, activeSucursales = [], loading }: Props) {
   if (loading) return <TreemapSkeleton />;
 
   const isSingle = data.length === 1;
+  const hasSelection = activeSucursales.length > 0;
 
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col h-full">
@@ -39,15 +41,15 @@ function DistributionTreemap({ data, onSucursalClick, activeSucursal, loading }:
         <div>
           <h3 className="text-[14px] font-bold text-gray-900 dark:text-white">Distribución por Sucursal</h3>
           <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-0.5">
-            Clic para filtrar
+            {hasSelection ? `${activeSucursales.length} seleccionada${activeSucursales.length > 1 ? 's' : ''} — clic para comparar` : 'Clic para comparar'}
           </p>
         </div>
-        {activeSucursal && activeSucursal !== 'Todas' && (
+        {hasSelection && (
           <button
-            onClick={() => onSucursalClick?.('Todas')}
+            onClick={onClearSelection}
             className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
           >
-            Ver todas
+            Limpiar
           </button>
         )}
       </div>
@@ -59,18 +61,18 @@ function DistributionTreemap({ data, onSucursalClick, activeSucursal, loading }:
       ) : (
         <div className={clsx('flex-1 gap-2 min-h-[160px]', isSingle ? 'flex' : 'grid grid-cols-2 grid-rows-2')}>
           {data.map((suc) => {
-            const isActive = activeSucursal === suc.nombre;
+            const isActive = activeSucursales.includes(suc.nombre);
             return (
               <div
                 key={suc.nombre}
-                onClick={() => onSucursalClick?.(suc.nombre)}
+                onClick={() => onSucursalToggle?.(suc.nombre)}
                 style={{ backgroundColor: suc.color }}
                 className={clsx(
                   'rounded-xl flex flex-col justify-between p-3 lg:p-4 cursor-pointer transition-all duration-200',
                   isSingle ? 'flex-1' : '',
                   isActive
                     ? 'ring-2 ring-white ring-offset-2 scale-[0.98]'
-                    : 'hover:opacity-90 hover:scale-[0.99]'
+                    : 'hover:opacity-90 hover:scale-[0.99] opacity-80'
                 )}
               >
                 <div>

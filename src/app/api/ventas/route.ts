@@ -2,9 +2,9 @@
  * GET /api/ventas
  * Lee "Facturas" (gastos/ingresos) de los 4 locales en paralelo y combina.
  *
- * Columnas usadas — varía por local, se hace matching case-insensitive:
- *   Tipo (Ingreso/Gasto), Subtipo Doc, Proveedor/Cliente,
- *   Medio de Pago, Total Factura / Columna 8 (PT), FECHA EMITIDA / Fecha emitida / Fecha
+ * Fecha formal: FECHA EMITIDA (o "Fecha emitida") es la única fuente de verdad.
+ * Si el sheet no tiene esa columna, se usa "Fecha" / "FECHA" como fallback.
+ * Filas sin fecha válida se descartan.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,50 +12,74 @@ import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { withCache } from '@/lib/data/cache';
 
-const CACHE_KEY = 'ventas-v5';
+const CACHE_KEY = 'ventas-v10';
 
 async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:Z5000`);
   if (rows.length < 2) return [];
 
   const [headers, ...dataRows] = rows;
+
+  // FECHA EMITIDA es la fecha formal para TODOS los locales.
+  // Se buscan todas las variantes posibles de nombre de columna.
+  const idxFechaEmitida = findHeader(
+    headers,
+    'FECHA EMITIDA', 'Fecha emitida', 'Fecha Emitida', 'fecha emitida',
+    'FECHA_EMITIDA', 'FechaEmitida', 'Fecha de emisión', 'Fecha de Emisión',
+    'FECHA DE EMISION', 'Fecha Emision', 'Emision', 'Emisión',
+  );
+  // Fallback solo para sheets que genuinamente no tienen columna de fecha emitida
+  const idxFechaFallback = findHeader(headers, 'Fecha', 'FECHA', 'fecha');
+
+  // Log para verificar qué columna se usa en cada local
+  const fechaColName = idxFechaEmitida >= 0 ? headers[idxFechaEmitida] : (idxFechaFallback >= 0 ? headers[idxFechaFallback] : 'NO ENCONTRADA');
+  console.log(`[ventas] ${nombre} → fecha formal: "${fechaColName}" (col ${idxFechaEmitida >= 0 ? idxFechaEmitida : idxFechaFallback})`);
+
   const idx = {
     tipo:      findHeader(headers, 'Tipo (Ingreso/Gasto)'),
     subtipo:   findHeader(headers, 'Subtipo Doc'),
     proveedor: findHeader(headers, 'Proveedor/Cliente'),
     medioPago: findHeader(headers, 'Medio de Pago'),
-    // PT usa "Monto"; La Reina/PV/Bilbao usan "Total Factura"
     monto:     findHeader(headers, 'Total Factura', 'Monto', 'Columna 8', 'Total'),
-    // Fecha primaria (col B) — si vacía, usar FECHA EMITIDA como fallback
-    fecha:     findHeader(headers, 'Fecha', 'FECHA'),
-    fechaAlt:  findHeader(headers, 'FECHA EMITIDA', 'Fecha emitida'),
-    mes:       findHeader(headers, 'Mes', 'MES', 'mes'),
   };
 
-  return dataRows
-    .filter(row => row[idx.monto])
-    .map((row, i) => {
-      // Usar "Fecha" principal; si el año es inválido caer a "FECHA EMITIDA"
-      let fecha = parseFecha(row[idx.fecha] ?? '');
-      if (fecha.anio < 2000 && idx.fechaAlt >= 0) {
-        const alt = parseFecha(row[idx.fechaAlt] ?? '');
-        if (alt.anio >= 2000) fecha = alt;
-      }
-      const mesCol  = idx.mes >= 0 ? parseInt(row[idx.mes] ?? '0', 10) : 0;
-      const mes     = mesCol || fecha.mes;
-      return {
-        id:        i + 1,
-        sucursal:  nombre,
-        tipo:      (row[idx.tipo] ?? 'GASTO').toUpperCase(),
-        subtipo:   row[idx.subtipo]   ?? '',
-        proveedor: row[idx.proveedor] ?? '',
-        medioPago: row[idx.medioPago] ?? '',
-        monto:     parseMonto(row[idx.monto] ?? ''),
-        fecha:     fecha.iso,
-        mes,
-        anio:      fecha.anio,
-      };
+  const registros: {
+    id: number; sucursal: string; tipo: string; subtipo: string;
+    proveedor: string; medioPago: string; monto: number;
+    fecha: string; mes: number; anio: number;
+  }[] = [];
+
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    if (!row[idx.monto]) continue;
+
+    let fecha;
+    if (idxFechaEmitida >= 0) {
+      // El sheet tiene columna FECHA EMITIDA — usarla estrictamente, sin fallback
+      fecha = parseFecha(row[idxFechaEmitida] ?? '');
+    } else {
+      // El sheet no tiene columna FECHA EMITIDA — usar "Fecha" como única alternativa
+      fecha = idxFechaFallback >= 0 ? parseFecha(row[idxFechaFallback] ?? '') : { anio: 0, mes: 0, dia: 0, iso: '', date: null };
+    }
+
+    // Descartar filas sin fecha válida
+    if (fecha.anio < 2020) continue;
+
+    registros.push({
+      id:        i + 1,
+      sucursal:  nombre,
+      tipo:      (row[idx.tipo] ?? 'GASTO').toUpperCase(),
+      subtipo:   row[idx.subtipo]   ?? '',
+      proveedor: row[idx.proveedor] ?? '',
+      medioPago: row[idx.medioPago] ?? '',
+      monto:     parseMonto(row[idx.monto] ?? ''),
+      fecha:     fecha.iso,   // ISO basado en FECHA EMITIDA
+      mes:       fecha.mes,
+      anio:      fecha.anio,
     });
+  }
+
+  return registros;
 }
 
 async function fetchVentas() {
@@ -79,10 +103,12 @@ async function fetchVentas() {
   const totalGastos   = gastos.reduce((s, r) => s + r.monto, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.monto, 0);
 
+  const ANIO_ACTUAL = new Date().getFullYear();
+
   // ── Por mes ─────────────────────────────────────────────────────────────
   const porMes: Record<string, { mes: number; anio: number; ventas: number; gastos: number }> = {};
   for (const r of registros) {
-    if (!r.mes || r.anio < 2000) continue;
+    if (r.anio > ANIO_ACTUAL) continue; // descartar fechas futuras
     const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
     if (!porMes[key]) porMes[key] = { mes: r.mes, anio: r.anio, ventas: 0, gastos: 0 };
     porMes[key].gastos += r.monto; // suma todo (GASTO + INGRESO = total facturas)
@@ -106,7 +132,7 @@ async function fetchVentas() {
   // ── Gastos por mes + sucursal (para filtrar gráfico por local) ───────────
   const gastosPorMesSucursal: Record<string, Record<string, number>> = {};
   for (const r of registros) {
-    if (!r.mes || r.anio < 2000) continue;
+    if (r.anio > ANIO_ACTUAL) continue;
     const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
     if (!gastosPorMesSucursal[r.sucursal]) gastosPorMesSucursal[r.sucursal] = {};
     gastosPorMesSucursal[r.sucursal][key] = (gastosPorMesSucursal[r.sucursal][key] ?? 0) + r.monto;
@@ -114,12 +140,15 @@ async function fetchVentas() {
 
   // ── Top proveedores ─────────────────────────────────────────────────────
   const porProveedor: Record<string, number> = {};
+  const proveedorNombre: Record<string, string> = {};
   for (const r of gastos) {
-    porProveedor[r.proveedor] = (porProveedor[r.proveedor] ?? 0) + r.monto;
+    const key = r.proveedor.toLowerCase();
+    if (!proveedorNombre[key]) proveedorNombre[key] = r.proveedor;
+    porProveedor[key] = (porProveedor[key] ?? 0) + r.monto;
   }
   const topProveedores = Object.entries(porProveedor)
     .sort(([, a], [, b]) => b - a).slice(0, 5)
-    .map(([nombre, monto]) => ({ nombre, monto }));
+    .map(([key, monto]) => ({ nombre: proveedorNombre[key], monto }));
 
   // ── Por medio de pago ───────────────────────────────────────────────────
   const porMedioPago: Record<string, number> = {};
@@ -129,7 +158,14 @@ async function fetchVentas() {
 
   const registrosDiariosGastos = gastos
     .filter(r => r.fecha)
-    .map(r => ({ fecha: r.fecha, sucursal: r.sucursal, monto: r.monto, proveedor: r.proveedor, subtipo: r.subtipo }));
+    .map(r => ({
+      fecha: r.fecha,
+      mesKey: `${r.anio}-${String(r.mes).padStart(2, '0')}`,
+      sucursal: r.sucursal,
+      monto: r.monto,
+      proveedor: r.proveedor,
+      subtipo: r.subtipo,
+    }));
 
   return {
     kpi: {

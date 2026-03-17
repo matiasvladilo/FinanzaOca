@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -9,19 +9,12 @@ import {
 import {
   Search, Bell,
   ChevronLeft, ChevronRight, Download, Star,
-  TrendingUp, Activity, LayoutGrid, Package,
+  TrendingUp, Activity, LayoutGrid, Package, Calendar,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 
-// Períodos disponibles
-const PERIODOS = [
-  { value: '1',  label: '1 mes' },
-  { value: '3',  label: '3 meses' },
-  { value: '6',  label: '6 meses' },
-  { value: '12', label: '12 meses' },
-];
 
 // ─── Paleta dinámica para categorías ─────────────────────
 const CAT_PALETTE = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444', '#14B8A6', '#F59E0B'];
@@ -218,10 +211,24 @@ const PAGE_SIZE = 8;
 
 export default function ProductosPage() {
   const [page, setPage] = useState(1);
-  const [meses, setMeses] = useState('12');           // período Supabase
   const [periodo, setPeriodo] = useState<Periodo>('30D'); // solo para mock
   const [tipoGrafico, setTipoGrafico] = useState<TipoGrafico>('area');
   const [filtroCat, setFiltroCat] = useState('Todas');
+  const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
+
+  // Defaults
+  const _hoy = new Date();
+  const _defMesHasta = `${_hoy.getFullYear()}-${String(_hoy.getMonth() + 1).padStart(2, '0')}`;
+  const _d2 = new Date(_hoy.getFullYear(), _hoy.getMonth() - 2, 1);
+  const _defMesDesde = `${_d2.getFullYear()}-${String(_d2.getMonth() + 1).padStart(2, '0')}`;
+  const _defFechaHasta = _hoy.toISOString().slice(0, 10);
+  const _d3 = new Date(_hoy); _d3.setDate(_d3.getDate() - 30);
+  const _defFechaDesde = _d3.toISOString().slice(0, 10);
+
+  const [mesDesde,   setMesDesde]   = useState(_defMesDesde);
+  const [mesHasta,   setMesHasta]   = useState(_defMesHasta);
+  const [fechaDesde, setFechaDesde] = useState(_defFechaDesde);
+  const [fechaHasta, setFechaHasta] = useState(_defFechaHasta);
 
   // ── Datos Supabase ────────────────────────────────────────
   const [sbData, setSbData] = useState<SupabaseAnalytics | null>(null);
@@ -229,12 +236,20 @@ export default function ProductosPage() {
 
   useEffect(() => {
     setLoadingSb(true);
-    fetch(`/api/supabase-analytics?meses=${meses}`)
+    const params = new URLSearchParams();
+    if (modoFiltro === 'dia') {
+      params.set('fechaDesde', fechaDesde);
+      params.set('fechaHasta', fechaHasta);
+    } else {
+      params.set('mesDesde', mesDesde);
+      params.set('mesHasta', mesHasta);
+    }
+    fetch(`/api/supabase-analytics?${params}`)
       .then(r => r.json())
       .then((d: SupabaseAnalytics) => setSbData(d))
       .catch(() => setSbData(null))
       .finally(() => setLoadingSb(false));
-  }, [meses]);
+  }, [modoFiltro, mesDesde, mesHasta, fechaDesde, fechaHasta]);
 
   const usingReal = sbData?.ok === true && (sbData.topProductos?.length ?? 0) > 0;
 
@@ -374,15 +389,45 @@ export default function ProductosPage() {
           <input type="text" placeholder="Buscar productos, SKUs..." className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400" />
         </div>
 
-        {/* Selector de período */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-          {PERIODOS.map(p => (
-            <button key={p.value} onClick={() => { setMeses(p.value); setPage(1); setFiltroCat('Todas'); }}
+        {/* Filtro de fecha */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
+            <button
+              onClick={() => { setModoFiltro('mes'); setPage(1); }}
               className={clsx('px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap',
-                meses === p.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-              {p.label}
+                modoFiltro === 'mes' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
+              Por mes
             </button>
-          ))}
+            <button
+              onClick={() => { setModoFiltro('dia'); setPage(1); }}
+              className={clsx('flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all whitespace-nowrap',
+                modoFiltro === 'dia' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
+              <Calendar className="w-3 h-3" />Por fecha
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {modoFiltro === 'mes' ? (
+              <>
+                <input type="month" value={mesDesde} max={mesHasta}
+                  onChange={e => { setMesDesde(e.target.value); setPage(1); }}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
+                <span className="text-gray-300 text-[11px]">→</span>
+                <input type="month" value={mesHasta} min={mesDesde}
+                  onChange={e => { setMesHasta(e.target.value); setPage(1); }}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
+              </>
+            ) : (
+              <>
+                <input type="date" value={fechaDesde} max={fechaHasta}
+                  onChange={e => { setFechaDesde(e.target.value); setPage(1); }}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
+                <span className="text-gray-300 text-[11px]">→</span>
+                <input type="date" value={fechaHasta} min={fechaDesde}
+                  onChange={e => { setFechaHasta(e.target.value); setPage(1); }}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -406,7 +451,7 @@ export default function ProductosPage() {
             <h1 className="text-[22px] font-black text-gray-900">Análisis de Productos</h1>
             <p className="text-[13px] text-gray-400 mt-0.5">
               {usingReal
-                ? `ConectOca · últimos ${meses} ${parseInt(meses) === 1 ? 'mes' : 'meses'} — pedidos, productos y áreas de producción.`
+                ? `ConectOca · ${modoFiltro === 'mes' ? `${mesDesde} → ${mesHasta}` : `${fechaDesde} → ${fechaHasta}`} — pedidos, productos y áreas de producción.`
                 : 'Rendimiento detallado de inventario y ventas por categoría.'}
             </p>
           </div>
@@ -461,7 +506,7 @@ export default function ProductosPage() {
                 <h3 className="text-[15px] font-bold text-gray-900">Top Productos</h3>
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   {usingReal
-                    ? `Por unidades vendidas · últimos ${meses} ${parseInt(meses) === 1 ? 'mes' : 'meses'}`
+                    ? `Por unidades vendidas · ${modoFiltro === 'mes' ? `${mesDesde} → ${mesHasta}` : `${fechaDesde} → ${fechaHasta}`}`
                     : 'Producción por sucursal · últimos 30 días'}
                 </p>
               </div>
@@ -600,7 +645,7 @@ export default function ProductosPage() {
               </h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
                 {usingReal
-                  ? `Total facturado por mes · últimos ${meses} ${parseInt(meses) === 1 ? 'mes' : 'meses'}`
+                  ? `Total facturado por mes · ${modoFiltro === 'mes' ? `${mesDesde} → ${mesHasta}` : `${fechaDesde} → ${fechaHasta}`}`
                   : 'Margen por período — Ventas vs Costos operacionales'}
               </p>
             </div>
@@ -619,7 +664,7 @@ export default function ProductosPage() {
               )}
               {/* Tipo gráfico */}
               <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1">
-                {([['area', Activity], ['linea', TrendingUp], ['barras', LayoutGrid]] as [TipoGrafico, (p: {className?: string}) => JSX.Element][]).map(([t, Icon]) => (
+                {([['area', Activity], ['linea', TrendingUp], ['barras', LayoutGrid]] as [TipoGrafico, React.ElementType][]).map(([t, Icon]) => (
                   <button key={t} onClick={() => setTipoGrafico(t)}
                     className={clsx('p-1.5 rounded-lg transition-all', tipoGrafico === t ? 'bg-white shadow-sm' : 'hover:bg-white/60')}>
                     <Icon className={clsx('w-3.5 h-3.5', tipoGrafico === t ? 'text-blue-600' : 'text-gray-400')} />

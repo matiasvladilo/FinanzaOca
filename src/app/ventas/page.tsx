@@ -76,6 +76,9 @@ type ChartRow = {
   fecha: string; ventas: number; gastos: number;
   ventasComp?: number; gastosComp?: number; fechaComp?: string;
 };
+type MultiChartRow = Record<string, string | number>;
+type LocalDef = { local: string; color: string; idx: number };
+const LOCAL_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B'];
 
 // ─── Tooltip custom ──────────────────────────────────────
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -113,16 +116,18 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 // ─── Componente del gráfico interactivo ──────────────────
 function InteractiveChart({
-  data, metrica, tipo, hasComp,
+  data, metrica, tipo, hasComp, localDefs,
 }: {
-  data: ChartRow[];
+  data: ChartRow[] | MultiChartRow[];
   metrica: Metrica;
   tipo: TipoGrafico;
   hasComp?: boolean;
+  localDefs?: LocalDef[];
 }) {
   const yFmt = (v: number) => fmt(v);
   const showVentas = metrica === 'ventas' || metrica === 'ambos';
   const showGastos = metrica === 'gastos' || metrica === 'ambos';
+  const isMulti = !!localDefs && localDefs.length >= 2;
 
   const commonChildren = (
     <>
@@ -135,9 +140,69 @@ function InteractiveChart({
     </>
   );
 
+  // ── Modo multi-local: una serie por local ────────────────
+  if (isMulti) {
+    const mData = data as MultiChartRow[];
+    if (tipo === 'area') return (
+      <ResponsiveContainer width="100%" height={260}>
+        <AreaChart data={mData} style={{ background: 'transparent' }}>
+          <defs>
+            {localDefs!.map(d => (
+              <linearGradient key={d.idx} id={`gML${d.idx}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={d.color} stopOpacity={0.15} />
+                <stop offset="95%" stopColor={d.color} stopOpacity={0} />
+              </linearGradient>
+            ))}
+          </defs>
+          {commonChildren}
+          {localDefs!.flatMap(d => [
+            showVentas && <Area key={`v${d.idx}`} type="monotone" dataKey={`ventas_${d.idx}`} name={d.local}
+              stroke={d.color} strokeWidth={2.5} fill={`url(#gML${d.idx})`}
+              dot={false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />,
+            showGastos && <Area key={`g${d.idx}`} type="monotone" dataKey={`gastos_${d.idx}`} name={`${d.local} Gastos`}
+              stroke={d.color} strokeWidth={1.5} strokeDasharray="5 3" fill="none"
+              dot={false} activeDot={{ r: 4 }} />,
+          ])}
+        </AreaChart>
+      </ResponsiveContainer>
+    );
+
+    if (tipo === 'linea') return (
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart data={mData} style={{ background: 'transparent' }}>
+          {commonChildren}
+          {localDefs!.flatMap(d => [
+            showVentas && <Line key={`v${d.idx}`} type="monotone" dataKey={`ventas_${d.idx}`} name={d.local}
+              stroke={d.color} strokeWidth={2.5}
+              dot={{ r: 3, fill: d.color, stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />,
+            showGastos && <Line key={`g${d.idx}`} type="monotone" dataKey={`gastos_${d.idx}`} name={`${d.local} Gastos`}
+              stroke={d.color} strokeWidth={1.5} strokeDasharray="5 3"
+              dot={false} activeDot={{ r: 4 }} />,
+          ])}
+        </LineChart>
+      </ResponsiveContainer>
+    );
+
+    return (
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={mData} barCategoryGap="25%" barGap={2} style={{ background: 'transparent' }}>
+          {commonChildren}
+          {localDefs!.flatMap(d => [
+            showVentas && <Bar key={`v${d.idx}`} dataKey={`ventas_${d.idx}`} name={d.local}
+              fill={d.color} radius={[4, 4, 0, 0]} />,
+            showGastos && <Bar key={`g${d.idx}`} dataKey={`gastos_${d.idx}`} name={`${d.local} Gastos`}
+              fill={d.color} opacity={0.45} radius={[4, 4, 0, 0]} />,
+          ])}
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  // ── Modo normal / comparación de período ─────────────────
+  const sData = data as ChartRow[];
   if (tipo === 'area') return (
     <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={data} style={{ background: 'transparent' }}>
+      <AreaChart data={sData} style={{ background: 'transparent' }}>
         <defs>
           <linearGradient id="gV" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15} /><stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
@@ -157,7 +222,7 @@ function InteractiveChart({
 
   if (tipo === 'linea') return (
     <ResponsiveContainer width="100%" height={260}>
-      <LineChart data={data} style={{ background: 'transparent' }}>
+      <LineChart data={sData} style={{ background: 'transparent' }}>
         {commonChildren}
         {showVentas && <Line type="monotone" dataKey="ventas" name="Ventas" stroke="#3B82F6" strokeWidth={2.5} dot={{ r: 3, fill: '#3B82F6', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
         {showGastos && <Line type="monotone" dataKey="gastos" name="Gastos" stroke="#EF4444" strokeWidth={2.5} dot={{ r: 3, fill: '#EF4444', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
@@ -169,7 +234,7 @@ function InteractiveChart({
 
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={data} barCategoryGap="30%" barGap={2} style={{ background: 'transparent' }}>
+      <BarChart data={sData} barCategoryGap="30%" barGap={2} style={{ background: 'transparent' }}>
         {commonChildren}
         {showVentas && <Bar dataKey="ventas" name="Ventas" fill="#3B82F6" radius={[4, 4, 0, 0]} />}
         {showGastos && <Bar dataKey="gastos" name="Gastos" fill="#EF4444" radius={[4, 4, 0, 0]} />}
@@ -188,7 +253,7 @@ function keyToLabel(key: string) {
 }
 type MesSlice = { ventas: number; efectivo: number; tarjeta: number; transf: number };
 type DiaCaja = { fecha: string; local: string; ventas: number; efectivo: number; tarjeta: number; transf: number };
-type DiaGasto = { fecha: string; sucursal: string; monto: number; proveedor?: string; subtipo?: string };
+type DiaGasto = { fecha: string; mesKey?: string; sucursal: string; monto: number; proveedor?: string; subtipo?: string };
 
 // Obtiene el lunes de la semana de una fecha ISO
 // FIX: no usar toISOString() — da fecha UTC, en UTC-3 devuelve domingo en lugar de lunes
@@ -217,6 +282,110 @@ function formatWeekLabel(iso: string): string {
   return `Sem ${parseInt(d)}/${parseInt(m)}`;
 }
 
+// ─── Modal de detalle de proveedor ────────────────────────
+function ProveedorModal({
+  nombre,
+  detalle,
+  onClose,
+}: {
+  nombre: string;
+  detalle: { total: number; meses: [string, number][]; locales: [string, number][] };
+  onClose: () => void;
+}) {
+  const maxMes = Math.max(...detalle.meses.map(([, v]) => v), 1);
+  const mesLabel = (k: string) => {
+    const [y, m] = k.split('-');
+    return `${['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][parseInt(m)-1]} ${y}`;
+  };
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
+        style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-0.5">Proveedor</p>
+            <h2 className="text-[18px] font-bold" style={{ color: 'var(--text)' }}>{nombre}</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-[10px] text-gray-400">Total período</p>
+              <p className="text-[16px] font-bold text-blue-600">{fmtFull(detalle.total)}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-400 text-lg leading-none"
+            >✕</button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 grid grid-cols-2 gap-6">
+          {/* Por mes */}
+          <div>
+            <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-3">Evolución mensual</p>
+            <div className="space-y-2.5">
+              {detalle.meses.length === 0
+                ? <p className="text-[11px] text-gray-400">Sin datos</p>
+                : detalle.meses.map(([k, v]) => (
+                  <div key={k} className="flex items-center gap-2.5">
+                    <span className="text-[11px] text-gray-500 w-16 shrink-0">{mesLabel(k)}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-2">
+                      <div className="h-2 rounded-full bg-blue-400 transition-all" style={{ width: `${(v / maxMes) * 100}%` }} />
+                    </div>
+                    <span className="text-[11px] font-semibold text-blue-600 w-24 text-right">{fmtFull(v)}</span>
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+
+          {/* Por local */}
+          <div>
+            <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase mb-3">Por local</p>
+            <div className="space-y-2.5">
+              {detalle.locales.length === 0
+                ? <p className="text-[11px] text-gray-400">Sin datos</p>
+                : detalle.locales.map(([loc, v]) => {
+                  const pct = detalle.total > 0 ? (v / detalle.total) * 100 : 0;
+                  return (
+                    <div key={loc} className="flex items-center gap-2.5">
+                      <span className="text-[11px] text-gray-500 w-16 shrink-0 truncate">{loc}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <div className="h-2 rounded-full bg-purple-400 transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[11px] font-semibold text-purple-600 w-24 text-right">{fmtFull(v)}</span>
+                    </div>
+                  );
+                })
+              }
+            </div>
+            {detalle.locales.length > 0 && (
+              <div className="mt-4 pt-3 border-t flex justify-between text-[11px]" style={{ borderColor: 'var(--border)' }}>
+                <span className="text-gray-400">% mayor local</span>
+                <span className="font-bold" style={{ color: 'var(--text)' }}>
+                  {detalle.locales[0]?.[0]} · {detalle.total > 0 ? ((detalle.locales[0]?.[1] / detalle.total) * 100).toFixed(0) : 0}%
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="px-6 pb-5">
+          <p className="text-[10px] text-gray-400 text-center">Hacé click fuera o en ✕ para cerrar</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────
 export default function VentasPage() {
   const [localSel, setLocalSel] = useState<string[]>([]);
@@ -241,6 +410,8 @@ export default function VentasPage() {
   const [compMes, setCompMes] = useState('');
   const [dateOpen, setDateOpen] = useState(false);
   const [loadingSheet, setLoadingSheet] = useState(true);
+  // Modal de proveedor
+  const [proveedorModal, setProveedorModal] = useState<{ nombre: string; localFilter: string | null } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -264,7 +435,13 @@ export default function VentasPage() {
         const setFactura = new Set<string>(facturas.ok ? Object.keys(gastosPorMes)             : []);
         const meses = [...new Set([...setCaja, ...setFactura])].sort();
         setMesesDisponibles(meses);
-        if (meses.length) { setMesDesde(meses[0]); setMesHasta(meses[meses.length - 1]); }
+        if (meses.length) {
+          // Default: mostrar solo el mes más reciente disponible
+          const ultimo = meses[meses.length - 1];
+          setMesDesde(ultimo);
+          setMesHasta(ultimo);
+          setMesPill(ultimo);
+        }
       })
       .catch(() => {})
       .finally(() => setLoadingSheet(false));
@@ -363,6 +540,7 @@ export default function VentasPage() {
     // ── Helper: top proveedores filtrado ─────────────────────────────────────
     function buildTopProveedores(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
       const provMap: Record<string, number> = {};
+      const provNombre: Record<string, string> = {};
       for (const r of rawDiasGastos) {
         if (!r.fecha || !r.proveedor) continue;
         if (localFilter !== null && r.sucursal !== localFilter) continue;
@@ -370,13 +548,16 @@ export default function VentasPage() {
           if (fDesde && r.fecha < fDesde) continue;
           if (fHasta && r.fecha > fHasta) continue;
         } else {
-          const mes = r.fecha.slice(0, 7);
+          // Usar mesKey (mes de pago) si disponible; si no, usar YYYY-MM de la fecha de emisión
+          const mes = r.mesKey ?? r.fecha.slice(0, 7);
           if (mDesde && mes < mDesde) continue;
           if (mHasta && mes > mHasta) continue;
         }
-        provMap[r.proveedor] = (provMap[r.proveedor] ?? 0) + r.monto;
+        const key = r.proveedor.toLowerCase();
+        if (!provNombre[key]) provNombre[key] = r.proveedor;
+        provMap[key] = (provMap[key] ?? 0) + r.monto;
       }
-      return Object.entries(provMap).sort(([, a], [, b]) => b - a).slice(0, 8).map(([nombre, monto]) => ({ nombre, monto }));
+      return Object.entries(provMap).sort(([, a], [, b]) => b - a).slice(0, 8).map(([key, monto]) => ({ nombre: provNombre[key], monto }));
     }
 
     // ── Helper: transacciones (cierres de caja) filtrado ─────────────────────
@@ -398,14 +579,122 @@ export default function VentasPage() {
       return count;
     }
 
+    // ── Helpers multi-local ───────────────────────────────────────────────────
+    function buildMultiLocalMonthChart(mDesde: string, mHasta: string, locals: string[]): MultiChartRow[] {
+      const meses = mesesDisponibles.filter(m => (!mDesde || m >= mDesde) && (!mHasta || m <= mHasta));
+      return meses.map(m => {
+        const row: MultiChartRow = { fecha: keyToLabel(m) };
+        for (let i = 0; i < locals.length; i++) {
+          row[`ventas_${i}`] = rawLocalMes[locals[i]]?.[m]?.ventas ?? 0;
+          row[`gastos_${i}`] = rawGastosMesSucursal[locals[i]]?.[m] ?? 0;
+        }
+        return row;
+      });
+    }
+
+    function buildMultiLocalDayChart(fDesde: string, fHasta: string, locals: string[]): MultiChartRow[] {
+      const perLocalDays: Record<string, Record<string, { ventas: number; gastos: number }>> = {};
+      const allDaysSet = new Set<string>();
+      for (const r of rawDiasCaja) {
+        if (!r.fecha || !locals.includes(r.local)) continue;
+        if (fDesde && r.fecha < fDesde) continue;
+        if (fHasta && r.fecha > fHasta) continue;
+        allDaysSet.add(r.fecha);
+        if (!perLocalDays[r.local]) perLocalDays[r.local] = {};
+        if (!perLocalDays[r.local][r.fecha]) perLocalDays[r.local][r.fecha] = { ventas: 0, gastos: 0 };
+        perLocalDays[r.local][r.fecha].ventas += r.ventas;
+      }
+      for (const r of rawDiasGastos) {
+        if (!r.fecha || !r.sucursal || !locals.includes(r.sucursal)) continue;
+        if (fDesde && r.fecha < fDesde) continue;
+        if (fHasta && r.fecha > fHasta) continue;
+        allDaysSet.add(r.fecha);
+        if (!perLocalDays[r.sucursal]) perLocalDays[r.sucursal] = {};
+        if (!perLocalDays[r.sucursal][r.fecha]) perLocalDays[r.sucursal][r.fecha] = { ventas: 0, gastos: 0 };
+        perLocalDays[r.sucursal][r.fecha].gastos += r.monto;
+      }
+      const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+      const sortedDays = [...allDaysSet].filter(d => ISO_RE.test(d)).sort();
+      if (sortedDays.length <= 31) {
+        return sortedDays.map(d => {
+          const row: MultiChartRow = { fecha: formatDayLabel(d) };
+          for (let i = 0; i < locals.length; i++) {
+            row[`ventas_${i}`] = perLocalDays[locals[i]]?.[d]?.ventas ?? 0;
+            row[`gastos_${i}`] = perLocalDays[locals[i]]?.[d]?.gastos ?? 0;
+          }
+          return row;
+        });
+      }
+      const porSemana: Record<string, Record<string, { ventas: number; gastos: number }>> = {};
+      for (const d of sortedDays) {
+        const lunes = getLunesSemana(d);
+        for (const local of locals) {
+          if (!porSemana[lunes]) porSemana[lunes] = {};
+          if (!porSemana[lunes][local]) porSemana[lunes][local] = { ventas: 0, gastos: 0 };
+          porSemana[lunes][local].ventas += perLocalDays[local]?.[d]?.ventas ?? 0;
+          porSemana[lunes][local].gastos += perLocalDays[local]?.[d]?.gastos ?? 0;
+        }
+      }
+      return Object.entries(porSemana).sort(([a], [b]) => a.localeCompare(b)).map(([lunes, byLocal]) => {
+        const row: MultiChartRow = { fecha: formatWeekLabel(lunes) };
+        for (let i = 0; i < locals.length; i++) {
+          row[`ventas_${i}`] = byLocal[locals[i]]?.ventas ?? 0;
+          row[`gastos_${i}`] = byLocal[locals[i]]?.gastos ?? 0;
+        }
+        return row;
+      });
+    }
+
+    // ── Modo multi-local (2+ locales seleccionados) ───────────────────────────
+    if (localSel.length >= 2) {
+      const localDefs: LocalDef[] = localSel.map((local, i) => ({
+        local, color: LOCAL_COLORS[i % LOCAL_COLORS.length], idx: i,
+      }));
+      let multiChartData: MultiChartRow[];
+      if (modoFiltro === 'dia') {
+        multiChartData = buildMultiLocalDayChart(fechaDesde, fechaHasta, localSel);
+      } else {
+        multiChartData = buildMultiLocalMonthChart(mesDesde, mesHasta, localSel);
+      }
+      const perLocalTotals = localSel.map((_, i) => ({
+        ventas: multiChartData.reduce((s, r) => s + ((r[`ventas_${i}`] as number) ?? 0), 0),
+        gastos: multiChartData.reduce((s, r) => s + ((r[`gastos_${i}`] as number) ?? 0), 0),
+      }));
+      const totalVentas = perLocalTotals[0].ventas;
+      const totalGastos = perLocalTotals[0].gastos;
+      const totalVentasComp = localSel.length === 2 ? perLocalTotals[1].ventas : 0;
+      const totalGastosComp = localSel.length === 2 ? perLocalTotals[1].gastos : 0;
+      const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
+      localSel.forEach((local, i) => { porLocalFiltrado[local] = perLocalTotals[i]; });
+      const topProveedores = modoFiltro === 'dia'
+        ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[0])
+        : buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[0]);
+      const topProveedoresComp = localSel.length === 2
+        ? (modoFiltro === 'dia'
+          ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[1])
+          : buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]))
+        : [];
+      const totalTransacciones = modoFiltro === 'dia'
+        ? buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', localSel[0])
+        : buildTransacciones('', '', mesDesde, mesHasta, 'mes', localSel[0]);
+      return {
+        totalVentas, totalGastos, totalVentasComp, totalGastosComp,
+        chartData: multiChartData as unknown as ChartRow[],
+        porLocalFiltrado, hasComp: localSel.length === 2, localDefs,
+        totalTransacciones, topProveedores, topProveedoresComp,
+      };
+    }
+
     // ── Determinar modo de comparación ───────────────────────────────────────
     const localFilter = localSel.length === 1 ? localSel[0] : null;
-    const isLocalComp = localSel.length === 2;
-    const isPeriodComp = !isLocalComp && compOn && !!compMes;
+    const isLocalComp = false; // multi-local path handles 2+ now
+    const isPeriodComp = compOn && !!compMes;
+    // Cuando hay comparación A vs B, dataA debe usar solo el primer local (no null)
+    const dataAFilter = localFilter;
 
     // ── Modo día/semana ───────────────────────────────────────────────────────
     if (modoFiltro === 'dia') {
-      const { data: dataA, porLocal } = buildDayChart(fechaDesde, fechaHasta, localFilter);
+      const { data: dataA, porLocal } = buildDayChart(fechaDesde, fechaHasta, dataAFilter);
       let chartData: ChartRow[] = dataA;
       let totalVentasComp = 0, totalGastosComp = 0;
       if (isLocalComp) {
@@ -416,13 +705,14 @@ export default function VentasPage() {
       }
       const totalVentas = dataA.reduce((s, r) => s + r.ventas, 0);
       const totalGastos = dataA.reduce((s, r) => s + r.gastos, 0);
-      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', localFilter);
-      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localFilter);
-      return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: isLocalComp, totalTransacciones, topProveedores };
+      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', dataAFilter);
+      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', dataAFilter);
+      const topProveedoresComp = isLocalComp ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[1]) : [];
+      return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: isLocalComp, totalTransacciones, topProveedores, topProveedoresComp };
     }
 
     // ── Modo mes ─────────────────────────────────────────────────────────────
-    const dataA = buildMonthChart(mesDesde, mesHasta, localFilter);
+    const dataA = buildMonthChart(mesDesde, mesHasta, dataAFilter);
     let chartData: ChartRow[] = dataA;
     let totalVentasComp = 0, totalGastosComp = 0;
     if (isLocalComp) {
@@ -460,13 +750,42 @@ export default function VentasPage() {
       }
     }
 
-    const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes', localFilter);
-    const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localFilter);
+    const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes', dataAFilter);
+    const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes', dataAFilter);
+    const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]) : [];
     const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
-    return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores };
+    return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores, topProveedoresComp };
   }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, localSel,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compOn, compMes]);
+
+  // ── Detalle de proveedor seleccionado ──────────────────────
+  const proveedorDetalle = useMemo(() => {
+    if (!proveedorModal) return null;
+    const { nombre, localFilter } = proveedorModal;
+    const porMes: Record<string, number> = {};
+    const porLocal: Record<string, number> = {};
+    let total = 0;
+    for (const r of rawDiasGastos) {
+      if (r.proveedor.toLowerCase() !== nombre.toLowerCase()) continue;
+      if (localFilter && r.sucursal !== localFilter) continue;
+      const mes = r.fecha?.slice(0, 7) ?? '';
+      if (modoFiltro === 'mes') {
+        if (mesDesde && mes < mesDesde) continue;
+        if (mesHasta && mes > mesHasta) continue;
+      } else {
+        if (fechaDesde && r.fecha < fechaDesde) continue;
+        if (fechaHasta && r.fecha > fechaHasta) continue;
+      }
+      porMes[mes] = (porMes[mes] ?? 0) + r.monto;
+      const suc = r.sucursal || 'Sin local';
+      porLocal[suc] = (porLocal[suc] ?? 0) + r.monto;
+      total += r.monto;
+    }
+    const meses = Object.entries(porMes).sort(([a], [b]) => a.localeCompare(b));
+    const locales = Object.entries(porLocal).sort(([, a], [, b]) => b - a);
+    return { total, meses, locales };
+  }, [proveedorModal, rawDiasGastos, mesDesde, mesHasta, fechaDesde, fechaHasta, modoFiltro]);
 
   const ventasReal = filteredData.totalVentas;
   const gastosReal = filteredData.totalGastos;
@@ -478,6 +797,8 @@ export default function VentasPage() {
   const chartData = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
   const localesDisponibles = Object.keys(rawLocalMes);
   const isLocalComp = localSel.length === 2;
+  const isMultiLocal = localSel.length >= 2;
+  const localDefs = (filteredData as any).localDefs as LocalDef[] | undefined;
 
   const handleExportChart = () => {
     exportToCSV(chartData.map(d => ({ Fecha: d.fecha, Ventas: d.ventas, Gastos: d.gastos })), 'ventas_gastos');
@@ -567,7 +888,7 @@ export default function VentasPage() {
               onClick={() => setLocalOpen(!localOpen)}
               className={clsx(
                 'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
-                isLocalComp
+                localSel.length >= 2
                   ? 'bg-purple-600 border-purple-600 text-white'
                   : localSel.length === 1
                     ? 'bg-blue-600 border-blue-600 text-white'
@@ -580,7 +901,9 @@ export default function VentasPage() {
                   ? 'Todos los locales'
                   : localSel.length === 1
                     ? localSel[0]
-                    : `${localSel[0]} vs ${localSel[1]}`}
+                    : localSel.length === 2
+                      ? `${localSel[0]} vs ${localSel[1]}`
+                      : `${localSel.length} locales`}
               </span>
               <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
@@ -590,9 +913,9 @@ export default function VentasPage() {
                 <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
                   <p className="text-[11px] font-bold" style={{ color: 'var(--text)' }}>
                     Seleccionar locales
-                    {isLocalComp && <span className="ml-1.5 text-purple-500">· Comparando</span>}
+                    {localSel.length >= 2 && <span className="ml-1.5 text-purple-500">· Comparando</span>}
                   </p>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>Elegí hasta 2 para comparar entre sí</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>Seleccioná los locales a comparar</p>
                 </div>
                 {localSel.length > 0 && (
                   <button onClick={() => setLocalSel([])}
@@ -602,30 +925,21 @@ export default function VentasPage() {
                   </button>
                 )}
                 {localesDisponibles.map(local => {
-                  const isA = localSel[0] === local;
-                  const isB = localSel[1] === local;
-                  const selected = isA || isB;
-                  const disabled = !selected && localSel.length >= 2;
+                  const selIdx = localSel.indexOf(local);
+                  const selected = selIdx !== -1;
+                  const color = selected ? LOCAL_COLORS[selIdx % LOCAL_COLORS.length] : undefined;
                   return (
                     <button key={local}
-                      onClick={() => {
-                        if (disabled) return;
-                        setLocalSel(prev => prev.includes(local) ? prev.filter(l => l !== local) : [...prev, local]);
-                      }}
-                      className={clsx('w-full text-left px-4 py-2.5 text-[12px] flex items-center gap-3 transition-colors',
-                        disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-50/10')}
+                      onClick={() => setLocalSel(prev => prev.includes(local) ? prev.filter(l => l !== local) : [...prev, local])}
+                      className="w-full text-left px-4 py-2.5 text-[12px] flex items-center gap-3 transition-colors hover:bg-gray-50/10"
                     >
-                      <span className={clsx(
-                        'w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 text-[10px] font-black border',
-                        isA ? 'bg-blue-500 border-blue-500 text-white' :
-                        isB ? 'bg-purple-500 border-purple-500 text-white' :
-                        'border-gray-300'
-                      )}>
-                        {isA ? 'A' : isB ? 'B' : ''}
+                      <span className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 text-[10px] font-black border"
+                        style={selected
+                          ? { background: color, borderColor: color, color: '#fff' }
+                          : { borderColor: 'var(--border-2)' }}>
+                        {selected ? String.fromCharCode(65 + selIdx) : ''}
                       </span>
-                      <span className="font-medium" style={{
-                        color: isA ? '#3B82F6' : isB ? '#8B5CF6' : 'var(--text)',
-                      }}>{local}</span>
+                      <span className="font-medium" style={{ color: selected ? color : 'var(--text)' }}>{local}</span>
                     </button>
                   );
                 })}
@@ -849,7 +1163,7 @@ export default function VentasPage() {
             }
           </div>
 
-          <InteractiveChart data={chartData} metrica={metrica} tipo={tipoGrafico} hasComp={hasComp} />
+          <InteractiveChart data={chartData} metrica={metrica} tipo={tipoGrafico} hasComp={hasComp && !isMultiLocal} localDefs={isMultiLocal ? localDefs : undefined} />
         </div>
 
         {/* ── Bottom Row ── */}
@@ -904,46 +1218,111 @@ export default function VentasPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 pb-2 border-b" style={{ borderColor: 'var(--border)' }}>
-              {['#', 'Proveedor', 'Monto', '%'].map(c => (
-                <p key={c} className="text-[9px] font-bold tracking-widest text-gray-400 uppercase">{c}</p>
-              ))}
-            </div>
-
-            <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-              {loadingSheet ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 py-2.5 animate-pulse">
-                    <div className="h-3 bg-gray-200 rounded w-4" />
-                    <div className="h-3 bg-gray-200 rounded" />
-                    <div className="h-3 bg-gray-200 rounded" />
-                    <div className="h-3 bg-gray-200 rounded w-8" />
-                  </div>
-                ))
-              ) : filteredData.topProveedores.length === 0 ? (
-                <p className="text-[11px] text-gray-400 py-4 text-center">Sin datos para el período seleccionado</p>
-              ) : (
-                filteredData.topProveedores.map((p, i) => {
-                  const pct = gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) : '0';
-                  return (
-                    <div key={p.nombre} className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 py-2.5 items-center hover:bg-gray-50/30 rounded-lg transition-colors">
-                      <span className="text-[11px] font-bold text-gray-400">#{i + 1}</span>
-                      <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--text)' }}>{p.nombre || '(sin nombre)'}</p>
-                      <p className="text-[11px] font-bold text-red-500">{fmtFull(p.monto)}</p>
-                      <div className="flex items-center gap-1">
-                        <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                          <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${Math.min(parseFloat(pct), 100)}%` }} />
-                        </div>
-                        <span className="text-[9px] text-gray-400 w-6 text-right">{pct}%</span>
-                      </div>
+            {filteredData.hasComp && filteredData.topProveedoresComp.length > 0 ? (
+              /* ── Modo comparativo: 2 columnas ── */
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { label: localSel[0], list: filteredData.topProveedores, gastos: gastosReal, color: 'text-blue-600', bar: 'bg-blue-400' },
+                  { label: localSel[1], list: filteredData.topProveedoresComp, gastos: gastosComp, color: 'text-purple-600', bar: 'bg-purple-400' },
+                ].map(({ label, list, gastos, color, bar }) => (
+                  <div key={label}>
+                    <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${color}`}>{label}</p>
+                    <div className="grid grid-cols-[1.5rem_1fr_5.5rem_3.5rem] gap-1.5 pb-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+                      {['#', 'Proveedor', 'Monto', '%'].map(c => (
+                        <p key={c} className="text-[9px] font-bold tracking-widest text-gray-400 uppercase">{c}</p>
+                      ))}
                     </div>
-                  );
-                })
-              )}
-            </div>
+                    <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                      {loadingSheet ? Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="grid grid-cols-[1.5rem_1fr_5.5rem_3.5rem] gap-1.5 py-2 animate-pulse">
+                          <div className="h-2.5 bg-gray-200 rounded w-3" />
+                          <div className="h-2.5 bg-gray-200 rounded" />
+                          <div className="h-2.5 bg-gray-200 rounded" />
+                          <div className="h-2.5 bg-gray-200 rounded w-6" />
+                        </div>
+                      )) : list.length === 0 ? (
+                        <p className="text-[11px] text-gray-400 py-3 text-center">Sin datos</p>
+                      ) : list.map((p, i) => {
+                        const pct = gastos > 0 ? ((p.monto / gastos) * 100).toFixed(1) : '0';
+                        return (
+                          <div
+                            key={p.nombre}
+                            onClick={() => setProveedorModal({ nombre: p.nombre, localFilter: label })}
+                            className="grid grid-cols-[1.5rem_1fr_5.5rem_3.5rem] gap-1.5 py-2 items-center rounded cursor-pointer hover:bg-gray-50/40 transition-colors"
+                          >
+                            <span className="text-[10px] font-bold text-gray-400">#{i + 1}</span>
+                            <p className="text-[10px] font-semibold truncate" style={{ color: 'var(--text)' }}>{p.nombre || '(sin nombre)'}</p>
+                            <p className={`text-[10px] font-bold ${color}`}>{fmtFull(p.monto)}</p>
+                            <div className="flex items-center gap-1">
+                              <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                                <div className={`h-1.5 rounded-full ${bar}`} style={{ width: `${Math.min(parseFloat(pct), 100)}%` }} />
+                              </div>
+                              <span className="text-[9px] text-gray-400 w-5 text-right">{pct}%</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* ── Modo normal: 1 columna ── */
+              <>
+                <div className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 pb-2 border-b" style={{ borderColor: 'var(--border)' }}>
+                  {['#', 'Proveedor', 'Monto', '%'].map(c => (
+                    <p key={c} className="text-[9px] font-bold tracking-widest text-gray-400 uppercase">{c}</p>
+                  ))}
+                </div>
+                <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {loadingSheet ? (
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <div key={i} className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 py-2.5 animate-pulse">
+                        <div className="h-3 bg-gray-200 rounded w-4" />
+                        <div className="h-3 bg-gray-200 rounded" />
+                        <div className="h-3 bg-gray-200 rounded" />
+                        <div className="h-3 bg-gray-200 rounded w-8" />
+                      </div>
+                    ))
+                  ) : filteredData.topProveedores.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 py-4 text-center">Sin datos para el período seleccionado</p>
+                  ) : (
+                    filteredData.topProveedores.map((p, i) => {
+                      const pct = gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) : '0';
+                      return (
+                        <div
+                          key={p.nombre}
+                          onClick={() => setProveedorModal({ nombre: p.nombre, localFilter: null })}
+                          className="grid grid-cols-[2rem_1fr_6rem_4rem] gap-2 py-2.5 items-center rounded-lg cursor-pointer hover:bg-gray-50/40 transition-colors"
+                        >
+                          <span className="text-[11px] font-bold text-gray-400">#{i + 1}</span>
+                          <p className="text-[11px] font-semibold truncate" style={{ color: 'var(--text)' }}>{p.nombre || '(sin nombre)'}</p>
+                          <p className="text-[11px] font-bold text-red-500">{fmtFull(p.monto)}</p>
+                          <div className="flex items-center gap-1">
+                            <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                              <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${Math.min(parseFloat(pct), 100)}%` }} />
+                            </div>
+                            <span className="text-[9px] text-gray-400 w-6 text-right">{pct}%</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </main>
+
+      {/* Modal proveedor */}
+      {proveedorModal && proveedorDetalle && (
+        <ProveedorModal
+          nombre={proveedorModal.nombre}
+          detalle={proveedorDetalle}
+          onClose={() => setProveedorModal(null)}
+        />
+      )}
     </div>
   );
 }

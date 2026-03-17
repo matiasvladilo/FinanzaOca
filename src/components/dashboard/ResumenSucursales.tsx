@@ -32,7 +32,7 @@ export default function ResumenSucursales({
       <div className="mb-4">
         <h3 className="text-[14px] font-bold text-gray-900 dark:text-white">Resumen por Sucursal</h3>
         <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-0.5">
-          Ventas · Gastos · Participación
+          Ventas · Gastos · Índice 50 · Participación
         </p>
       </div>
 
@@ -44,12 +44,15 @@ export default function ResumenSucursales({
               <th className="text-left pb-2 font-semibold">Sucursal</th>
               <th className="text-right pb-2 font-semibold">Ventas</th>
               <th className="text-right pb-2 font-semibold hidden sm:table-cell">Gastos</th>
+              <th className="text-right pb-2 font-semibold hidden md:table-cell">Índice 50</th>
               <th className="text-right pb-2 font-semibold">% Total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
             {distribucion.map((suc) => {
               const gastos = gastosPorSucursal[suc.nombre]?.gastos ?? 0;
+              const indice = suc.valor > 0 ? (gastos / suc.valor) * 100 : null;
+              const indiceOk = indice !== null && indice <= 50;
               return (
                 <tr key={suc.nombre} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                   <td className="py-2.5">
@@ -63,6 +66,13 @@ export default function ResumenSucursales({
                   </td>
                   <td className="py-2.5 text-right text-red-500 dark:text-red-400 font-medium hidden sm:table-cell">
                     {gastos > 0 ? formatCLPInt(gastos) : '—'}
+                  </td>
+                  <td className="py-2.5 text-right hidden md:table-cell">
+                    {indice !== null ? (
+                      <span className={`font-semibold ${indiceOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                        {indice.toFixed(1)}%
+                      </span>
+                    ) : '—'}
                   </td>
                   <td className="py-2.5 text-right">
                     <span className="inline-flex items-center justify-end gap-1.5">
@@ -82,6 +92,13 @@ export default function ResumenSucursales({
                 <td className="pt-2.5 font-bold text-gray-900 dark:text-white text-[11px] uppercase tracking-wide">Total</td>
                 <td className="pt-2.5 text-right font-bold text-gray-900 dark:text-white">{formatCLPInt(totalVentas)}</td>
                 <td className="pt-2.5 text-right font-bold text-red-500 dark:text-red-400 hidden sm:table-cell">{formatCLPInt(totalGastos)}</td>
+                <td className="pt-2.5 text-right hidden md:table-cell">
+                  {totalVentas > 0 ? (
+                    <span className={`font-bold ${(totalGastos / totalVentas) * 100 <= 50 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                      {((totalGastos / totalVentas) * 100).toFixed(1)}%
+                    </span>
+                  ) : '—'}
+                </td>
                 <td className="pt-2.5 text-right text-gray-400 dark:text-gray-500 font-semibold">100%</td>
               </tr>
             </tfoot>

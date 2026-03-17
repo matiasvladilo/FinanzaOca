@@ -107,6 +107,13 @@ export function getLocalesConfig(): LocalSheetConfig[] {
   ].filter(l => l.id); // excluir locales sin ID configurado
 }
 
+/** Planilla única de producción (Panadería + Pastelería en columna Local) */
+export function getProduccionConfig(): LocalSheetConfig | null {
+  const id = process.env.SHEET_PRODUCCION_ID ?? '';
+  if (!id) return null;
+  return { nombre: 'Produccion', id, tabs: TABS };
+}
+
 // ── Alias de compatibilidad (no romper código existente) ─────────────────────
 export function getSheetsConfig() {
   return { id: process.env.SHEET_VENTAS_ID ?? '', tabs: TABS };

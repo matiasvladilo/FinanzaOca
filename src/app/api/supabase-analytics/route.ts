@@ -18,7 +18,6 @@ import { getSupabaseClient } from '@/lib/supabase';
 import { withCache } from '@/lib/data/cache';
 
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutos
-function cacheKey(meses: number) { return `supabase-analytics-v1-${meses}m`; }
 
 // ─── SCHEMA — nombres reales de ConectOca ────────────────────────────────
 const SCHEMA = {
@@ -45,24 +44,39 @@ const SCHEMA = {
 } as const;
 
 // ─── Rango de consulta ────────────────────────────────────────────────────
-function getFechaDesde(meses: number): string {
+function resolveRango(params: {
+  meses?: number;
+  mesDesde?: string; mesHasta?: string;
+  fechaDesde?: string; fechaHasta?: string;
+}): { desde: string; hasta: string } {
+  // 1) Fechas exactas (YYYY-MM-DD)
+  if (params.fechaDesde && params.fechaHasta) {
+    return { desde: params.fechaDesde, hasta: params.fechaHasta };
+  }
+  // 2) Rango por mes (YYYY-MM)
+  if (params.mesDesde && params.mesHasta) {
+    const [dy, dm] = params.mesDesde.split('-').map(Number);
+    const [hy, hm] = params.mesHasta.split('-').map(Number);
+    const desde = new Date(dy, dm - 1, 1);
+    const hasta = new Date(hy, hm, 0); // último día del mes hasta
+    return {
+      desde: desde.toISOString().slice(0, 10),
+      hasta: hasta.toISOString().slice(0, 10),
+    };
+  }
+  // 3) Fallback: N meses hacia atrás
+  const meses = params.meses ?? 12;
   const d = new Date();
   d.setMonth(d.getMonth() - meses);
   d.setDate(1);
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
-}
-
-function getFechaHasta(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1); // incluir hoy
-  return d.toISOString().slice(0, 10);
+  const f = new Date();
+  f.setDate(f.getDate() + 1);
+  return { desde: d.toISOString().slice(0, 10), hasta: f.toISOString().slice(0, 10) };
 }
 
 // ─── Fetch principal ──────────────────────────────────────────────────────
-async function fetchSupabaseAnalytics(meses: number) {
+async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   const db = getSupabaseClient();
-  const fechaDesde = getFechaDesde(meses);
-  const fechaHasta = getFechaHasta();
 
   // Tres queries en paralelo — solo columnas necesarias, rango acotado
   const [ordersRes, itemsRes, areasRes] = await Promise.all([
@@ -179,8 +193,8 @@ async function fetchSupabaseAnalytics(meses: number) {
     porCategoria,
     areas: Object.values(areaMap), // nombres de áreas disponibles
     fechaDesde,
+    fechaHasta,
     fetchedAt: new Date().toISOString(),
-    meses,
   };
 }
 
@@ -198,8 +212,17 @@ export async function GET(request: Request) {
   const mesesParam = parseInt(searchParams.get('meses') ?? '12', 10);
   const meses = isNaN(mesesParam) || mesesParam < 1 ? 12 : Math.min(mesesParam, 24);
 
+  const { desde, hasta } = resolveRango({
+    meses,
+    mesDesde:   searchParams.get('mesDesde')   ?? undefined,
+    mesHasta:   searchParams.get('mesHasta')   ?? undefined,
+    fechaDesde: searchParams.get('fechaDesde') ?? undefined,
+    fechaHasta: searchParams.get('fechaHasta') ?? undefined,
+  });
+  const key = `supabase-analytics-v1-${desde}/${hasta}`;
+
   try {
-    const data = await withCache(cacheKey(meses), () => fetchSupabaseAnalytics(meses), CACHE_TTL);
+    const data = await withCache(key, () => fetchSupabaseAnalytics(desde, hasta), CACHE_TTL);
     return NextResponse.json({ ok: true, configured: true, ...data });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error desconocido';

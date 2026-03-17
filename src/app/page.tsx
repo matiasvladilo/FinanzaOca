@@ -17,7 +17,7 @@ import type { CierreCajaResponse, VentasResponse } from '@/types/api';
 import { toast } from '@/components/ui/Toast';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { exportToCSV } from '@/lib/csv-export';
-import { getSucursalColor, sortSucursales } from '@/config/sucursales';
+import { getSucursalColor, getSucursalConfig, sortSucursales } from '@/config/sucursales';
 import { computeTrendInsights, computeMarginInsight } from '@/lib/analytics/trends';
 import { computeRankingInsights } from '@/lib/analytics/rankings';
 
@@ -52,6 +52,7 @@ export default function DashboardPage() {
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
   const [dateOpen, setDateOpen] = useState(false);
   const [mesComp, setMesComp]       = useState('');       // mes de comparación
+  const [selectedSucursales, setSelectedSucursales] = useState<string[]>([]);
   const [compOn, setCompOn]         = useState(false);    // toggle comparación
   const [compareType, setCompareType] = useState<'mes' | 'local'>('mes');
   const [localA, setLocalA]         = useState('');
@@ -300,6 +301,27 @@ export default function DashboardPage() {
       ...(marginInsight ? [marginInsight] : []),
     ];
   }, [ccData, mesFiltro, computed]);
+
+  // ── Datos del gráfico por sucursal seleccionada (multi-compare) ──────────
+  const sucursalSeriesConfig = useMemo(() => {
+    return selectedSucursales.map(nombre => ({
+      nombre,
+      color: getSucursalColor(nombre),
+    }));
+  }, [selectedSucursales]);
+
+  const sucursalChartData = useMemo(() => {
+    if (!selectedSucursales.length || !ccData?.ok) return null;
+    const { porLocalMes, mesesDisponibles } = ccData;
+    return mesesDisponibles.map((key) => {
+      const mes = parseInt(key.split('-')[1], 10);
+      const row: Record<string, any> = { dia: MESES_SHORT[mes] + ' ' + key.split('-')[0] };
+      for (const suc of selectedSucursales) {
+        row[suc] = porLocalMes[suc]?.[key]?.ventas ?? 0;
+      }
+      return row;
+    });
+  }, [ccData, selectedSucursales]);
 
   // ── Sucursales para el filtro del Header ─────────────────────────────────
   const sucursalesDisponibles = useMemo(() => {
@@ -589,18 +611,23 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
           <div className="lg:col-span-2">
             <DailyPerformanceChart
-              data={activeData?.realChartData ?? []}
+              data={sucursalChartData ?? (activeData?.realChartData ?? [])}
               chartType={filters.vista === 'granular' ? 'line' : 'bar'}
               loading={loading}
+              accentColor={filters.sucursal !== 'Todas' ? getSucursalConfig(filters.sucursal).color : '#2563EB'}
+              sucursalSeries={sucursalSeriesConfig}
             />
           </div>
           <div className="lg:col-span-1">
             <DistributionTreemap
               data={activeData?.distribucion ?? []}
-              onSucursalClick={(nombre) =>
-                setFilters(f => ({ ...f, sucursal: f.sucursal === nombre ? 'Todas' : nombre }))
+              onSucursalToggle={(nombre) =>
+                setSelectedSucursales(prev =>
+                  prev.includes(nombre) ? prev.filter(s => s !== nombre) : [...prev, nombre]
+                )
               }
-              activeSucursal={filters.sucursal}
+              onClearSelection={() => setSelectedSucursales([])}
+              activeSucursales={selectedSucursales}
               loading={loading}
             />
           </div>

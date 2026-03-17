@@ -11,7 +11,7 @@ import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { withCache } from '@/lib/data/cache';
 
-const CACHE_KEY = 'cierre-caja';
+const CACHE_KEY = 'cierre-caja-v3';
 
 async function fetchLocalCierreCaja(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:J5000`);
@@ -40,7 +40,7 @@ async function fetchLocalCierreCaja(nombre: string, sheetId: string, tab: string
     })
     .map((r, i) => {
       const fecha    = parseFecha(r[idx.fecha] ?? '');
-      const mes      = parseInt(r[idx.mes] ?? '0', 10) || fecha.mes;
+      const mes      = fecha.mes; // usar fecha de venta, no columna Mes
       const efectivo = parseMonto(r[idx.efectivo] ?? '');
       const tarjeta  = parseMonto(r[idx.tarjeta]  ?? '');
       const transf   = parseMonto(r[idx.transf]   ?? '');
@@ -87,10 +87,12 @@ async function fetchCierreCaja() {
   const totalTarjeta  = registros.reduce((s, r) => s + r.tarjeta,    0);
   const totalTransf   = registros.reduce((s, r) => s + r.transf,     0);
 
+  const ANIO_ACTUAL = new Date().getFullYear();
+
   // ── Gráfico por mes ─────────────────────────────────────────────────────
   const porMes: Record<string, { mes: number; anio: number; ventas: number; efectivo: number; tarjeta: number; transf: number }> = {};
   for (const r of registros) {
-    if (!r.mes || r.anio < 2000) continue;
+    if (!r.mes || r.anio < 2020 || r.anio > ANIO_ACTUAL) continue;
     const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
     if (!porMes[key]) porMes[key] = { mes: r.mes, anio: r.anio, ventas: 0, efectivo: 0, tarjeta: 0, transf: 0 };
     porMes[key].ventas   += r.totalVenta;
@@ -124,7 +126,7 @@ async function fetchCierreCaja() {
   type MesSlice = { ventas: number; efectivo: number; tarjeta: number; transf: number };
   const porLocalMes: Record<string, Record<string, MesSlice>> = {};
   for (const r of registros) {
-    if (!r.mes || r.anio < 2000) continue;
+    if (!r.mes || r.anio < 2020 || r.anio > ANIO_ACTUAL) continue;
     const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
     if (!porLocalMes[r.local]) porLocalMes[r.local] = {};
     if (!porLocalMes[r.local][key]) porLocalMes[r.local][key] = { ventas: 0, efectivo: 0, tarjeta: 0, transf: 0 };
