@@ -9,6 +9,7 @@ app.use('/test',            require('./routes/test'));
 app.use('/generate-report', require('./routes/report'));
 app.use('/send-email',      require('./routes/email'));
 app.use('/cron',            require('./routes/cron'));
+app.use('/send-report',     require('./routes/sendReport'));
 
 const PORT = process.env.PORT ?? 3001;
 app.listen(PORT, () => {
