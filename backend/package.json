@@ -4,6 +4,7 @@
   "description": "Backend Express para FinanzaOca — desplegable en Render",
   "main": "index.js",
   "scripts": {
+    "build": "echo 'build ok'",
     "start": "node index.js",
     "dev": "node --watch index.js"
   },
