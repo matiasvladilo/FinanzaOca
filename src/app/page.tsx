@@ -44,23 +44,43 @@ function getPreviousMonthKey(key: string): string {
 
 const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucursal: 'Todas', vista: 'overview' };
 
+function ssGet(key: string, fallback: string): string {
+  try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+function ssGetJSON<T>(key: string, fallback: T): T {
+  try { const v = sessionStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+
 export default function DashboardPage() {
-  const [filters, setFilters]   = useState<DashboardFilters>(defaultFilters);
-  const [mesFiltro, setMesFiltro] = useState<string>('');
-  const [fechaDesde, setFechaDesde] = useState('');
-  const [fechaHasta, setFechaHasta] = useState('');
-  const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
+  const [filters, setFilters]   = useState<DashboardFilters>(() => ssGetJSON('dash_filters', defaultFilters));
+  const [mesFiltro, setMesFiltro] = useState<string>(() => ssGet('dash_mesFiltro', ''));
+  const [fechaDesde, setFechaDesde] = useState(() => ssGet('dash_fechaDesde', ''));
+  const [fechaHasta, setFechaHasta] = useState(() => ssGet('dash_fechaHasta', ''));
+  const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>(() => ssGet('dash_modoFiltro', 'mes') as 'mes' | 'dia');
   const [dateOpen, setDateOpen] = useState(false);
-  const [mesComp, setMesComp]       = useState('');       // mes de comparación
-  const [selectedSucursales, setSelectedSucursales] = useState<string[]>([]);
-  const [compOn, setCompOn]         = useState(false);    // toggle comparación
-  const [compareType, setCompareType] = useState<'mes' | 'local'>('mes');
-  const [localA, setLocalA]         = useState('');
-  const [localB, setLocalB]         = useState('');
+  const [mesComp, setMesComp]       = useState(() => ssGet('dash_mesComp', ''));
+  const [selectedSucursales, setSelectedSucursales] = useState<string[]>(() => ssGetJSON('dash_selectedSucursales', []));
+  const [compOn, setCompOn]         = useState(() => ssGet('dash_compOn', 'false') === 'true');
+  const [compareType, setCompareType] = useState<'mes' | 'local'>(() => ssGet('dash_compareType', 'mes') as 'mes' | 'local');
+  const [localA, setLocalA]         = useState(() => ssGet('dash_localA', ''));
+  const [localB, setLocalB]         = useState(() => ssGet('dash_localB', ''));
   const dateRef = useRef<HTMLDivElement>(null);
   const [ccData, setCcData]     = useState<CierreCajaResponse | null>(null);
   const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
+
+  // Persistir filtros en sessionStorage
+  useEffect(() => { try { sessionStorage.setItem('dash_filters', JSON.stringify(filters)); } catch {} }, [filters]);
+  useEffect(() => { try { sessionStorage.setItem('dash_mesFiltro', mesFiltro); } catch {} }, [mesFiltro]);
+  useEffect(() => { try { sessionStorage.setItem('dash_modoFiltro', modoFiltro); } catch {} }, [modoFiltro]);
+  useEffect(() => { try { sessionStorage.setItem('dash_fechaDesde', fechaDesde); } catch {} }, [fechaDesde]);
+  useEffect(() => { try { sessionStorage.setItem('dash_fechaHasta', fechaHasta); } catch {} }, [fechaHasta]);
+  useEffect(() => { try { sessionStorage.setItem('dash_compOn', String(compOn)); } catch {} }, [compOn]);
+  useEffect(() => { try { sessionStorage.setItem('dash_compareType', compareType); } catch {} }, [compareType]);
+  useEffect(() => { try { sessionStorage.setItem('dash_mesComp', mesComp); } catch {} }, [mesComp]);
+  useEffect(() => { try { sessionStorage.setItem('dash_localA', localA); } catch {} }, [localA]);
+  useEffect(() => { try { sessionStorage.setItem('dash_localB', localB); } catch {} }, [localB]);
+  useEffect(() => { try { sessionStorage.setItem('dash_selectedSucursales', JSON.stringify(selectedSucursales)); } catch {} }, [selectedSucursales]);
 
   useEffect(() => {
     Promise.all([
@@ -70,8 +90,12 @@ export default function DashboardPage() {
       setCcData(cc);
       setVData(v);
       if (cc.mesesDisponibles?.length) {
-        const ultimo = [...cc.mesesDisponibles].sort().at(-1);
-        if (ultimo) setMesFiltro(ultimo);
+        const sorted = [...cc.mesesDisponibles].sort();
+        const saved = ssGet('dash_mesFiltro', '');
+        if (!saved || !sorted.includes(saved)) {
+          const ultimo = sorted.at(-1);
+          if (ultimo) setMesFiltro(ultimo);
+        }
       }
     }).catch(() => toast('Error cargando datos', 'error'))
       .finally(() => setLoading(false));

@@ -9,14 +9,19 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.79.0",
     "@supabase/supabase-js": "^2.99.1",
     "clsx": "^2.1.1",
+    "dom-to-image-more": "^3.7.2",
     "googleapis": "^171.4.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.577.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "recharts": "^3.8.0"
+    "recharts": "^3.8.0",
+    "resend": "^6.9.4"
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.15.9",

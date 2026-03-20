@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, TrendingUp, ShoppingBag,
-  Trash2, Settings, Gauge, BarChart3, Factory,
+  Trash2, Settings, Gauge, BarChart3, Factory, FileText,
 } from 'lucide-react';
 
 const navItems = [
@@ -14,6 +14,7 @@ const navItems = [
   { label: 'Productos',     href: '/productos',      icon: ShoppingBag },
   { label: 'Merma',         href: '/merma',          icon: Trash2 },
   { label: 'Producción',    href: '/produccion',     icon: Factory },
+  { label: 'Informes',      href: '/informes',       icon: FileText },
 ];
 
 export default function Sidebar() {

@@ -136,7 +136,7 @@ async function fetchMerma(local: string, desde: Date, hasta: Date) {
 // ── Fetch ventas desde Supabase (ConectOca) ──────────────────────────────────
 async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-    return { orders: [], items: [], areaMap: {} as Record<string, string> };
+    return { orders: [], items: [], areaMap: {} as Record<string, string>, productCategoryMap: {} as Record<string, string> };
   }
   const db = getSupabaseClient();
   const [ordersRes, itemsRes, categoriesRes, productsRes] = await Promise.all([

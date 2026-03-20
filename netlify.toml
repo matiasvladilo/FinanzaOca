@@ -8,3 +8,16 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# ── Funciones programadas (Informes automáticos) ──────────────────────────────
+# Variables de entorno requeridas en el panel de Netlify:
+#   CRON_SECRET, NEXT_PUBLIC_BASE_URL, REPORT_RECIPIENTS, RESEND_API_KEY, RESEND_FROM
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Informe diario — 08:00 hora Chile (UTC-3 → 11:00 UTC)
+[[scheduled_functions]]
+  name = "scheduled-reports"
+  cron = "0 11 * * *"

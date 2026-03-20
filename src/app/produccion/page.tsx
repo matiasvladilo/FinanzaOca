@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -100,6 +100,7 @@ export default function ProduccionPage() {
   const [error, setError]     = useState<string | null>(null);
   const [local, setLocal]     = useState('Todos');
   const [localOpen, setLocalOpen] = useState(false);
+  const localRef = useRef<HTMLDivElement>(null);
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
 
   // Defaults: mes actual y hace 2 meses
@@ -115,6 +116,16 @@ export default function ProduccionPage() {
   const [mesHasta,   setMesHasta]   = useState(defaultMesHasta);
   const [fechaDesde, setFechaDesde] = useState(defaultFechaDesde);
   const [fechaHasta, setFechaHasta] = useState(defaultFechaHasta);
+
+  // Cierra dropdown al hacer click fuera
+  useEffect(() => {
+    if (!localOpen) return;
+    function handler(e: MouseEvent) {
+      if (localRef.current && !localRef.current.contains(e.target as Node)) setLocalOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [localOpen]);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -253,7 +264,7 @@ export default function ProduccionPage() {
 
           {/* Local */}
           {data?.locales && data.locales.length > 1 && (
-            <div className="relative">
+            <div className="relative" ref={localRef}>
               <button
                 onClick={() => setLocalOpen(o => !o)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[12px] font-medium transition-colors"
@@ -384,7 +395,7 @@ export default function ProduccionPage() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(v: number) => fmtFull(v)}
+                        formatter={(v: unknown) => fmtFull(Number(v))}
                         contentStyle={{
                           borderRadius: '12px',
                           border: '1px solid var(--border-2)',
@@ -484,8 +495,10 @@ export default function ProduccionPage() {
                     <YAxis type="category" dataKey="nombre" width={130}
                       tick={{ fontSize: 11, fill: 'var(--text-2)' }} axisLine={false} tickLine={false} />
                     <Tooltip
-                      formatter={(v: number, name: string) =>
-                        name === 'unidades' ? [`${v.toLocaleString('es-CL')} u.`, 'Unidades'] : [fmtFull(v), 'Ingresos']}
+                      formatter={(v: unknown, name: unknown) => {
+                        const n = Number(v);
+                        return String(name) === 'unidades' ? [`${n.toLocaleString('es-CL')} u.`, 'Unidades'] : [fmtFull(n), 'Ingresos'];
+                      }}
                       contentStyle={{
                         borderRadius: '12px',
                         border: '1px solid var(--border-2)',
@@ -497,7 +510,7 @@ export default function ProduccionPage() {
                     <Bar dataKey="unidades" name="Unidades" fill="#3B82F6" radius={[0, 6, 6, 0]}>
                       <LabelList dataKey="unidades" position="right"
                         style={{ fontSize: 10, fill: 'var(--text-3)', fontWeight: 600 }}
-                        formatter={(v: number) => v.toLocaleString('es-CL')} />
+                        formatter={(v: unknown) => Number(v).toLocaleString('es-CL')} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>

@@ -82,7 +82,11 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   return registros;
 }
 
-async function fetchVentas() {
+export async function fetchVentasData() {
+  return withCache(CACHE_KEY, fetchVentasRaw);
+}
+
+async function fetchVentasRaw() {
   const locales = getLocalesConfig();
 
   const results = await Promise.allSettled(
@@ -190,12 +194,12 @@ export async function GET(req: NextRequest) {
     // Si viene un ?tab= personalizado, leer sin caché (caso especial)
     const { searchParams } = new URL(req.url);
     if (searchParams.get('tab')) {
-      const data = await fetchVentas();
+      const data = await fetchVentasData();
       if (!data) return NextResponse.json({ ok: true, registros: [], kpi: null, chartData: [] });
       return NextResponse.json({ ok: true, ...data });
     }
 
-    const data = await withCache(CACHE_KEY, fetchVentas);
+    const data = await fetchVentasData();
     if (!data) return NextResponse.json({ ok: true, registros: [], kpi: null, chartData: [] });
     return NextResponse.json({ ok: true, ...data });
   } catch (error: unknown) {

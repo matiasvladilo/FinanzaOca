@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   AreaChart, Area,
   LineChart, Line,
   BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, LabelList,
 } from 'recharts';
 import {
   Search, Bell, Calendar, ChevronDown, MapPin,
@@ -19,6 +19,7 @@ import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
+import { getSucursalColor } from '@/config/sucursales';
 
 // ─── tipos ───────────────────────────────────────────────
 type Periodo = '7D' | '14D' | '30D';
@@ -116,18 +117,84 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 // ─── Componente del gráfico interactivo ──────────────────
 function InteractiveChart({
-  data, metrica, tipo, hasComp, localDefs,
+  data, metrica, tipo, hasComp, localDefs, localName,
 }: {
   data: ChartRow[] | MultiChartRow[];
   metrica: Metrica;
   tipo: TipoGrafico;
   hasComp?: boolean;
   localDefs?: LocalDef[];
+  localName?: string; // local único seleccionado
 }) {
   const yFmt = (v: number) => fmt(v);
   const showVentas = metrica === 'ventas' || metrica === 'ambos';
   const showGastos = metrica === 'gastos' || metrica === 'ambos';
   const isMulti = !!localDefs && localDefs.length >= 2;
+
+  // Colores según local seleccionado (o defaults genéricos)
+  const colorVentas = localName ? getSucursalColor(localName) : '#3B82F6';
+  const colorGastos = localName ? getSucursalColor(localName) + 'AA' : '#EF4444';
+  const isBar = tipo === 'barras';
+
+  // Totales por local (solo modo multi)
+  const mDataForTotals = isMulti ? data as MultiChartRow[] : [];
+  const localTotals = isMulti ? localDefs!.map(d => ({
+    ...d,
+    ventas: mDataForTotals.reduce((s, r) => s + (((r[`ventas_${d.idx}`]) as number) ?? 0), 0),
+    gastos: mDataForTotals.reduce((s, r) => s + (((r[`gastos_${d.idx}`]) as number) ?? 0), 0),
+  })) : [];
+
+  // ── Leyenda lateral ───────────────────────────────────────
+  const SideLegend = () => (
+    <div className="flex flex-col gap-3 justify-center pl-4 border-l" style={{ minWidth: 130, borderColor: 'var(--border)' }}>
+      {isMulti ? (
+        localTotals.map(d => (
+          <div key={d.idx} className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
+              <span className="text-[11px] font-semibold" style={{ color: 'var(--text-2)' }}>{d.local}</span>
+            </div>
+            {showVentas && (
+              <div className="text-[10px] pl-4 font-medium" style={{ color: d.color }}>
+                V: {fmt(d.ventas)}
+              </div>
+            )}
+            {showGastos && (
+              <div className="text-[10px] pl-4" style={{ color: d.color, opacity: 0.65 }}>
+                G: {fmt(d.gastos)}
+              </div>
+            )}
+          </div>
+        ))
+      ) : (
+        [
+          ...(showVentas ? [{ key: 'v', color: colorVentas, label: 'Ventas' }] : []),
+          ...(showGastos ? [{ key: 'g', color: colorGastos, label: 'Gastos' }] : []),
+          ...(hasComp && showVentas ? [{ key: 'vc', color: colorVentas, label: 'Ventas comp.', dashed: true }] : []),
+          ...(hasComp && showGastos ? [{ key: 'gc', color: colorGastos, label: 'Gastos comp.', dashed: true }] : []),
+        ].map(item => (
+          <div key={item.key} className="flex items-center gap-2">
+            <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 18 }}>
+              {(item as { dashed?: boolean }).dashed ? (
+                <svg width="18" height="8" viewBox="0 0 18 8">
+                  <line x1="0" y1="4" x2="18" y2="4" stroke={item.color} strokeWidth="2" strokeDasharray="4 2" />
+                </svg>
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: item.color }} />
+              )}
+            </div>
+            <span className="text-[11px] leading-tight" style={{ color: 'var(--text-3)' }}>{item.label}</span>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  const barLabel = (key: string) => isBar ? (
+    <LabelList dataKey={key} position="top"
+      formatter={(v: unknown) => typeof v === 'number' && v > 0 ? fmt(v) : ''}
+      style={{ fontSize: '9px', fill: 'var(--chart-axis)', fontWeight: 600 }} />
+  ) : null;
 
   const commonChildren = (
     <>
@@ -135,15 +202,20 @@ function InteractiveChart({
       <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} />
       <YAxis tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} tickFormatter={yFmt} width={52} />
       <Tooltip content={<CustomTooltip />} />
-      <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }}
-        formatter={(v) => <span style={{ color: 'var(--chart-axis)' }}>{v}</span>} />
     </>
+  );
+
+  const wrap = (chart: React.ReactNode) => (
+    <div className="flex items-stretch gap-2">
+      <div className="flex-1 min-w-0">{chart}</div>
+      <SideLegend />
+    </div>
   );
 
   // ── Modo multi-local: una serie por local ────────────────
   if (isMulti) {
     const mData = data as MultiChartRow[];
-    if (tipo === 'area') return (
+    if (tipo === 'area') return wrap(
       <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={mData} style={{ background: 'transparent' }}>
           <defs>
@@ -167,7 +239,7 @@ function InteractiveChart({
       </ResponsiveContainer>
     );
 
-    if (tipo === 'linea') return (
+    if (tipo === 'linea') return wrap(
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={mData} style={{ background: 'transparent' }}>
           {commonChildren}
@@ -183,15 +255,19 @@ function InteractiveChart({
       </ResponsiveContainer>
     );
 
-    return (
+    return wrap(
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={mData} barCategoryGap="25%" barGap={2} style={{ background: 'transparent' }}>
+        <BarChart data={mData} barCategoryGap="25%" barGap={2} margin={{ top: 22 }} style={{ background: 'transparent' }}>
           {commonChildren}
           {localDefs!.flatMap(d => [
             showVentas && <Bar key={`v${d.idx}`} dataKey={`ventas_${d.idx}`} name={d.local}
-              fill={d.color} radius={[4, 4, 0, 0]} />,
+              fill={d.color} radius={[4, 4, 0, 0]}>
+              {barLabel(`ventas_${d.idx}`)}
+            </Bar>,
             showGastos && <Bar key={`g${d.idx}`} dataKey={`gastos_${d.idx}`} name={`${d.local} Gastos`}
-              fill={d.color} opacity={0.45} radius={[4, 4, 0, 0]} />,
+              fill={d.color} opacity={0.45} radius={[4, 4, 0, 0]}>
+              {barLabel(`gastos_${d.idx}`)}
+            </Bar>,
           ])}
         </BarChart>
       </ResponsiveContainer>
@@ -200,46 +276,46 @@ function InteractiveChart({
 
   // ── Modo normal / comparación de período ─────────────────
   const sData = data as ChartRow[];
-  if (tipo === 'area') return (
+  if (tipo === 'area') return wrap(
     <ResponsiveContainer width="100%" height={260}>
       <AreaChart data={sData} style={{ background: 'transparent' }}>
         <defs>
           <linearGradient id="gV" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15} /><stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+            <stop offset="5%" stopColor={colorVentas} stopOpacity={0.15} /><stop offset="95%" stopColor={colorVentas} stopOpacity={0} />
           </linearGradient>
           <linearGradient id="gG" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#EF4444" stopOpacity={0.12} /><stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+            <stop offset="5%" stopColor={colorGastos} stopOpacity={0.12} /><stop offset="95%" stopColor={colorGastos} stopOpacity={0} />
           </linearGradient>
         </defs>
         {commonChildren}
-        {showVentas && <Area type="monotone" dataKey="ventas" name="Ventas" stroke="#3B82F6" strokeWidth={3} fill="url(#gV)" dot={false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />}
-        {showGastos && <Area type="monotone" dataKey="gastos" name="Gastos" stroke="#EF4444" strokeWidth={2.5} fill="url(#gG)" dot={false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />}
-        {hasComp && showVentas && <Area type="monotone" dataKey="ventasComp" name="Ventas (comp.)" stroke="#93C5FD" strokeWidth={2} strokeDasharray="5 3" fill="none" dot={false} activeDot={{ r: 4 }} />}
-        {hasComp && showGastos && <Area type="monotone" dataKey="gastosComp" name="Gastos (comp.)" stroke="#FCA5A5" strokeWidth={2} strokeDasharray="5 3" fill="none" dot={false} activeDot={{ r: 4 }} />}
+        {showVentas && <Area type="monotone" dataKey="ventas" name="Ventas" stroke={colorVentas} strokeWidth={3} fill="url(#gV)" dot={false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />}
+        {showGastos && <Area type="monotone" dataKey="gastos" name="Gastos" stroke={colorGastos} strokeWidth={2.5} fill="url(#gG)" dot={false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />}
+        {hasComp && showVentas && <Area type="monotone" dataKey="ventasComp" name="Ventas (comp.)" stroke={colorVentas} strokeWidth={2} strokeDasharray="5 3" fill="none" dot={false} activeDot={{ r: 4 }} />}
+        {hasComp && showGastos && <Area type="monotone" dataKey="gastosComp" name="Gastos (comp.)" stroke={colorGastos} strokeWidth={2} strokeDasharray="5 3" fill="none" dot={false} activeDot={{ r: 4 }} />}
       </AreaChart>
     </ResponsiveContainer>
   );
 
-  if (tipo === 'linea') return (
+  if (tipo === 'linea') return wrap(
     <ResponsiveContainer width="100%" height={260}>
       <LineChart data={sData} style={{ background: 'transparent' }}>
         {commonChildren}
-        {showVentas && <Line type="monotone" dataKey="ventas" name="Ventas" stroke="#3B82F6" strokeWidth={2.5} dot={{ r: 3, fill: '#3B82F6', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
-        {showGastos && <Line type="monotone" dataKey="gastos" name="Gastos" stroke="#EF4444" strokeWidth={2.5} dot={{ r: 3, fill: '#EF4444', stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
-        {hasComp && showVentas && <Line type="monotone" dataKey="ventasComp" name="Ventas (comp.)" stroke="#93C5FD" strokeWidth={2} strokeDasharray="5 3" dot={false} activeDot={{ r: 4 }} />}
-        {hasComp && showGastos && <Line type="monotone" dataKey="gastosComp" name="Gastos (comp.)" stroke="#FCA5A5" strokeWidth={2} strokeDasharray="5 3" dot={false} activeDot={{ r: 4 }} />}
+        {showVentas && <Line type="monotone" dataKey="ventas" name="Ventas" stroke={colorVentas} strokeWidth={2.5} dot={{ r: 3, fill: colorVentas, stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
+        {showGastos && <Line type="monotone" dataKey="gastos" name="Gastos" stroke={colorGastos} strokeWidth={2.5} dot={{ r: 3, fill: colorGastos, stroke: '#fff', strokeWidth: 2 }} activeDot={{ r: 5 }} />}
+        {hasComp && showVentas && <Line type="monotone" dataKey="ventasComp" name="Ventas (comp.)" stroke={colorVentas} strokeWidth={2} strokeDasharray="5 3" dot={false} activeDot={{ r: 4 }} />}
+        {hasComp && showGastos && <Line type="monotone" dataKey="gastosComp" name="Gastos (comp.)" stroke={colorGastos} strokeWidth={2} strokeDasharray="5 3" dot={false} activeDot={{ r: 4 }} />}
       </LineChart>
     </ResponsiveContainer>
   );
 
-  return (
+  return wrap(
     <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={sData} barCategoryGap="30%" barGap={2} style={{ background: 'transparent' }}>
+      <BarChart data={sData} barCategoryGap="30%" barGap={2} margin={{ top: 22 }} style={{ background: 'transparent' }}>
         {commonChildren}
-        {showVentas && <Bar dataKey="ventas" name="Ventas" fill="#3B82F6" radius={[4, 4, 0, 0]} />}
-        {showGastos && <Bar dataKey="gastos" name="Gastos" fill="#EF4444" radius={[4, 4, 0, 0]} />}
-        {hasComp && showVentas && <Bar dataKey="ventasComp" name="Ventas (comp.)" fill="#93C5FD" radius={[4, 4, 0, 0]} />}
-        {hasComp && showGastos && <Bar dataKey="gastosComp" name="Gastos (comp.)" fill="#FCA5A5" radius={[4, 4, 0, 0]} />}
+        {showVentas && <Bar dataKey="ventas" name="Ventas" fill={colorVentas} radius={[4, 4, 0, 0]}>{barLabel('ventas')}</Bar>}
+        {showGastos && <Bar dataKey="gastos" name="Gastos" fill={colorGastos} radius={[4, 4, 0, 0]}>{barLabel('gastos')}</Bar>}
+        {hasComp && showVentas && <Bar dataKey="ventasComp" name="Ventas (comp.)" fill={colorVentas} opacity={0.5} radius={[4, 4, 0, 0]}>{barLabel('ventasComp')}</Bar>}
+        {hasComp && showGastos && <Bar dataKey="gastosComp" name="Gastos (comp.)" fill={colorGastos} opacity={0.5} radius={[4, 4, 0, 0]}>{barLabel('gastosComp')}</Bar>}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -392,6 +468,8 @@ export default function VentasPage() {
   const [localOpen, setLocalOpen] = useState(false);
   const [metrica, setMetrica] = useState<Metrica>('ambos');
   const [tipoGrafico, setTipoGrafico] = useState<TipoGrafico>('area');
+  const localRef = useRef<HTMLDivElement>(null);
+  const dateRef  = useRef<HTMLDivElement>(null);
   // ── Estado raw desde Sheets ──────────────────────────────
   const [rawLocalMes, setRawLocalMes] = useState<Record<string, Record<string, MesSlice>>>({});
   const [rawGastosMes, setRawGastosMes] = useState<Record<string, number>>({});
@@ -412,6 +490,25 @@ export default function VentasPage() {
   const [loadingSheet, setLoadingSheet] = useState(true);
   // Modal de proveedor
   const [proveedorModal, setProveedorModal] = useState<{ nombre: string; localFilter: string | null } | null>(null);
+
+  // Cierra dropdowns al hacer click fuera
+  useEffect(() => {
+    if (!localOpen) return;
+    function handler(e: MouseEvent) {
+      if (localRef.current && !localRef.current.contains(e.target as Node)) setLocalOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [localOpen]);
+
+  useEffect(() => {
+    if (!dateOpen) return;
+    function handler(e: MouseEvent) {
+      if (dateRef.current && !dateRef.current.contains(e.target as Node)) setDateOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dateOpen]);
 
   useEffect(() => {
     Promise.all([
@@ -648,7 +745,7 @@ export default function VentasPage() {
     // ── Modo multi-local (2+ locales seleccionados) ───────────────────────────
     if (localSel.length >= 2) {
       const localDefs: LocalDef[] = localSel.map((local, i) => ({
-        local, color: LOCAL_COLORS[i % LOCAL_COLORS.length], idx: i,
+        local, color: getSucursalColor(local, i), idx: i,
       }));
       let multiChartData: MultiChartRow[];
       if (modoFiltro === 'dia') {
@@ -660,8 +757,12 @@ export default function VentasPage() {
         ventas: multiChartData.reduce((s, r) => s + ((r[`ventas_${i}`] as number) ?? 0), 0),
         gastos: multiChartData.reduce((s, r) => s + ((r[`gastos_${i}`] as number) ?? 0), 0),
       }));
-      const totalVentas = perLocalTotals[0].ventas;
-      const totalGastos = perLocalTotals[0].gastos;
+      const totalVentas = localSel.length === 2
+        ? perLocalTotals[0].ventas
+        : perLocalTotals.reduce((s, l) => s + l.ventas, 0);
+      const totalGastos = localSel.length === 2
+        ? perLocalTotals[0].gastos
+        : perLocalTotals.reduce((s, l) => s + l.gastos, 0);
       const totalVentasComp = localSel.length === 2 ? perLocalTotals[1].ventas : 0;
       const totalGastosComp = localSel.length === 2 ? perLocalTotals[1].gastos : 0;
       const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
@@ -767,7 +868,7 @@ export default function VentasPage() {
     const porLocal: Record<string, number> = {};
     let total = 0;
     for (const r of rawDiasGastos) {
-      if (r.proveedor.toLowerCase() !== nombre.toLowerCase()) continue;
+      if ((r.proveedor ?? '').toLowerCase() !== nombre.toLowerCase()) continue;
       if (localFilter && r.sucursal !== localFilter) continue;
       const mes = r.fecha?.slice(0, 7) ?? '';
       if (modoFiltro === 'mes') {
@@ -834,7 +935,7 @@ export default function VentasPage() {
           />
 
           {/* Rango días */}
-          <div className="relative">
+          <div className="relative" ref={dateRef}>
             <button
               onClick={() => setDateOpen(!dateOpen)}
               className={clsx(
@@ -883,7 +984,7 @@ export default function VentasPage() {
           </div>
 
           {/* Locales multi-select (hasta 2 para comparar) */}
-          <div className="relative">
+          <div className="relative" ref={localRef}>
             <button
               onClick={() => setLocalOpen(!localOpen)}
               className={clsx(
@@ -995,7 +1096,7 @@ export default function VentasPage() {
         <div className="grid grid-cols-4 gap-4">
           {[
             {
-              label: 'Revenue Total', value: loadingSheet ? '...' : fmtFull(ventasReal),
+              label: 'Ventas Total', value: loadingSheet ? '...' : fmtFull(ventasReal),
               comp: hasComp && ventasComp > 0 ? fmtFull(ventasComp) : null,
               deltaPct: hasComp && ventasComp > 0 ? (((ventasReal - ventasComp) / ventasComp) * 100).toFixed(1) : null,
               icon: <DollarSign className="w-4 h-4 text-blue-600" />, bg: 'bg-blue-50',
@@ -1163,7 +1264,7 @@ export default function VentasPage() {
             }
           </div>
 
-          <InteractiveChart data={chartData} metrica={metrica} tipo={tipoGrafico} hasComp={hasComp && !isMultiLocal} localDefs={isMultiLocal ? localDefs : undefined} />
+          <InteractiveChart data={chartData} metrica={metrica} tipo={tipoGrafico} hasComp={hasComp && !isMultiLocal} localDefs={isMultiLocal ? localDefs : undefined} localName={localSel.length === 1 ? localSel[0] : undefined} />
         </div>
 
         {/* ── Bottom Row ── */}

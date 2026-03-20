@@ -64,7 +64,11 @@ async function fetchLocalCierreCaja(nombre: string, sheetId: string, tab: string
     .filter(r => r.totalVenta > 0); // descartar filas vacías
 }
 
-async function fetchCierreCaja() {
+export async function fetchCierreCajaData() {
+  return withCache(CACHE_KEY, fetchCierreCajaRaw);
+}
+
+async function fetchCierreCajaRaw() {
   const locales = getLocalesConfig();
 
   // Leer los 4 sheets en paralelo
@@ -171,7 +175,7 @@ async function fetchCierreCaja() {
 
 export async function GET() {
   try {
-    const data = await withCache(CACHE_KEY, fetchCierreCaja);
+    const data = await fetchCierreCajaData();
     if (!data) {
       return NextResponse.json({
         ok: true,
