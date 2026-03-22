@@ -17,10 +17,10 @@ export interface SucursalConfig {
  */
 export const SUCURSAL_CONFIG: Record<string, SucursalConfig> = {
   // Colores visualmente distintos para identificación rápida en gráficos multi-local
-  'PV':       { color: '#2563EB', colorLight: '#DBEAFE', label: 'Providencia' },   // azul
-  'La Reina': { color: '#059669', colorLight: '#D1FAE5', label: 'La Reina' },      // verde
-  'PT':       { color: '#D97706', colorLight: '#FEF3C7', label: 'Puente' },        // ámbar
-  'Bilbao':   { color: '#DC2626', colorLight: '#FEE2E2', label: 'Bilbao' },        // rojo
+  'La Reina': { color: '#2563EB', colorLight: '#DBEAFE', label: 'La Reina' },      // azul
+  'PV':       { color: '#10B981', colorLight: '#D1FAE5', label: 'Providencia' },   // verde
+  'PT':       { color: '#D97706', colorLight: '#FEF3C7', label: 'Puente' },        // naranjo
+  'Bilbao':   { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Bilbao' },        // morado
   // ─── Agregar nuevos locales aquí ───────────────────────────────────────────
   // 'Nueva Sucursal': { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Nueva Sucursal' },
 };

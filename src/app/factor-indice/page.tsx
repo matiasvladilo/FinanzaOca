@@ -29,10 +29,10 @@ function mesLabel(key: string) {
 }
 
 const SUC_COLORS: Record<string, string> = {
-  'La Reina': '#3B82F6',
-  'PV':       '#8B5CF6',
-  'PT':       '#10B981',
-  'Bilbao':   '#F59E0B',
+  'La Reina': '#2563EB',   // azul
+  'PV':       '#10B981',   // verde
+  'PT':       '#D97706',   // naranjo
+  'Bilbao':   '#7C3AED',   // morado
 };
 function getSucColor(suc: string, i: number) {
   return SUC_COLORS[suc] ?? ['#6366F1', '#EC4899', '#14B8A6', '#F97316'][i % 4];
@@ -458,147 +458,131 @@ export default function FactorIndicePage() {
           />
         )}
 
-        {/* Top row */}
-        <div className="grid grid-cols-3 gap-5">
-
-          {/* Factor Card */}
-          <div className="col-span-1 rounded-2xl p-6 shadow-sm flex flex-col justify-between"
-            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="space-y-4">
-              <div className={clsx(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 text-[11px] font-bold',
-                loading ? 'border-gray-300 text-gray-400' :
-                  isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
-              )}>
-                {isOpt ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                {loading ? 'CARGANDO…' : isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
-              </div>
-
-              <div>
-                <p className="text-[12px] font-medium mb-2" style={{ color: 'var(--text-3)' }}>
-                  Factor Índice — {mesSeleccionado ? mesLabel(mesSeleccionado) : ''}
-                  {sucSel.length > 0 && sucSel.length < allSucs.length && (
-                    <span className="ml-1" style={{ color: 'var(--active-text)' }}>({sucSel.join(', ')})</span>
-                  )}
-                </p>
-                <div className="flex items-end gap-3">
-                  <p className={clsx('text-[52px] font-black leading-none',
-                    loading ? 'text-gray-400' : !isOpt ? 'text-red-500' : ''
-                  )} style={{ color: loading ? undefined : isOpt ? 'var(--text)' : undefined }}>
-                    {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
-                  </p>
-                  {factorGlobal !== null && !loading && (
-                    <div className="flex items-center gap-1 pb-2">
-                      {isOpt
-                        ? <TrendingDown className="w-4 h-4 text-green-500" />
-                        : <TrendingUp   className="w-4 h-4 text-red-500"   />}
-                      <span className={clsx('text-[13px] font-bold', isOpt ? 'text-green-600' : 'text-red-500')}>
-                        {isOpt ? 'Bajo umbral' : 'Sobre umbral'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <p className="text-[12px] mt-2" style={{ color: 'var(--text-3)' }}>
-                  Objetivo: por debajo del 50% · (Gastos / Ventas) × 100
-                </p>
-              </div>
-
-              {factorGlobal !== null && (
-                <div>
-                  <div className="flex justify-between text-[10px] mb-1.5" style={{ color: 'var(--text-3)' }}>
-                    <span>0%</span>
-                    <span className="text-orange-500 font-semibold">Umbral 50%</span>
-                    <span>100%</span>
-                  </div>
-                  <div className="w-full rounded-full h-2.5 relative" style={{ background: 'var(--hover)' }}>
-                    <div
-                      className={clsx('h-2.5 rounded-full transition-all duration-700', isOpt ? 'bg-blue-500' : 'bg-red-500')}
-                      style={{ width: `${Math.min(factorGlobal, 100)}%` }}
-                    />
-                    <div className="absolute top-0 left-1/2 w-0.5 h-2.5 bg-orange-400" />
-                  </div>
-                </div>
-              )}
+        {/* Chart — full width */}
+        <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>
+                Índice 50 por {modo === 'semana' ? 'Semana' : 'Día'}
+              </h3>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
+                (Gastos / Ventas) × 100 · punto verde ≤50% · rojo &gt;50%
+              </p>
             </div>
-
-            <button onClick={() => setShowModal(true)}
-              className="mt-6 w-full py-3 rounded-xl text-[13px] font-semibold transition-all"
-              style={{ border: '2px solid var(--border-2)', color: 'var(--text-2)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
-              Ver Detalle por {modo === 'semana' ? 'Semana' : 'Día'}
-            </button>
+            <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤50%
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;50%
+              </span>
+            </div>
           </div>
 
-          {/* Chart */}
-          <div className="col-span-2 rounded-2xl p-5 shadow-sm"
-            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>
-                  Índice 50 por {modo === 'semana' ? 'Semana' : 'Día'}
-                </h3>
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
-                  (Gastos / Ventas) × 100 · punto verde ≤50% · rojo &gt;50%
-                </p>
-              </div>
-              <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤50%
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;50%
-                </span>
-              </div>
+          {loading ? (
+            <div className="h-[300px] rounded-xl animate-pulse" style={{ background: 'var(--hover)' }} />
+          ) : indice50Data.length === 0 ? (
+            <div className="h-[300px] flex items-center justify-center">
+              <p className="text-[12px]" style={{ color: 'var(--text-3)' }}>Sin datos para el período seleccionado</p>
             </div>
-
-            {loading ? (
-              <div className="h-[230px] rounded-xl animate-pulse" style={{ background: 'var(--hover)' }} />
-            ) : indice50Data.length === 0 ? (
-              <div className="h-[230px] flex items-center justify-center">
-                <p className="text-[12px]" style={{ color: 'var(--text-3)' }}>Sin datos para el período seleccionado</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={230}>
-                <LineChart data={indice50Data} style={{ background: 'transparent' }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                  <XAxis dataKey="semana" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} />
-                  <YAxis
-                    domain={[0, 100]}
-                    tick={{ fontSize: 10, fill: 'var(--chart-axis)' }}
-                    axisLine={false} tickLine={false}
-                    tickFormatter={v => `${v}%`}
-                    width={38}
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={indice50Data} style={{ background: 'transparent' }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                <XAxis dataKey="semana" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} />
+                <YAxis
+                  domain={[0, 100]}
+                  tick={{ fontSize: 10, fill: 'var(--chart-axis)' }}
+                  axisLine={false} tickLine={false}
+                  tickFormatter={v => `${v}%`}
+                  width={38}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend iconType="circle" iconSize={8}
+                  wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
+                  formatter={v => <span style={{ color: 'var(--chart-axis)' }}>{v}</span>} />
+                <ReferenceLine
+                  y={50} stroke="#EF4444" strokeWidth={1.5}
+                  label={{ value: '50', position: 'insideTopRight', fontSize: 10, fill: '#EF4444', fontWeight: 700 }}
+                />
+                {sucursalesVisibles.map((suc, i) => (
+                  <Line
+                    key={suc}
+                    type="monotone"
+                    dataKey={suc}
+                    name={suc}
+                    stroke={getSucColor(suc, i)}
+                    strokeWidth={2.5}
+                    dot={<CustomDot />}
+                    activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2 }}
+                    connectNulls
                   />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend iconType="circle" iconSize={8}
-                    wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
-                    formatter={v => <span style={{ color: 'var(--chart-axis)' }}>{v}</span>} />
-                  <ReferenceLine
-                    y={50} stroke="#EF4444" strokeWidth={1.5}
-                    label={{ value: '50', position: 'insideTopRight', fontSize: 10, fill: '#EF4444', fontWeight: 700 }}
-                  />
-                  {sucursalesVisibles.map((suc, i) => (
-                    <Line
-                      key={suc}
-                      type="monotone"
-                      dataKey={suc}
-                      name={suc}
-                      stroke={getSucColor(suc, i)}
-                      strokeWidth={2.5}
-                      dot={<CustomDot />}
-                      activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2 }}
-                      connectNulls
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Bottom row */}
-        <div className="grid grid-cols-3 gap-5 pb-6">
+        <div className="grid grid-cols-4 gap-5 pb-6">
+
+          {/* Factor Card — compacto */}
+          <div className="col-span-1 rounded-2xl p-4 shadow-sm flex flex-col gap-3"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: 'var(--text-3)' }}>
+                Factor Índice
+              </p>
+              <div className={clsx(
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold',
+                loading ? 'border-gray-300 text-gray-400' :
+                  isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
+              )}>
+                {isOpt ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                {loading ? '…' : isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
+              </div>
+            </div>
+            <div className="flex items-end gap-2">
+              <p className={clsx('text-[38px] font-black leading-none',
+                loading ? 'text-gray-400' : isOpt ? '' : 'text-red-500'
+              )} style={{ color: loading ? undefined : isOpt ? 'var(--text)' : undefined }}>
+                {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
+              </p>
+              {factorGlobal !== null && !loading && (
+                <div className="flex items-center gap-1 pb-1">
+                  {isOpt ? <TrendingDown className="w-3.5 h-3.5 text-green-500" /> : <TrendingUp className="w-3.5 h-3.5 text-red-500" />}
+                  <span className={clsx('text-[11px] font-bold', isOpt ? 'text-green-600' : 'text-red-500')}>
+                    {isOpt ? 'Bajo umbral' : 'Sobre umbral'}
+                  </span>
+                </div>
+              )}
+            </div>
+            {factorGlobal !== null && (
+              <div>
+                <div className="flex justify-between text-[9px] mb-1" style={{ color: 'var(--text-3)' }}>
+                  <span>0%</span><span className="text-orange-500 font-semibold">50%</span><span>100%</span>
+                </div>
+                <div className="w-full rounded-full h-2 relative" style={{ background: 'var(--hover)' }}>
+                  <div className={clsx('h-2 rounded-full transition-all duration-700', isOpt ? 'bg-blue-500' : 'bg-red-500')}
+                    style={{ width: `${Math.min(factorGlobal, 100)}%` }} />
+                  <div className="absolute top-0 left-1/2 w-0.5 h-2 bg-orange-400" />
+                </div>
+              </div>
+            )}
+            <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+              (Gastos / Ventas) × 100 · objetivo &lt;50%
+              {sucSel.length > 0 && sucSel.length < allSucs.length && (
+                <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
+              )}
+            </p>
+            <button onClick={() => setShowModal(true)}
+              className="mt-auto py-2 rounded-xl text-[12px] font-semibold transition-all"
+              style={{ border: '1.5px solid var(--border-2)', color: 'var(--text-2)' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
+              Ver Detalle
+            </button>
+          </div>
 
           {/* Ventas vs Gastos */}
           <div className="col-span-2 rounded-2xl p-6 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>

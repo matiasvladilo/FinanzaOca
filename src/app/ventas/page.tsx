@@ -6,13 +6,13 @@ import {
   LineChart, Line,
   BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LabelList,
+  ResponsiveContainer, LabelList, Cell,
 } from 'recharts';
 import {
   Search, Bell, Calendar, ChevronDown, MapPin,
   Download, TrendingUp, TrendingDown,
   DollarSign, ShoppingCart,
-  BarChart2, Receipt, Activity, LayoutGrid, GitCompare,
+  BarChart2, Receipt, Activity, LayoutGrid, GitCompare, Wallet,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
@@ -79,7 +79,7 @@ type ChartRow = {
 };
 type MultiChartRow = Record<string, string | number>;
 type LocalDef = { local: string; color: string; idx: number };
-const LOCAL_COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B'];
+const LOCAL_COLORS = ['#2563EB', '#10B981', '#D97706', '#7C3AED']; // La Reina azul, PV verde, PT naranjo, Bilbao morado
 
 // ─── Tooltip custom ──────────────────────────────────────
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -117,14 +117,15 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 // ─── Componente del gráfico interactivo ──────────────────
 function InteractiveChart({
-  data, metrica, tipo, hasComp, localDefs, localName,
+  data, metrica, tipo, hasComp, localDefs, localName, showPresupuesto,
 }: {
   data: ChartRow[] | MultiChartRow[];
   metrica: Metrica;
   tipo: TipoGrafico;
   hasComp?: boolean;
   localDefs?: LocalDef[];
-  localName?: string; // local único seleccionado
+  localName?: string;
+  showPresupuesto?: boolean;
 }) {
   const yFmt = (v: number) => fmt(v);
   const showVentas = metrica === 'ventas' || metrica === 'ambos';
@@ -172,6 +173,7 @@ function InteractiveChart({
           ...(showGastos ? [{ key: 'g', color: colorGastos, label: 'Gastos' }] : []),
           ...(hasComp && showVentas ? [{ key: 'vc', color: colorVentas, label: 'Ventas comp.', dashed: true }] : []),
           ...(hasComp && showGastos ? [{ key: 'gc', color: colorGastos, label: 'Gastos comp.', dashed: true }] : []),
+          ...(showPresupuesto ? [{ key: 'pres', color: '#EF4444', label: 'Presupuesto' }] : []),
         ].map(item => (
           <div key={item.key} className="flex items-center gap-2">
             <div className="flex-shrink-0 flex items-center justify-center" style={{ width: 18 }}>
@@ -258,15 +260,27 @@ function InteractiveChart({
     return wrap(
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={mData} barCategoryGap="25%" barGap={2} margin={{ top: 22 }} style={{ background: 'transparent' }}>
+          <defs>
+            {localDefs!.map(d => (
+              <pattern key={`hatch_${d.idx}`} id={`hatch_${d.idx}`} patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+                <rect width="6" height="6" fill={d.color} fillOpacity={0.15} />
+                <line x1="0" y1="0" x2="0" y2="6" stroke={d.color} strokeWidth="2.5" strokeOpacity={0.75} />
+              </pattern>
+            ))}
+          </defs>
           {commonChildren}
           {localDefs!.flatMap(d => [
-            showVentas && <Bar key={`v${d.idx}`} dataKey={`ventas_${d.idx}`} name={d.local}
-              fill={d.color} radius={[4, 4, 0, 0]}>
-              {barLabel(`ventas_${d.idx}`)}
+            <Bar key={`v${d.idx}`} dataKey={`ventas_${d.idx}`} name={d.local}
+              fill={d.color} opacity={showVentas ? 1 : 0} radius={[4, 4, 0, 0]}>
+              {showVentas ? barLabel(`ventas_${d.idx}`) : null}
             </Bar>,
-            showGastos && <Bar key={`g${d.idx}`} dataKey={`gastos_${d.idx}`} name={`${d.local} Gastos`}
-              fill={d.color} opacity={0.45} radius={[4, 4, 0, 0]}>
-              {barLabel(`gastos_${d.idx}`)}
+            <Bar key={`g${d.idx}`} dataKey={`gastos_${d.idx}`} name={`${d.local} Gastos`}
+              fill={showGastos ? `url(#hatch_${d.idx})` : d.color} opacity={showGastos ? 1 : 0} radius={[4, 4, 0, 0]}>
+              {showGastos ? barLabel(`gastos_${d.idx}`) : null}
+            </Bar>,
+            <Bar key={`pres${d.idx}`} dataKey={`presupuesto_${d.idx}`} name={`${d.local} Presup.`}
+              fill="#EF4444" opacity={showPresupuesto ? 0.55 : 0} radius={[4, 4, 0, 0]}>
+              {showPresupuesto ? barLabel(`presupuesto_${d.idx}`) : null}
             </Bar>,
           ])}
         </BarChart>
@@ -316,6 +330,7 @@ function InteractiveChart({
         {showGastos && <Bar dataKey="gastos" name="Gastos" fill={colorGastos} radius={[4, 4, 0, 0]}>{barLabel('gastos')}</Bar>}
         {hasComp && showVentas && <Bar dataKey="ventasComp" name="Ventas (comp.)" fill={colorVentas} opacity={0.5} radius={[4, 4, 0, 0]}>{barLabel('ventasComp')}</Bar>}
         {hasComp && showGastos && <Bar dataKey="gastosComp" name="Gastos (comp.)" fill={colorGastos} opacity={0.5} radius={[4, 4, 0, 0]}>{barLabel('gastosComp')}</Bar>}
+        {showPresupuesto && <Bar dataKey="presupuesto" name="Presupuesto" fill="#EF4444" opacity={0.55} radius={[4, 4, 0, 0]}>{barLabel('presupuesto')}</Bar>}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -462,6 +477,9 @@ function ProveedorModal({
   );
 }
 
+// ─── Tipo presupuesto ─────────────────────────────────────
+interface PresupuestoRow { local: string; mes: number; año: number; presupuesto: number; }
+
 // ─── Página principal ─────────────────────────────────────
 export default function VentasPage() {
   const [localSel, setLocalSel] = useState<string[]>([]);
@@ -490,6 +508,9 @@ export default function VentasPage() {
   const [loadingSheet, setLoadingSheet] = useState(true);
   // Modal de proveedor
   const [proveedorModal, setProveedorModal] = useState<{ nombre: string; localFilter: string | null } | null>(null);
+  // Presupuesto
+  const [presupuestoOn, setPresupuestoOn] = useState(false);
+  const [presupuestoData, setPresupuestoData] = useState<PresupuestoRow[]>([]);
 
   // Cierra dropdowns al hacer click fuera
   useEffect(() => {
@@ -509,6 +530,12 @@ export default function VentasPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [dateOpen]);
+
+  useEffect(() => {
+    fetch('/api/presupuesto').then(r => r.json()).then(res => {
+      if (res.ok) setPresupuestoData(res.data ?? []);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -901,6 +928,81 @@ export default function VentasPage() {
   const isMultiLocal = localSel.length >= 2;
   const localDefs = (filteredData as any).localDefs as LocalDef[] | undefined;
 
+  // ── Reverse map: label → YYYY-MM (para cruzar chartData con presupuesto) ──
+  const labelToKey = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of mesesDisponibles) map[keyToLabel(m)] = m;
+    return map;
+  }, [mesesDisponibles]);
+
+  // ── Chart data enriquecido con presupuesto ────────────────
+  const chartDataWithPres = useMemo(() => {
+    const base = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
+    if (!presupuestoOn || !presupuestoData.length) return base;
+    const getP = (mesKey: string, local: string | null): number => {
+      if (!mesKey) return 0;
+      const [añoStr, mesStr] = mesKey.split('-');
+      const año = parseInt(añoStr), mes = parseInt(mesStr);
+      const byMonth = presupuestoData.filter(r => r.año === año && r.mes === mes);
+      if (!byMonth.length) return 0;
+      if (local) {
+        // Match flexible: exact, substring o partial (maneja "La Reina" vs "LA OCA LA REINA")
+        const ll = local.toLowerCase();
+        const match = byMonth.find(r => {
+          const rl = r.local.toLowerCase();
+          return rl === ll || rl.includes(ll) || ll.includes(rl);
+        });
+        return match?.presupuesto ?? 0;
+      }
+      // Sin filtro de local: suma todos los locales del mes
+      return byMonth.reduce((s, r) => s + r.presupuesto, 0);
+    };
+    if (isMultiLocal && localDefs) {
+      return (base as MultiChartRow[]).map(row => {
+        const mesKey = labelToKey[row.fecha as string] ?? '';
+        const extra: Record<string, number> = {};
+        for (const def of localDefs) extra[`presupuesto_${def.idx}`] = getP(mesKey, def.local);
+        return { ...row, ...extra };
+      });
+    }
+    return (base as ChartRow[]).map(row => ({
+      ...row,
+      presupuesto: getP(labelToKey[row.fecha] ?? '', localSel.length === 1 ? localSel[0] : null),
+    }));
+  }, [filteredData.chartData, presupuestoOn, presupuestoData, labelToKey, localSel, isMultiLocal, localDefs, localesDisponibles]);
+
+  // ── Proyección de ventas ───────────────────────────────────
+  const proyeccionData = useMemo(() => {
+    if (!mesDesde) return [];
+    const mes = mesDesde; // YYYY-MM (usa el mes inicial del filtro)
+    const [year, month] = mes.split('-').map(Number);
+    const totalDias = new Date(year, month, 0).getDate();
+    const lista = localSel.length > 0 ? localSel : localesDisponibles;
+
+    return lista.map(local => {
+      const ventasActual = rawLocalMes[local]?.[mes]?.ventas ?? 0;
+      // Días únicos con registros de venta para este local y mes
+      const diasConRegistros = new Set(
+        rawDiasCaja
+          .filter(r => r.local === local && r.fecha?.startsWith(mes) && r.ventas > 0)
+          .map(r => r.fecha)
+      ).size;
+      const proyeccion = diasConRegistros > 0
+        ? Math.round((ventasActual / diasConRegistros) * totalDias)
+        : 0;
+      const restante = Math.max(0, proyeccion - ventasActual);
+      return {
+        local,
+        real: ventasActual,
+        restante,
+        proyeccion,
+        diasConRegistros,
+        totalDias,
+        color: getSucursalColor(local),
+      };
+    }).filter(d => d.proyeccion > 0 || d.real > 0);
+  }, [rawDiasCaja, rawLocalMes, mesDesde, localSel, localesDisponibles]);
+
   const handleExportChart = () => {
     exportToCSV(chartData.map(d => ({ Fecha: d.fecha, Ventas: d.ventas, Gastos: d.gastos })), 'ventas_gastos');
     toast('Datos del gráfico exportados');
@@ -1079,6 +1181,20 @@ export default function VentasPage() {
             </>
           )}
 
+          {/* Presupuesto toggle */}
+          <button
+            onClick={() => setPresupuestoOn(v => !v)}
+            className={clsx(
+              'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+              presupuestoOn
+                ? 'bg-emerald-600 border-emerald-600 text-white'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600',
+            )}
+          >
+            <Wallet className="w-3.5 h-3.5 opacity-80" />
+            <span className="font-semibold text-[11px]">Presupuesto</span>
+          </button>
+
           <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 w-44">
             <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <input type="text" placeholder="Buscar..." className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400" />
@@ -1114,8 +1230,8 @@ export default function VentasPage() {
               icon: <BarChart2 className="w-4 h-4 text-green-600" />, bg: 'bg-green-50',
             },
             {
-              label: 'Transacciones', value: loadingSheet ? '...' : filteredData.totalTransacciones.toLocaleString('es-CL'), comp: null, deltaPct: null,
-              icon: <ShoppingCart className="w-4 h-4 text-purple-600" />, bg: 'bg-purple-50',
+              label: 'Índice 50', value: loadingSheet ? '...' : ventasReal > 0 ? `${((gastosReal / ventasReal) * 100).toFixed(1)}%` : '—', comp: null, deltaPct: null,
+              icon: <Activity className="w-4 h-4 text-purple-600" />, bg: 'bg-purple-50',
             },
           ].map(k => {
             const delta = k.deltaPct !== null ? parseFloat(k.deltaPct) : null;
@@ -1264,42 +1380,67 @@ export default function VentasPage() {
             }
           </div>
 
-          <InteractiveChart data={chartData} metrica={metrica} tipo={tipoGrafico} hasComp={hasComp && !isMultiLocal} localDefs={isMultiLocal ? localDefs : undefined} localName={localSel.length === 1 ? localSel[0] : undefined} />
+          <InteractiveChart data={chartDataWithPres} metrica={metrica} tipo={tipoGrafico} hasComp={hasComp && !isMultiLocal} localDefs={isMultiLocal ? localDefs : undefined} localName={localSel.length === 1 ? localSel[0] : undefined} showPresupuesto={presupuestoOn} />
         </div>
 
         {/* ── Bottom Row ── */}
         <div className="grid grid-cols-3 gap-5">
 
-          {/* Performance por Sucursal */}
+          {/* Proyección de Ventas */}
           <div className="col-span-1 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Por Sucursal</h3>
-              <div className="flex items-center gap-3 text-[10px] text-gray-400">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Ventas</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Gastos</span>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Proyección de Ventas</h3>
+            </div>
+            <p className="text-[10px] mb-4" style={{ color: 'var(--text-3)' }}>
+              (Ventas reales / días con registro) × días del mes
+            </p>
+            {proyeccionData.length === 0 ? (
+              <div className="flex items-center justify-center h-[180px]">
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Sin datos para proyectar</p>
               </div>
-            </div>
-            <div className="space-y-4">
-              {(() => {
-                const lista = Object.entries(filteredData.porLocalFiltrado).map(([nombre, d]) => ({ nombre, ...d }));
-                if (!lista.length) return <p className="text-[11px] text-gray-400">Sin datos</p>;
-                const maxV = Math.max(...lista.map(s => Math.max(s.ventas, s.gastos)), 1);
-                return lista.map(s => (
-                  <div key={s.nombre}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[12px] font-bold text-gray-700">{s.nombre}</span>
-                      <span className="text-[11px] font-bold text-gray-500">{fmt(s.ventas)}</span>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={proyeccionData} layout="vertical" barCategoryGap="20%" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
+                    <XAxis type="number" hide />
+                    <YAxis type="category" dataKey="local" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} width={58} />
+                    <Tooltip
+                      cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0]?.payload;
+                        return (
+                          <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
+                            style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
+                            <p className="font-bold mb-1.5">{d.local}</p>
+                            <p style={{ color: 'var(--text-3)' }}>Real: <span className="font-semibold" style={{ color: d.color }}>{fmtFull(d.real)}</span></p>
+                            <p style={{ color: 'var(--text-3)' }}>Proyección: <span className="font-semibold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span></p>
+                            <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>{d.diasConRegistros} días con registros / {d.totalDias} días del mes</p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar dataKey="real" stackId="p" name="Real" radius={[0, 0, 0, 0]}>
+                      {proyeccionData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Bar>
+                    <Bar dataKey="restante" stackId="p" name="Proyección restante" radius={[0, 4, 4, 0]}>
+                      {proyeccionData.map((d, i) => <Cell key={i} fill={d.color} fillOpacity={0.2} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="mt-3 space-y-2">
+                  {proyeccionData.map(d => (
+                    <div key={d.local} className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
+                        <span style={{ color: 'var(--text-2)' }}>{d.local}</span>
+                      </div>
+                      <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2 mb-1">
-                      <div className="h-2 rounded-full bg-blue-500" style={{ width: `${(s.ventas / maxV) * 100}%` }} />
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-1.5">
-                      <div className="h-1.5 rounded-full bg-red-400" style={{ width: `${(s.gastos / maxV) * 100}%` }} />
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Top Proveedores (datos reales del Sheet) */}
