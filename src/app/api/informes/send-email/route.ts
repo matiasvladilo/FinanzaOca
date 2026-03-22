@@ -8,6 +8,7 @@
 
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth-api';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -283,6 +284,9 @@ function buildEmailHtml(reportData: ReportData): string {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json()) as SendEmailBody;
     const { recipients, reportData, subject } = body;

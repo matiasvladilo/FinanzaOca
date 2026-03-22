@@ -1,6 +1,17 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+
+function getSessionPermissions() {
+  if (typeof document === 'undefined') return { canAccessGastoFijo: true };
+  const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
+  if (!match) return { canAccessGastoFijo: false };
+  try {
+    const s = JSON.parse(decodeURIComponent(match.split('=').slice(1).join('=')));
+    const roleMap: Record<string, boolean> = { admin: true, usuario: false };
+    return { canAccessGastoFijo: roleMap[s.role] ?? false };
+  } catch { return { canAccessGastoFijo: false }; }
+}
 import {
   FileText, Download, Mail, RefreshCw, Brain,
   TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Info,
@@ -48,6 +59,33 @@ interface AIAnalysis {
   generatedAt: string;
 }
 
+interface MermaReportData {
+  totalMerma: number;
+  porTipo: Array<{ tipo: string; monto: number; pct: number }>;
+  porLocal: Array<{ local: string; monto: number; pct: number }>;
+}
+
+interface ProduccionReportData {
+  topProductos: Array<{ nombre: string; categoria: string; unidades: number; ingresos: number }>;
+  totalPedidos: number;
+}
+
+interface GastoFijoCategoria {
+  categoria: string;
+  monto: number;
+}
+
+interface GastoFijoLocal {
+  local: string;
+  total: number;
+  categorias: GastoFijoCategoria[];
+}
+
+interface GastoFijoData {
+  porLocal: GastoFijoLocal[];
+  totalGeneral: number;
+}
+
 interface ReportData {
   filters: { fechaDesde: string; fechaHasta: string; sucursal: string; tipo: string };
   generatedAt: string;
@@ -60,6 +98,9 @@ interface ReportData {
   deltaTx: number;
   tendencia: 'up' | 'down' | 'flat';
   insights: Insight[];
+  mermaData?: MermaReportData;
+  produccionData?: ProduccionReportData;
+  gastoFijoData?: GastoFijoData;
   aiAnalysis?: AIAnalysis | null;
 }
 
@@ -198,6 +239,7 @@ function EmailModal({
     try {
       const res = await fetch('/api/informes/send-email', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipients: emails, reportData }),
       });
@@ -407,7 +449,7 @@ function pctChange(curr: number, prev: number) {
 }
 
 function ReportDocument({ data }: { data: ReportData }) {
-  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis } = data;
+  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -589,6 +631,154 @@ function ReportDocument({ data }: { data: ReportData }) {
           </section>
         )}
 
+        {/* ── Merma ── */}
+        {mermaData && mermaData.totalMerma > 0 && (
+          <section>
+            <SectionHeader title="Merma del período" accent={R.red} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {/* Resumen */}
+              <div style={{ background: R.redBg, border: `1px solid ${R.redBdr}`, padding: '14px 16px' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: R.red, textTransform: 'uppercase' as const, marginBottom: 8 }}>Total merma</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: R.text, marginBottom: 4 }}>{fmt(mermaData.totalMerma)}</div>
+                <div style={{ fontSize: 11, color: R.textSub }}>
+                  {current.ventas > 0 ? `${((mermaData.totalMerma / current.ventas) * 100).toFixed(1)}% sobre ventas` : '—'}
+                </div>
+              </div>
+              {/* Por local */}
+              <div style={{ background: R.surface, border: `1px solid ${R.border}`, padding: '14px 16px' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: R.textMuted, textTransform: 'uppercase' as const, marginBottom: 8 }}>Por sucursal</div>
+                {mermaData.porLocal.map((l, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                    <span style={{ color: R.textSub, fontWeight: 500 }}>{l.local}</span>
+                    <span style={{ fontWeight: 700 }}>{fmt(l.monto)} <span style={{ color: R.textMuted, fontWeight: 400 }}>({l.pct}%)</span></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Por tipo */}
+            {mermaData.porTipo.length > 0 && (
+              <table style={{ ...tblStyle, fontSize: 13, marginTop: 12 }}>
+                <thead>
+                  <tr>
+                    {['Tipo de merma', 'Monto', 'Participación'].map((h, i) => (
+                      <th key={h} style={{ ...thBase, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mermaData.porTipo.map((t, i) => (
+                    <tr key={i} style={{ background: i % 2 === 1 ? R.surface : R.bg }}>
+                      <td style={{ ...tdBase, fontWeight: 500 }}>{t.tipo}</td>
+                      <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700 }}>{fmt(t.monto)}</td>
+                      <td style={{ ...tdBase, textAlign: 'right', fontWeight: 600, color: R.red }}>{t.pct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        )}
+
+        {/* ── Producción / Top Productos ── */}
+        {produccionData && produccionData.topProductos.length > 0 && (
+          <section>
+            <SectionHeader title="Top productos del período" accent={R.green} />
+            <div style={{ marginBottom: 12, fontSize: 12, color: R.textSub }}>
+              Total pedidos: <strong style={{ color: R.text }}>{produccionData.totalPedidos.toLocaleString('es-CL')}</strong>
+            </div>
+            <table style={{ ...tblStyle, fontSize: 13 }}>
+              <thead>
+                <tr>
+                  {['#', 'Producto', 'Categoría', 'Unidades', 'Ingresos'].map((h, i) => (
+                    <th key={h} style={{ ...thBase, textAlign: i <= 2 ? 'left' : 'right', width: i === 0 ? '5%' : 'auto' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {produccionData.topProductos.map((p, i) => (
+                  <tr key={i} style={{ background: i % 2 === 1 ? R.surface : R.bg }}>
+                    <td style={{ ...tdBase, color: R.textMuted, fontWeight: 700, fontSize: 12 }}>{i + 1}</td>
+                    <td style={{ ...tdBase, fontWeight: 500 }}>{p.nombre}</td>
+                    <td style={{ ...tdBase, color: R.textSub }}>{p.categoria}</td>
+                    <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700 }}>{p.unidades.toLocaleString('es-CL')}</td>
+                    <td style={{ ...tdBase, textAlign: 'right', fontWeight: 600, color: R.green }}>{fmt(p.ingresos)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+
+        {/* ── Gasto Fijo ── */}
+        {canAccessGastoFijo && gastoFijoData && gastoFijoData.totalGeneral > 0 && (
+          <section>
+            <SectionHeader title="Gasto fijo del período" accent="#0891b2" />
+            {/* Por local */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 16 }}>
+              {gastoFijoData.porLocal.map(l => (
+                <div key={l.local} style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '12px 14px' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: '#0891b2', textTransform: 'uppercase' as const, marginBottom: 6 }}>{l.local}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>{fmt(l.total)}</div>
+                  {l.categorias.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#475569', marginBottom: 3 }}>
+                      <span>{c.categoria}</span>
+                      <span style={{ fontWeight: 600 }}>{fmt(c.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {/* Tabla rentabilidad */}
+            <SectionHeader title="Rentabilidad por sucursal" accent="#0f172a" />
+            <table style={{ ...tblStyle, fontSize: 13 }}>
+              <thead>
+                <tr>
+                  {['Sucursal', 'Ventas', 'Gasto Variable', 'Gasto Fijo', 'Rentabilidad'].map((h, i) => (
+                    <th key={h} style={{ ...thBase, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const gfMap = Object.fromEntries(gastoFijoData.porLocal.map(l => [l.local, l.total]));
+                  const locales = Object.keys(current.porSucursal);
+                  let totV = 0, totGV = 0, totGF = 0;
+                  const rows = locales.map((nombre, i) => {
+                    const s  = current.porSucursal[nombre];
+                    const gf = gfMap[nombre] ?? 0;
+                    const rent = s.ventas - s.gastos - gf;
+                    totV += s.ventas; totGV += s.gastos; totGF += gf;
+                    const rentColor = rent >= 0 ? '#059669' : '#dc2626';
+                    return (
+                      <tr key={nombre} style={{ background: i % 2 === 1 ? '#f8fafc' : '#ffffff' }}>
+                        <td style={{ ...tdBase, fontWeight: 600 }}>{nombre}</td>
+                        <td style={{ ...tdBase, textAlign: 'right' }}>{fmt(s.ventas)}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: '#d97706' }}>{fmt(s.gastos)}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: '#0891b2' }}>{fmt(gf)}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700, color: rentColor }}>{fmt(rent)}</td>
+                      </tr>
+                    );
+                  });
+                  const totalRent = totV - totGV - totGF;
+                  const totalRentColor = totalRent >= 0 ? '#059669' : '#dc2626';
+                  return (
+                    <>
+                      {rows}
+                      <tr style={{ background: '#f1f5f9', borderTop: `2px solid #334155` }}>
+                        <td style={{ ...tdBase, fontWeight: 800, fontSize: 14 }}>TOTAL</td>
+                        <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{fmt(totV)}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#d97706' }}>{fmt(totGV)}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#0891b2' }}>{fmt(totGF)}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: totalRentColor }}>{fmt(totalRent)}</td>
+                      </tr>
+                    </>
+                  );
+                })()}
+              </tbody>
+            </table>
+          </section>
+        )}
+
         {/* ── Insights ── */}
         {insights.length > 0 && (
           <section>
@@ -683,7 +873,7 @@ function fdHTML(iso: string) {
 }
 
 function buildReportHTML(data: ReportData): string {
-  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis } = data;
+  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -776,6 +966,142 @@ function buildReportHTML(data: ReportData): string {
         <tbody>${provRows}</tbody>
       </table>
     </div>` : '';
+
+  // ── Merma HTML ──
+  const mermaSection = (mermaData && mermaData.totalMerma > 0) ? (() => {
+    const pctSV = current.ventas > 0 ? ((mermaData.totalMerma / current.ventas) * 100).toFixed(1) : '—';
+    const localRows = mermaData.porLocal.map((l, i) =>
+      `<tr style="background:${i%2===1?'#f8fafc':'#ffffff'}">
+        <td style="font-weight:500">${esc(l.local)}</td>
+        <td class="right" style="font-weight:700">${esc(fmtHTML(l.monto))}</td>
+        <td class="right" style="font-weight:600;color:#dc2626">${l.pct}%</td>
+      </tr>`).join('');
+    const tipoRows = mermaData.porTipo.map((t, i) =>
+      `<tr style="background:${i%2===1?'#f8fafc':'#ffffff'}">
+        <td style="font-weight:500">${esc(t.tipo)}</td>
+        <td class="right" style="font-weight:700">${esc(fmtHTML(t.monto))}</td>
+        <td class="right" style="font-weight:600;color:#dc2626">${t.pct}%</td>
+      </tr>`).join('');
+    return `
+    <div class="section avoid-break">
+      <div class="section-header">
+        <div class="section-accent" style="background:#dc2626"></div>
+        <span class="section-title">Merma del período</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div style="background:#fff1f2;border:1px solid #fecdd3;padding:14px 16px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#dc2626;text-transform:uppercase;margin-bottom:6px">Total merma</div>
+          <div style="font-size:22px;font-weight:800;color:#0f172a;margin-bottom:4px">${esc(fmtHTML(mermaData.totalMerma))}</div>
+          <div style="font-size:11px;color:#475569">${pctSV}% sobre ventas</div>
+        </div>
+        <table style="margin:0">
+          <thead><tr><th>Sucursal</th><th class="right">Monto</th><th class="right">%</th></tr></thead>
+          <tbody>${localRows}</tbody>
+        </table>
+      </div>
+      <table>
+        <thead><tr><th>Tipo de merma</th><th class="right">Monto</th><th class="right">Participación</th></tr></thead>
+        <tbody>${tipoRows}</tbody>
+      </table>
+    </div>`;
+  })() : '';
+
+  // ── Producción HTML ──
+  const produccionSection = (produccionData && produccionData.topProductos.length > 0) ? (() => {
+    const prodRows = produccionData.topProductos.map((p, i) =>
+      `<tr style="background:${i%2===1?'#f8fafc':'#ffffff'}">
+        <td style="color:#94a3b8;font-weight:700;font-size:12px;width:40px">${i+1}</td>
+        <td style="font-weight:500">${esc(p.nombre)}</td>
+        <td style="color:#475569">${esc(p.categoria)}</td>
+        <td class="right" style="font-weight:700">${p.unidades.toLocaleString('es-CL')}</td>
+        <td class="right" style="font-weight:600;color:#059669">${esc(fmtHTML(p.ingresos))}</td>
+      </tr>`).join('');
+    return `
+    <div class="section avoid-break">
+      <div class="section-header">
+        <div class="section-accent" style="background:#059669"></div>
+        <span class="section-title">Top productos del período</span>
+      </div>
+      <div style="font-size:12px;color:#475569;margin-bottom:10px">Total pedidos: <strong style="color:#0f172a">${produccionData.totalPedidos.toLocaleString('es-CL')}</strong></div>
+      <table>
+        <thead><tr>
+          <th style="width:40px">#</th><th>Producto</th><th>Categoría</th>
+          <th class="right">Unidades</th><th class="right">Ingresos</th>
+        </tr></thead>
+        <tbody>${prodRows}</tbody>
+      </table>
+    </div>`;
+  })() : '';
+
+  // ── Gasto Fijo HTML ──
+  const gastoFijoSection = (gastoFijoData && gastoFijoData.totalGeneral > 0) ? (() => {
+    const localCards = gastoFijoData.porLocal.map(l => {
+      const cats = l.categorias.map(c =>
+        `<div style="display:flex;justify-content:space-between;font-size:11px;color:#475569;margin-bottom:3px">
+          <span>${esc(c.categoria)}</span><span style="font-weight:600">${esc(fmtHTML(c.monto))}</span>
+        </div>`).join('');
+      return `
+        <div style="background:#f0f9ff;border:1px solid #bae6fd;padding:12px 14px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#0891b2;text-transform:uppercase;margin-bottom:6px">${esc(l.local)}</div>
+          <div style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:8px">${esc(fmtHTML(l.total))}</div>
+          ${cats}
+        </div>`;
+    }).join('');
+
+    const gfMap: Record<string, number> = Object.fromEntries(gastoFijoData.porLocal.map(l => [l.local, l.total]));
+    const locales = Object.keys(current.porSucursal);
+    let totV = 0, totGV = 0, totGF = 0;
+    const rentRows = locales.map((nombre, i) => {
+      const s  = current.porSucursal[nombre];
+      const gf = gfMap[nombre] ?? 0;
+      const rent = s.ventas - s.gastos - gf;
+      totV += s.ventas; totGV += s.gastos; totGF += gf;
+      const rentColor = rent >= 0 ? '#059669' : '#dc2626';
+      return `
+        <tr style="background:${i%2===1?'#f8fafc':'#ffffff'}">
+          <td style="font-weight:600">${esc(nombre)}</td>
+          <td class="right">${esc(fmtHTML(s.ventas))}</td>
+          <td class="right" style="color:#d97706">${esc(fmtHTML(s.gastos))}</td>
+          <td class="right" style="color:#0891b2">${esc(fmtHTML(gf))}</td>
+          <td class="right" style="font-weight:700;color:${rentColor}">${esc(fmtHTML(rent))}</td>
+        </tr>`;
+    }).join('');
+    const totalRent = totV - totGV - totGF;
+    const totalRentColor = totalRent >= 0 ? '#059669' : '#dc2626';
+    const totalRow = `
+      <tr style="background:#f1f5f9;border-top:2px solid #334155">
+        <td style="font-weight:800;font-size:14px">TOTAL</td>
+        <td class="right" style="font-weight:800;font-size:14px">${esc(fmtHTML(totV))}</td>
+        <td class="right" style="font-weight:800;font-size:14px;color:#d97706">${esc(fmtHTML(totGV))}</td>
+        <td class="right" style="font-weight:800;font-size:14px;color:#0891b2">${esc(fmtHTML(totGF))}</td>
+        <td class="right" style="font-weight:800;font-size:14px;color:${totalRentColor}">${esc(fmtHTML(totalRent))}</td>
+      </tr>`;
+
+    return `
+    <div class="section avoid-break">
+      <div class="section-header">
+        <div class="section-accent" style="background:#0891b2"></div>
+        <span class="section-title">Gasto fijo del período</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">
+        ${localCards}
+      </div>
+      <div class="section-header" style="margin-top:16px">
+        <div class="section-accent" style="background:#0f172a"></div>
+        <span class="section-title">Rentabilidad por sucursal</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Sucursal</th>
+          <th class="right">Ventas</th>
+          <th class="right">Gasto Variable</th>
+          <th class="right">Gasto Fijo</th>
+          <th class="right">Rentabilidad</th>
+        </tr></thead>
+        <tbody>${rentRows}${totalRow}</tbody>
+      </table>
+    </div>`;
+  })() : '';
 
   const insightItems = insights.map(ins => {
     const cls = ins.type === 'positive' ? 'insight-pos' : ins.type === 'negative' ? 'insight-neg' : 'insight-warn';
@@ -951,6 +1277,9 @@ td{padding:11px 16px;border-bottom:1px solid #e2e8f0;color:#0f172a}
 
     ${sucursalSection}
     ${provSection}
+    ${mermaSection}
+    ${produccionSection}
+    ${gastoFijoSection}
     ${insightSection}
     ${aiSection}
 
@@ -986,6 +1315,9 @@ export default function InformesPage() {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  const [canAccessGastoFijo, setCanAccessGastoFijo] = useState(true);
+  useEffect(() => { setCanAccessGastoFijo(getSessionPermissions().canAccessGastoFijo); }, []);
+
   const sucursales = ['', 'PV', 'La Reina', 'PT', 'Bilbao'];
 
   const generateReport = useCallback(async () => {
@@ -1001,7 +1333,7 @@ export default function InformesPage() {
         sucursal,
         tipo: 'completo',
       });
-      const res = await fetch(`/api/informes/generate?${params}`, { signal: controller.signal });
+      const res = await fetch(`/api/informes/generate?${params}`, { signal: controller.signal, credentials: 'include' });
       if (!res.ok) { setError(`Error del servidor: ${res.status}`); return; }
       const data = await res.json();
       if (!data.ok) { setError(data.error ?? 'Error al generar informe'); return; }
@@ -1026,6 +1358,7 @@ export default function InformesPage() {
     try {
       const res = await fetch('/api/informes/ai-analysis', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filters: reportData.filters,
@@ -1035,6 +1368,8 @@ export default function InformesPage() {
           deltaGastos: reportData.deltaGastos,
           deltaMargen: reportData.deltaMargen,
           insights: reportData.insights,
+          mermaData: reportData.mermaData,
+          produccionData: reportData.produccionData,
         }),
       });
       const data = await res.json();

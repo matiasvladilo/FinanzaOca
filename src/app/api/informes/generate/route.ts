@@ -11,8 +11,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { toLocalDate, filterByDateRange, toLocalISODate } from '@/lib/date-utils';
+import { requireAuth } from '@/lib/auth-api';
 import { fetchCierreCajaData } from '@/app/api/cierre-caja/route';
 import { fetchVentasData } from '@/app/api/ventas/route';
+import { fetchMermaForReport, MermaReportData } from '@/app/api/merma-data/route';
+import { fetchTopProductosForReport, ProduccionReportData } from '@/app/api/produccion-data/route';
+import { fetchGastoFijoForReport, GastoFijoData } from '@/lib/gasto-fijo';
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -332,6 +336,13 @@ function generateInsights(
 // ── Handler principal ─────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
+  const { user } = auth;
+  const { getPermissions } = await import('@/lib/auth');
+  const perms = getPermissions(user.role);
+
   try {
     const { searchParams } = new URL(req.url);
     const fechaDesde = searchParams.get('fechaDesde') ?? '';
@@ -347,11 +358,20 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Obtener datos directamente sin HTTP (usa el caché en memoria)
-    const [ccData, ventasData] = await Promise.all([
+    // Obtener datos en paralelo (cierre-caja, ventas, merma, producción, gasto fijo)
+    const [ccResult, ventasResult, mermaResult, produccionResult, gastoFijoResult] = await Promise.allSettled([
       fetchCierreCajaData(),
       fetchVentasData(),
+      fetchMermaForReport(fechaDesde, fechaHasta),
+      fetchTopProductosForReport(fechaDesde, fechaHasta),
+      perms.canAccessGastoFijo ? fetchGastoFijoForReport(fechaDesde, fechaHasta) : Promise.resolve({ porLocal: [], totalGeneral: 0 } as GastoFijoData),
     ]);
+
+    const ccData      = ccResult.status      === 'fulfilled' ? ccResult.value      : null;
+    const ventasData  = ventasResult.status  === 'fulfilled' ? ventasResult.value  : null;
+    const mermaData   = mermaResult.status   === 'fulfilled' ? mermaResult.value   : { totalMerma: 0, porTipo: [], porLocal: [] } as MermaReportData;
+    const produccionData = produccionResult.status === 'fulfilled' ? produccionResult.value : { topProductos: [], totalPedidos: 0 } as ProduccionReportData;
+    const gastoFijoData  = gastoFijoResult.status  === 'fulfilled' ? gastoFijoResult.value  : { porLocal: [], totalGeneral: 0 } as GastoFijoData;
 
     const registrosDiarios       = ccData?.registrosDiarios          ?? [];
     const registrosDiariosGastos = ventasData?.registrosDiariosGastos ?? [];
@@ -406,6 +426,9 @@ export async function GET(req: NextRequest) {
       deltaTx,
       tendencia,
       insights,
+      mermaData,
+      produccionData,
+      gastoFijoData,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error desconocido';

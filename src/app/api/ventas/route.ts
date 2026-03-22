@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { withCache } from '@/lib/data/cache';
+import { requireAuth } from '@/lib/auth-api';
 
 const CACHE_KEY = 'ventas-v10';
 
@@ -190,6 +191,9 @@ async function fetchVentasRaw() {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     // Si viene un ?tab= personalizado, leer sin caché (caso especial)
     const { searchParams } = new URL(req.url);

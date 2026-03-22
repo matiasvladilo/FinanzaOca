@@ -8,6 +8,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth-api';
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,36 @@ interface Insight {
   accion?: string;
 }
 
+interface MermaTipo {
+  tipo: string;
+  monto: number;
+  pct: number;
+}
+
+interface MermaLocal {
+  local: string;
+  monto: number;
+  pct: number;
+}
+
+interface MermaData {
+  totalMerma: number;
+  porTipo: MermaTipo[];
+  porLocal: MermaLocal[];
+}
+
+interface TopProducto {
+  nombre: string;
+  categoria: string;
+  unidades: number;
+  ingresos: number;
+}
+
+interface ProduccionData {
+  topProductos: TopProducto[];
+  totalPedidos: number;
+}
+
 interface AnalysisRequestBody {
   filters: Filters;
   current: PeriodMetrics;
@@ -46,6 +77,8 @@ interface AnalysisRequestBody {
   deltaGastos: number;
   deltaMargen: number;
   insights: Insight[];
+  mermaData?: MermaData;
+  produccionData?: ProduccionData;
 }
 
 interface AiAnalysis {
@@ -68,9 +101,12 @@ function fmt(n: number): string {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = (await req.json()) as AnalysisRequestBody;
-    const { filters, current, previous, deltaVentas, deltaGastos, deltaMargen, insights } = body;
+    const { filters, current, previous, deltaVentas, deltaGastos, deltaMargen, insights, mermaData, produccionData } = body;
 
     if (!filters || !current || !previous) {
       return NextResponse.json(
@@ -89,6 +125,30 @@ export async function POST(req: NextRequest) {
     const topProvText = current.topProveedores
       .map(p => `  - ${p.nombre}: ${formatCLP(p.monto)} (${fmt(p.pct)}% del total gastos top)`)
       .join('\n');
+
+    // Merma
+    let mermaTexto = '  (sin datos de merma)';
+    if (mermaData && mermaData.totalMerma > 0) {
+      const pctSobreVentas = current.ventas > 0
+        ? ((mermaData.totalMerma / current.ventas) * 100).toFixed(1)
+        : '—';
+      const tiposTexto = mermaData.porTipo.slice(0, 4)
+        .map(t => `    - ${t.tipo}: ${formatCLP(t.monto)} (${t.pct}%)`)
+        .join('\n');
+      const localesTexto = mermaData.porLocal
+        .map(l => `    - ${l.local}: ${formatCLP(l.monto)} (${l.pct}%)`)
+        .join('\n');
+      mermaTexto = `Total merma: ${formatCLP(mermaData.totalMerma)} (${pctSobreVentas}% sobre ventas)\n  Por tipo:\n${tiposTexto}\n  Por local:\n${localesTexto}`;
+    }
+
+    // Producción
+    let produccionTexto = '  (sin datos de producción)';
+    if (produccionData && produccionData.topProductos.length > 0) {
+      const prodTexto = produccionData.topProductos.slice(0, 8)
+        .map((p, i) => `    ${i + 1}. ${p.nombre} (${p.categoria}): ${p.unidades} uds — ${formatCLP(p.ingresos)}`)
+        .join('\n');
+      produccionTexto = `Total pedidos: ${produccionData.totalPedidos}\n  Top productos por unidades vendidas:\n${prodTexto}`;
+    }
 
     const prompt = `Eres el analista financiero de FinanzasOca, una cadena de locales gastronómicos en Chile. Analiza los siguientes datos del período y genera un informe ejecutivo en español claro y accionable.
 
@@ -118,6 +178,12 @@ ${sucursalesTexto || '  (sin datos por sucursal)'}
 TOP PROVEEDORES (período actual):
 ${topProvText || '  (sin datos de proveedores)'}
 
+MERMA DEL PERÍODO:
+  ${mermaTexto}
+
+PRODUCCIÓN / TOP PRODUCTOS:
+  ${produccionTexto}
+
 ALERTAS DETECTADAS:
 ${insightsText || '  (sin alertas)'}
 
@@ -134,6 +200,7 @@ REGLAS:
 - Máximo 4 problemas
 - Lenguaje ejecutivo, directo y accionable
 - Cifras en pesos chilenos (CLP) con formato "$X.XXX.XXX"
+- Incluye en tu análisis observaciones sobre la merma (si es alta o controlada) y los productos más vendidos
 - NO incluyas texto fuera del JSON
 - NO uses markdown dentro del JSON
 - El JSON debe ser parseable directamente`;
@@ -142,7 +209,7 @@ REGLAS:
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 1024,
+      max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }],
     });
 

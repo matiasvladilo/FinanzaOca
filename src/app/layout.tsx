@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Sidebar from '@/components/layout/Sidebar';
+import LayoutShell from '@/components/layout/LayoutShell';
 import { ToastContainer } from '@/components/ui/Toast';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 
@@ -26,9 +27,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} min-h-screen`} style={{ background: 'var(--bg)', color: 'var(--text)' }}>
         <ThemeProvider>
           <Sidebar />
-          <div className="ml-0 md:ml-[200px] min-h-screen flex flex-col pb-16 md:pb-0">
+          <LayoutShell>
             {children}
-          </div>
+          </LayoutShell>
           <ToastContainer />
         </ThemeProvider>
       </body>

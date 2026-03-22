@@ -47,6 +47,7 @@ export function PeriodSelect({
       {/* ── Trigger ──────────────────────────────────────────────────────── */}
       <button
         onClick={() => setOpen(o => !o)}
+        suppressHydrationWarning
         className={clsx(
           'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all select-none',
           isFiltered
@@ -55,12 +56,13 @@ export function PeriodSelect({
         )}
       >
         {label && (
-          <span className={clsx('text-[10px] font-bold uppercase tracking-widest', isFiltered ? 'opacity-80' : 'opacity-60')}>
+          <span suppressHydrationWarning className={clsx('text-[10px] font-bold uppercase tracking-widest', isFiltered ? 'opacity-80' : 'opacity-60')}>
             {label}
           </span>
         )}
         <span className="font-semibold">{displayLabel}</span>
         <ChevronDown
+          suppressHydrationWarning
           className={clsx('w-3.5 h-3.5 transition-transform', open && 'rotate-180', isFiltered ? 'opacity-80' : 'opacity-50')}
         />
       </button>

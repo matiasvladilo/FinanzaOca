@@ -2,10 +2,26 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, TrendingUp, ShoppingBag,
-  Trash2, Settings, Gauge, BarChart3, Factory, FileText,
+  Trash2, LogOut, Gauge, BarChart3, Factory, FileText,
 } from 'lucide-react';
+
+interface SessionUser { username: string; role: string; }
+
+function getSession(): SessionUser | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
+  if (!match) return null;
+  try { return JSON.parse(decodeURIComponent(match.split('=').slice(1).join('='))); }
+  catch { return null; }
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+}
 
 const navItems = [
   { label: 'Dashboard',     href: '/',              icon: LayoutDashboard },
@@ -20,6 +36,11 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href;
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => { setUser(getSession()); }, []);
+
+  if (pathname === '/login') return null;
 
   return (
     <>
@@ -67,14 +88,14 @@ export default function Sidebar() {
         <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--sidebar-border)' }}>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-orange-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              AM
+              {user?.username?.[0]?.toUpperCase() ?? '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--text)' }}>Alex Martinez</p>
-              <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>Super Admin</p>
+              <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--text)' }}>{user?.username ?? '–'}</p>
+              <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>{user?.role ?? ''}</p>
             </div>
-            <button className="flex-shrink-0 transition-colors" style={{ color: 'var(--text-3)' }}>
-              <Settings className="w-3.5 h-3.5" />
+            <button onClick={logout} title="Cerrar sesión" className="flex-shrink-0 transition-colors hover:text-red-500" style={{ color: 'var(--text-3)' }}>
+              <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

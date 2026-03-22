@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getProduccionConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { getSupabaseClient } from '@/lib/supabase';
+import { requireAuth } from '@/lib/auth-api';
 
 const COLORES = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444', '#06B6D4', '#D1D5DB'];
 
@@ -182,6 +183,9 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
 
 // ── Route handler ────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const { searchParams } = req.nextUrl;
     const local = searchParams.get('local') ?? 'todos';
@@ -323,5 +327,40 @@ export async function GET(req: NextRequest) {
     const message = error instanceof Error ? error.message : 'Error desconocido';
     console.error('[produccion-data]', message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+// ── Función reutilizable para informes ────────────────────────────────────────
+
+export interface ProduccionReportData {
+  topProductos: Array<{ nombre: string; categoria: string; unidades: number; ingresos: number }>;
+  totalPedidos: number;
+}
+
+export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta: string): Promise<ProduccionReportData> {
+  try {
+    const { orders, items, productCategoryMap } = await fetchVentasSupabase(fechaDesde, fechaHasta);
+
+    const totalPedidos = orders.length;
+
+    const prodMap: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
+    for (const item of items) {
+      const nombre    = String(item.product_name ?? '(sin nombre)');
+      const cant      = Number(item.quantity ?? 0);
+      const precio    = Number(item.price    ?? 0);
+      const categoria = productCategoryMap[String(item.product_id ?? '')] ?? 'Otros';
+      if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
+      prodMap[nombre].unidades += cant;
+      prodMap[nombre].ingresos += cant * precio;
+    }
+
+    const topProductos = Object.values(prodMap)
+      .sort((a, b) => b.unidades - a.unidades)
+      .slice(0, 10);
+
+    return { topProductos, totalPedidos };
+  } catch (err) {
+    console.error('[produccion-data] fetchTopProductosForReport:', err);
+    return { topProductos: [], totalPedidos: 0 };
   }
 }

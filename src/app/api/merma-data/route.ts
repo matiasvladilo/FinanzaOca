@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
+import { requireAuth } from '@/lib/auth-api';
 import { parseMonto, parseFecha, getMesLabel, getPeriodoRange, findHeader } from '@/lib/data/parsers';
 import { buildDateRange, filterByDateRange } from '@/lib/date-utils';
 
@@ -53,6 +54,9 @@ async function fetchLocalMerma(nombre: string, sheetId: string, tab: string) {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const { searchParams } = req.nextUrl;
     const localParam      = searchParams.get('local')      ?? 'todos';
@@ -147,5 +151,59 @@ export async function GET(req: NextRequest) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error desconocido';
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+// ── Función reutilizable para informes ────────────────────────────────────────
+
+export interface MermaReportData {
+  totalMerma: number;
+  porTipo: Array<{ tipo: string; monto: number; pct: number }>;
+  porLocal: Array<{ local: string; monto: number; pct: number }>;
+}
+
+export async function fetchMermaForReport(fechaDesde: string, fechaHasta: string): Promise<MermaReportData> {
+  try {
+    const { desde, hasta } = buildDateRange(fechaDesde, fechaHasta);
+    const locales = getLocalesConfig();
+
+    const results = await Promise.allSettled(
+      locales.map(l => fetchLocalMerma(l.nombre, l.id, l.tabs.merma))
+    );
+
+    let registros = results.flatMap((r, i) => {
+      if (r.status === 'fulfilled') return r.value;
+      console.error(`[merma-data] fetchMermaForReport error ${locales[i].nombre}:`, r.reason);
+      return [];
+    });
+
+    if (desde || hasta) {
+      registros = registros.filter(r => filterByDateRange(r.date, desde, hasta));
+    }
+
+    const totalMerma = registros.reduce((s, r) => s + r.monto, 0);
+
+    const tipoMap: Record<string, number> = {};
+    for (const r of registros) tipoMap[r.tipo] = (tipoMap[r.tipo] ?? 0) + r.monto;
+    const porTipo = Object.entries(tipoMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([tipo, monto]) => ({
+        tipo, monto,
+        pct: totalMerma > 0 ? Math.round((monto / totalMerma) * 100) : 0,
+      }));
+
+    const localMap: Record<string, number> = {};
+    for (const r of registros) localMap[r.local] = (localMap[r.local] ?? 0) + r.monto;
+    const porLocal = Object.entries(localMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([local, monto]) => ({
+        local, monto,
+        pct: totalMerma > 0 ? Math.round((monto / totalMerma) * 100) : 0,
+      }));
+
+    return { totalMerma, porTipo, porLocal };
+  } catch (err) {
+    console.error('[merma-data] fetchMermaForReport:', err);
+    return { totalMerma: 0, porTipo: [], porLocal: [] };
   }
 }
