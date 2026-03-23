@@ -424,9 +424,10 @@ export async function GET(req: NextRequest) {
     // Insights
     const insights = generateInsights(current, previous, deltaVentas, deltaGastos, deltaMargen, deltaTx);
 
-    // Proyección de ventas — solo cuando el período termina hoy y quedan días en el mes
-    const todayStr = toLocalISODate(new Date());
-    const esHoy = fechaHasta === todayStr;
+    // Proyección de ventas — solo cuando el período termina en el mes actual y el mes no está completo
+    const now = new Date();
+    const mesActual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const esMesActual = fechaHasta.startsWith(mesActual);
     const diasConData = current.porDia.filter(d => d.ventas > 0).length || 1;
     const promedioDiario = current.ventas / diasConData;
     const fechaHastaDate = toLocalDate(fechaHasta) ?? new Date();
@@ -434,7 +435,17 @@ export async function GET(req: NextRequest) {
     const diaDelMes = fechaHastaDate.getDate();
     const diasRestantesMes = Math.max(diasTotalesMes - diaDelMes, 0);
     const duracionPeriodo = daysBetween(fechaDesde, fechaHasta) + 1;
-    const proyeccion = (esHoy && diasRestantesMes > 0) ? {
+    const porSucursalProyeccion = Object.entries(current.porSucursal).map(([nombre, data]) => {
+      const promLocal = data.ventas / diasConData;
+      return {
+        nombre,
+        ventasActuales: data.ventas,
+        promedioDiario: promLocal,
+        ventasProyectadasMes: data.ventas + promLocal * diasRestantesMes,
+      };
+    }).sort((a, b) => b.ventasActuales - a.ventasActuales);
+
+    const proyeccion = (esMesActual && diasRestantesMes > 0) ? {
       diasTranscurridos: diasConData,
       promedioDiario,
       diasRestantesMes,
@@ -443,6 +454,7 @@ export async function GET(req: NextRequest) {
       ventasProyectadasMes: current.ventas + promedioDiario * diasRestantesMes,
       duracionPeriodo,
       ventasProyectadasSiguiente: promedioDiario * duracionPeriodo,
+      porSucursal: porSucursalProyeccion,
     } : null;
 
     return NextResponse.json({

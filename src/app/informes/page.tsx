@@ -86,6 +86,13 @@ interface GastoFijoData {
   totalGeneral: number;
 }
 
+interface ProyeccionSucursal {
+  nombre: string;
+  ventasActuales: number;
+  promedioDiario: number;
+  ventasProyectadasMes: number;
+}
+
 interface Proyeccion {
   diasTranscurridos: number;
   promedioDiario: number;
@@ -95,6 +102,7 @@ interface Proyeccion {
   ventasProyectadasMes: number;
   duracionPeriodo: number;
   ventasProyectadasSiguiente: number;
+  porSucursal: ProyeccionSucursal[];
 }
 
 interface ReportData {
@@ -986,7 +994,7 @@ function fdHTML(iso: string) {
 }
 
 function buildReportHTML(data: ReportData): string {
-  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData } = data;
+  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData, proyeccion } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -1370,6 +1378,38 @@ td{padding:11px 16px;border-bottom:1px solid #e2e8f0;color:#0f172a}
       </div>
       <div class="kpi-grid">${kpiCards}</div>
     </div>
+
+    <!-- Proyección de ventas -->
+    ${proyeccion ? `
+    <div class="section avoid-break">
+      <div class="section-header">
+        <div class="section-accent" style="background:#1d4ed8"></div>
+        <span class="section-title">Proyección de ventas — día ${proyeccion.diaDelMes} de ${proyeccion.diasTotalesMes} (${proyeccion.diasRestantesMes} días restantes)</span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Sucursal</th>
+          <th class="right">Ventas actuales</th>
+          <th class="right">Prom. diario</th>
+          <th class="right" style="color:#1d4ed8">Proyección cierre</th>
+        </tr></thead>
+        <tbody>
+          ${proyeccion.porSucursal.map((s, i) => `
+          <tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'}">
+            <td style="font-weight:600">${s.nombre}</td>
+            <td class="right">${fmtHTML(s.ventasActuales)}</td>
+            <td class="right" style="color:#475569">${fmtHTML(s.promedioDiario)}</td>
+            <td class="right" style="font-weight:700;color:#1d4ed8">${fmtHTML(s.ventasProyectadasMes)}</td>
+          </tr>`).join('')}
+          <tr style="background:#eff6ff;border-top:2px solid #bfdbfe">
+            <td style="font-weight:800">TOTAL</td>
+            <td class="right" style="font-weight:800">${fmtHTML(current.ventas)}</td>
+            <td class="right" style="font-weight:700;color:#475569">${fmtHTML(proyeccion.promedioDiario)}</td>
+            <td class="right" style="font-weight:800;font-size:15px;color:#1d4ed8">${fmtHTML(proyeccion.ventasProyectadasMes)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>` : ''}
 
     <!-- Comparación -->
     <div class="section avoid-break">

@@ -10,8 +10,12 @@ export interface User {
 }
 
 const USERS: User[] = [
-  { username: 'matias', password: '3455', role: 'admin',   email: 'matiasvladiloc@gmail.com' },
-  { username: 'maria',  password: '3455', role: 'usuario', email: 'nacha.lobos.l@gmail.com'  },
+  { username: 'matias',       password: '3455',    role: 'admin',   email: 'matiasvladiloc@gmail.com'     },
+  { username: 'maria',        password: '3455',    role: 'usuario', email: 'nacha.lobos.l@gmail.com'      },
+  { username: 'nikolas',      password: '3455',    role: 'admin',   email: 'nvladiloc@gmail.com'          },
+  { username: 'fernando',     password: '3455',    role: 'admin',   email: 'fernando.vladilo@gmail.com'   },
+  { username: 'marcela',      password: 'elorria', role: 'usuario', email: ''                             },
+  { username: 'matiaslagos',  password: 'elorria', role: 'usuario', email: ''                             },
 ];
 
 // ── Roles y permisos ──────────────────────────────────────────────────────────

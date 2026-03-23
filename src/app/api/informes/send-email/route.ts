@@ -65,6 +65,13 @@ interface GastoFijoLocal {
 }
 interface GastoFijoData { porLocal: GastoFijoLocal[]; totalGeneral: number }
 
+interface ProyeccionSucursal {
+  nombre: string;
+  ventasActuales: number;
+  promedioDiario: number;
+  ventasProyectadasMes: number;
+}
+
 interface Proyeccion {
   diasTranscurridos: number;
   promedioDiario: number;
@@ -74,6 +81,7 @@ interface Proyeccion {
   ventasProyectadasMes: number;
   duracionPeriodo: number;
   ventasProyectadasSiguiente: number;
+  porSucursal: ProyeccionSucursal[];
 }
 
 interface ReportData {
@@ -572,34 +580,26 @@ function buildEmailHtml(d: ReportData): string {
 
     <!-- Proyección de ventas -->
     ${proyeccion ? `
-    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px">
-      ${sectionHeader('Proyección de ventas', C.blue)}
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${C.border};margin-bottom:24px">
+      ${sectionHeader(`Proyección de ventas — día ${proyeccion.diaDelMes} de ${proyeccion.diasTotalesMes} (${proyeccion.diasRestantesMes} días restantes)`, C.blue)}
       <tr>
-        <td width="34%" style="padding:4px 4px 4px 0;vertical-align:top">
-          <div style="background:${C.blueLight};border:1px solid #93c5fd;border-top:3px solid ${C.blue};padding:16px 18px">
-            <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.blue};text-transform:uppercase;margin-bottom:8px">Proyección cierre del mes</div>
-            <div style="font-size:20px;font-weight:800;color:${C.text};margin-bottom:6px">${fmt(proyeccion.ventasProyectadasMes)}</div>
-            <div style="font-size:11px;color:${C.textSub}">
-              ${proyeccion.diasRestantesMes > 0
-                ? `Quedan ${proyeccion.diasRestantesMes} días (día ${proyeccion.diaDelMes} de ${proyeccion.diasTotalesMes})`
-                : 'Mes completado'}
-            </div>
-          </div>
-        </td>
-        <td width="33%" style="padding:4px;vertical-align:top">
-          <div style="background:${C.purpleBg};border:1px solid ${C.purpleBdr};border-top:3px solid ${C.purple};padding:16px 18px">
-            <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.purple};text-transform:uppercase;margin-bottom:8px">Próximo período (${proyeccion.duracionPeriodo}d)</div>
-            <div style="font-size:20px;font-weight:800;color:${C.text};margin-bottom:6px">${fmt(proyeccion.ventasProyectadasSiguiente)}</div>
-            <div style="font-size:11px;color:${C.textSub}">Basado en promedio diario</div>
-          </div>
-        </td>
-        <td width="33%" style="padding:4px 0 4px 4px;vertical-align:top">
-          <div style="background:${C.greenBg};border:1px solid ${C.greenBdr};border-top:3px solid ${C.green};padding:16px 18px">
-            <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.green};text-transform:uppercase;margin-bottom:8px">Promedio diario</div>
-            <div style="font-size:20px;font-weight:800;color:${C.text};margin-bottom:6px">${fmt(proyeccion.promedioDiario)}</div>
-            <div style="font-size:11px;color:${C.textSub}">${proyeccion.diasTranscurridos} día${proyeccion.diasTranscurridos !== 1 ? 's' : ''} con ventas</div>
-          </div>
-        </td>
+        <th style="${thStyle}left">Sucursal</th>
+        <th style="${thStyle}right">Ventas actuales</th>
+        <th style="${thStyle}right">Prom. diario</th>
+        <th style="${thStyle}right;color:${C.blue}">Proyección cierre</th>
+      </tr>
+      ${proyeccion.porSucursal.map((s, i) => `
+      <tr class="${i % 2 === 0 ? 'em-td-base' : 'em-td-alt'}" style="background:${i % 2 === 0 ? C.bg : C.surface}">
+        <td class="em-text" style="${tdStyle}font-weight:600">${s.nombre}</td>
+        <td class="em-text" style="${tdStyle}text-align:right">${fmt(s.ventasActuales)}</td>
+        <td class="em-text-sub" style="${tdStyle}text-align:right;color:${C.textSub}">${fmt(s.promedioDiario)}</td>
+        <td style="${tdStyle}text-align:right;font-weight:700;color:${C.blue}">${fmt(s.ventasProyectadasMes)}</td>
+      </tr>`).join('')}
+      <tr style="background:${C.blueLight};border-top:2px solid #93c5fd">
+        <td style="${tdStyle}font-weight:800">TOTAL</td>
+        <td style="${tdStyle}text-align:right;font-weight:800">${fmt(current.ventas)}</td>
+        <td style="${tdStyle}text-align:right;font-weight:700;color:${C.textSub}">${fmt(proyeccion.promedioDiario)}</td>
+        <td style="${tdStyle}text-align:right;font-weight:800;font-size:15px;color:${C.blue}">${fmt(proyeccion.ventasProyectadasMes)}</td>
       </tr>
     </table>` : ''}
 
@@ -699,7 +699,7 @@ export async function POST(req: NextRequest) {
     const emailSubject = subject ?? defaultSubject;
 
     const html = buildEmailHtml(reportData);
-    const from = process.env.RESEND_FROM ?? 'informes@finanzasoca.cl';
+    const from = process.env.RESEND_FROM ?? 'informes@finanzasoca.com';
 
     const { data, error } = await resend.emails.send({ from, to: recipients, subject: emailSubject, html });
 
