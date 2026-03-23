@@ -6,11 +6,12 @@ export interface User {
   username: string;
   password: string;
   role: Role;
+  email?: string;
 }
 
 const USERS: User[] = [
-  { username: 'matias', password: '3455', role: 'admin' },
-  { username: 'maria',  password: '3455', role: 'usuario' },
+  { username: 'matias', password: '3455', role: 'admin',   email: 'matiasvladiloc@gmail.com' },
+  { username: 'maria',  password: '3455', role: 'usuario', email: 'nacha.lobos.l@gmail.com'  },
 ];
 
 // ── Roles y permisos ──────────────────────────────────────────────────────────
@@ -50,6 +51,10 @@ export const SESSION_COOKIE = 'session';
 
 export function validateCredentials(username: string, password: string): User | null {
   return USERS.find(u => u.username === username && u.password === password) ?? null;
+}
+
+export function findUser(username: string): User | null {
+  return USERS.find(u => u.username === username) ?? null;
 }
 
 export function getPermissions(role: Role): RolePermissions {
