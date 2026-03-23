@@ -59,7 +59,7 @@ export default function DashboardPage() {
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>(() => ssGet('dash_modoFiltro', 'mes') as 'mes' | 'dia');
   const [dateOpen, setDateOpen] = useState(false);
   const [mesComp, setMesComp]       = useState(() => ssGet('dash_mesComp', ''));
-  const [selectedSucursales, setSelectedSucursales] = useState<string[]>(() => ssGetJSON('dash_selectedSucursales', []));
+  const [selectedSucursales, setSelectedSucursales] = useState<string[]>([]);
   const [compOn, setCompOn]         = useState(() => ssGet('dash_compOn', 'false') === 'true');
   const [compareType, setCompareType] = useState<'mes' | 'local'>(() => ssGet('dash_compareType', 'mes') as 'mes' | 'local');
   const [localA, setLocalA]         = useState(() => ssGet('dash_localA', ''));
@@ -80,6 +80,7 @@ export default function DashboardPage() {
   useEffect(() => { try { sessionStorage.setItem('dash_mesComp', mesComp); } catch {} }, [mesComp]);
   useEffect(() => { try { sessionStorage.setItem('dash_localA', localA); } catch {} }, [localA]);
   useEffect(() => { try { sessionStorage.setItem('dash_localB', localB); } catch {} }, [localB]);
+  useEffect(() => { try { const v = ssGetJSON('dash_selectedSucursales', []); if (v.length) setSelectedSucursales(v); } catch {} }, []);
   useEffect(() => { try { sessionStorage.setItem('dash_selectedSucursales', JSON.stringify(selectedSucursales)); } catch {} }, [selectedSucursales]);
 
   useEffect(() => {
