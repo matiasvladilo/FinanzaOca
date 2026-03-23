@@ -87,28 +87,78 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   const main = payload.filter((p: any) => !String(p.dataKey).endsWith('Comp'));
   const comp = payload.filter((p: any) => String(p.dataKey).endsWith('Comp'));
   const fechaComp = payload[0]?.payload?.fechaComp;
+
   return (
-    <div className="rounded-xl shadow-lg px-4 py-3 text-[12px]"
-      style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
-      <p className="font-semibold mb-2" style={{ color: 'var(--text-2)' }}>{label}</p>
-      {main.map((p: any) => (
-        <div key={p.name} className="flex items-center gap-2 mb-1">
-          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color ?? p.fill }} />
-          <span style={{ color: 'var(--text-3)' }}>{p.name}:</span>
-          <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(p.value)}</span>
-        </div>
-      ))}
+    <div
+      style={{
+        background: 'var(--card)',
+        border: '1px solid var(--border-2)',
+        borderRadius: 14,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+        padding: '12px 16px',
+        minWidth: 200,
+        fontSize: 12,
+      }}
+    >
+      {/* Header */}
+      <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{label}</span>
+      </div>
+
+      {/* Período actual */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {main.map((p: any) => {
+          const matchComp = comp.find((c: any) => c.name.replace(' Comp', '') === p.name || c.dataKey === p.dataKey + 'Comp');
+          const delta = matchComp && matchComp.value > 0
+            ? ((p.value - matchComp.value) / matchComp.value) * 100
+            : null;
+          return (
+            <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: p.color ?? p.fill, display: 'inline-block', flexShrink: 0 }} />
+                <span style={{ color: 'var(--text-3)' }}>{p.name}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontWeight: 700, color: 'var(--text)' }}>{fmtFull(p.value)}</span>
+                {delta !== null && (
+                  <span style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: '1px 5px',
+                    borderRadius: 6,
+                    background: delta >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                    color: delta >= 0 ? '#16a34a' : '#dc2626',
+                  }}>
+                    {delta >= 0 ? '+' : ''}{delta.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Período comparado */}
       {comp.length > 0 && (
         <>
-          <div className="border-t border-dashed my-1.5" style={{ borderColor: 'var(--border)' }} />
-          {fechaComp && <p className="text-[10px] mb-1" style={{ color: 'var(--text-3)' }}>{fechaComp}</p>}
-          {comp.map((p: any) => (
-            <div key={p.name} className="flex items-center gap-2 mb-1">
-              <span className="w-2.5 h-2.5 rounded-full opacity-50" style={{ backgroundColor: p.color ?? p.fill }} />
-              <span style={{ color: 'var(--text-3)' }}>{p.name}:</span>
-              <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{fmtFull(p.value)}</span>
-            </div>
-          ))}
+          <div style={{ margin: '10px 0 8px', borderTop: '1px dashed var(--border)', paddingTop: 8 }}>
+            {fechaComp && (
+              <span style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                vs {fechaComp}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {comp.map((p: any) => (
+              <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: p.color ?? p.fill, opacity: 0.45, display: 'inline-block', flexShrink: 0 }} />
+                  <span style={{ color: 'var(--text-3)' }}>{p.name.replace(' Comp', '')}</span>
+                </div>
+                <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>{fmtFull(p.value)}</span>
+              </div>
+            ))}
+          </div>
         </>
       )}
     </div>
@@ -203,7 +253,11 @@ function InteractiveChart({
       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
       <XAxis dataKey="fecha" tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} />
       <YAxis tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} tickFormatter={yFmt} width={52} />
-      <Tooltip content={<CustomTooltip />} />
+      <Tooltip
+        content={<CustomTooltip />}
+        cursor={{ stroke: 'var(--text-3)', strokeWidth: 1, strokeDasharray: '4 3', opacity: 0.4 }}
+        wrapperStyle={{ outline: 'none' }}
+      />
     </>
   );
 
@@ -485,7 +539,7 @@ export default function VentasPage() {
   const [localSel, setLocalSel] = useState<string[]>([]);
   const [localOpen, setLocalOpen] = useState(false);
   const [metrica, setMetrica] = useState<Metrica>('ambos');
-  const [tipoGrafico, setTipoGrafico] = useState<TipoGrafico>('area');
+  const [tipoGrafico, setTipoGrafico] = useState<TipoGrafico>('barras');
   const localRef = useRef<HTMLDivElement>(null);
   const dateRef  = useRef<HTMLDivElement>(null);
   // ── Estado raw desde Sheets ──────────────────────────────
