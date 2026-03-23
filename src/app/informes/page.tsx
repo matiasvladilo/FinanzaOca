@@ -448,7 +448,7 @@ function pctChange(curr: number, prev: number) {
   return ((curr - prev) / Math.abs(prev)) * 100;
 }
 
-function ReportDocument({ data }: { data: ReportData }) {
+function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData; canAccessGastoFijo?: boolean }) {
   const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
