@@ -336,12 +336,23 @@ function generateInsights(
 // ── Handler principal ─────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  // Permitir llamadas internas desde el cron autenticadas con x-cron-secret
+  const cronHeader = req.headers.get('x-cron-secret');
+  const cronSecret = process.env.CRON_SECRET;
+  const isCronCall = cronSecret && cronHeader === cronSecret;
 
-  const { user } = auth;
-  const { getPermissions } = await import('@/lib/auth');
-  const perms = getPermissions(user.role);
+  let perms: ReturnType<typeof import('@/lib/auth').getPermissions>;
+  if (isCronCall) {
+    const { getPermissions } = await import('@/lib/auth');
+    const cronRole = (req.headers.get('x-cron-role') ?? 'usuario') as import('@/lib/auth').Role;
+    perms = getPermissions(cronRole);
+  } else {
+    const auth = requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
+    const { user } = auth;
+    const { getPermissions } = await import('@/lib/auth');
+    perms = getPermissions(user.role);
+  }
 
   try {
     const { searchParams } = new URL(req.url);
@@ -413,6 +424,27 @@ export async function GET(req: NextRequest) {
     // Insights
     const insights = generateInsights(current, previous, deltaVentas, deltaGastos, deltaMargen, deltaTx);
 
+    // Proyección de ventas — solo cuando el período termina hoy y quedan días en el mes
+    const todayStr = toLocalISODate(new Date());
+    const esHoy = fechaHasta === todayStr;
+    const diasConData = current.porDia.filter(d => d.ventas > 0).length || 1;
+    const promedioDiario = current.ventas / diasConData;
+    const fechaHastaDate = toLocalDate(fechaHasta) ?? new Date();
+    const diasTotalesMes = new Date(fechaHastaDate.getFullYear(), fechaHastaDate.getMonth() + 1, 0).getDate();
+    const diaDelMes = fechaHastaDate.getDate();
+    const diasRestantesMes = Math.max(diasTotalesMes - diaDelMes, 0);
+    const duracionPeriodo = daysBetween(fechaDesde, fechaHasta) + 1;
+    const proyeccion = (esHoy && diasRestantesMes > 0) ? {
+      diasTranscurridos: diasConData,
+      promedioDiario,
+      diasRestantesMes,
+      diasTotalesMes,
+      diaDelMes,
+      ventasProyectadasMes: current.ventas + promedioDiario * diasRestantesMes,
+      duracionPeriodo,
+      ventasProyectadasSiguiente: promedioDiario * duracionPeriodo,
+    } : null;
+
     return NextResponse.json({
       ok: true,
       filters: { fechaDesde, fechaHasta, sucursal, tipo },
@@ -429,6 +461,7 @@ export async function GET(req: NextRequest) {
       mermaData,
       produccionData,
       gastoFijoData,
+      proyeccion,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error desconocido';

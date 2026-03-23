@@ -1,51 +1,41 @@
 /**
- * GET  /api/user/profile  → devuelve el email del usuario actual
- *   1. Si Supabase está configurado y el usuario tiene email guardado → lo devuelve
- *   2. Si no → usa el email hardcodeado en auth.ts como fallback
+ * GET  /api/user/profile  → devuelve el email guardado del usuario actual en Supabase
  * PATCH /api/user/profile → guarda/actualiza el email del usuario en Supabase
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-api';
-import { findUser } from '@/lib/auth';
 
-function getSupabaseConfig() {
-  const url = process.env.USER_PROFILES_SUPABASE_URL;
-  const key = process.env.USER_PROFILES_SUPABASE_KEY;
-  if (!url || !key) return null;
-  return { url, key };
-}
+const SUPABASE_URL = process.env.USER_PROFILES_SUPABASE_URL ?? '';
+const SUPABASE_KEY = process.env.USER_PROFILES_SUPABASE_KEY ?? '';
+
+const HEADERS = {
+  apikey: SUPABASE_KEY,
+  Authorization: `Bearer ${SUPABASE_KEY}`,
+};
 
 export async function GET(req: NextRequest) {
   const auth = requireAuth(req);
   if (auth instanceof NextResponse) return auth;
   const { user } = auth;
 
-  // Fallback: email hardcodeado en auth.ts
-  const hardcodedUser = findUser(user.username);
-  const fallbackEmail = hardcodedUser?.email ?? '';
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/user_profiles?username=eq.${encodeURIComponent(user.username)}&select=username,email&limit=1`,
+      { headers: HEADERS },
+    );
 
-  // Intentar obtener email personalizado desde Supabase
-  const supabase = getSupabaseConfig();
-  if (supabase) {
-    try {
-      const res = await fetch(
-        `${supabase.url}/rest/v1/user_profiles?username=eq.${encodeURIComponent(user.username)}&select=username,email&limit=1`,
-        { headers: { apikey: supabase.key, Authorization: `Bearer ${supabase.key}` } },
-      );
-      if (res.ok) {
-        const rows = (await res.json()) as Array<{ username: string; email: string }>;
-        const savedEmail = rows[0]?.email;
-        if (savedEmail) {
-          return NextResponse.json({ ok: true, username: user.username, email: savedEmail });
-        }
-      }
-    } catch {
-      // Supabase falló — usar fallback
+    if (!res.ok) {
+      const text = await res.text();
+      return NextResponse.json({ ok: false, error: text }, { status: 500 });
     }
-  }
 
-  return NextResponse.json({ ok: true, username: user.username, email: fallbackEmail });
+    const rows = (await res.json()) as Array<{ username: string; email: string }>;
+    return NextResponse.json({ ok: true, username: user.username, email: rows[0]?.email ?? '' });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error desconocido';
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest) {
@@ -59,12 +49,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Se requiere un email válido' }, { status: 400 });
     }
 
-    const { url, key } = getSupabaseConfig();
-    const res = await fetch(`${url}/rest/v1/user_profiles`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/user_profiles`, {
       method: 'POST',
       headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
+        ...HEADERS,
         'Content-Type': 'application/json',
         Prefer: 'resolution=merge-duplicates',
       },

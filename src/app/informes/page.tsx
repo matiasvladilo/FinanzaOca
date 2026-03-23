@@ -86,6 +86,17 @@ interface GastoFijoData {
   totalGeneral: number;
 }
 
+interface Proyeccion {
+  diasTranscurridos: number;
+  promedioDiario: number;
+  diasRestantesMes: number;
+  diasTotalesMes: number;
+  diaDelMes: number;
+  ventasProyectadasMes: number;
+  duracionPeriodo: number;
+  ventasProyectadasSiguiente: number;
+}
+
 interface ReportData {
   filters: { fechaDesde: string; fechaHasta: string; sucursal: string; tipo: string };
   generatedAt: string;
@@ -102,6 +113,7 @@ interface ReportData {
   produccionData?: ProduccionReportData;
   gastoFijoData?: GastoFijoData;
   aiAnalysis?: AIAnalysis | null;
+  proyeccion?: Proyeccion | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -228,19 +240,24 @@ function EmailModal({
 }) {
   const [recipients, setRecipients] = useState('');
   const [savedEmail, setSavedEmail] = useState('');
+  const [loadingProfile, setLoadingProfile] = useState(true);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
-  // Leer email desde la cookie de sesión una vez montado en el cliente
+  // Auto-cargar el email del usuario desde Supabase al abrir el modal
   useEffect(() => {
-    try {
-      const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
-      if (!match) return;
-      const session = JSON.parse(decodeURIComponent(match.split('=').slice(1).join('=')));
-      const email: string = session.email ?? '';
-      if (email) { setRecipients(email); setSavedEmail(email); }
-    } catch { /* silencioso */ }
+    fetch('/api/user/profile', { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        console.log('[EmailModal] profile response:', data);
+        if (data.ok && data.email) {
+          setRecipients(data.email);
+          setSavedEmail(data.email);
+        }
+      })
+      .catch(err => console.error('[EmailModal] error:', err))
+      .finally(() => setLoadingProfile(false));
   }, []);
 
   const handleSend = async () => {
@@ -249,6 +266,18 @@ function EmailModal({
     setSending(true);
     setError('');
     try {
+      // Guardar el primer email como correo del usuario si cambió
+      const primaryEmail = emails[0];
+      if (primaryEmail !== savedEmail) {
+        await fetch('/api/user/profile', {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: primaryEmail }),
+        });
+        setSavedEmail(primaryEmail);
+      }
+
       // Quitar porDia (puede ser muy grande) antes de enviar
       const { current, previous, ...rest } = reportData;
       const slimData = {
@@ -488,7 +517,7 @@ function pctChange(curr: number, prev: number) {
 }
 
 function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData; canAccessGastoFijo?: boolean }) {
-  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData } = data;
+  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData, proyeccion } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -569,6 +598,51 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
             })}
           </div>
         </section>
+
+        {/* ── Proyección de ventas ── */}
+        {proyeccion && (
+          <section>
+            <SectionHeader title="Proyección de ventas" accent={R.blue} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
+              {/* Proyección al cierre del mes */}
+              <div style={{ background: R.blueLight, border: `1px solid #93c5fd`, borderTop: `3px solid ${R.blue}`, padding: '16px 18px', gridColumn: '1 / 2' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: R.blue, textTransform: 'uppercase' as const, marginBottom: 8 }}>
+                  Proyección al cierre del mes
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: R.text, letterSpacing: '-0.02em', marginBottom: 6 }}>
+                  {fmt(proyeccion.ventasProyectadasMes)}
+                </div>
+                <div style={{ fontSize: 11, color: R.textSub }}>
+                  {proyeccion.diasRestantesMes > 0
+                    ? `Quedan ${proyeccion.diasRestantesMes} días del mes (día ${proyeccion.diaDelMes} de ${proyeccion.diasTotalesMes})`
+                    : 'Mes completado'}
+                </div>
+              </div>
+              {/* Siguiente período */}
+              <div style={{ background: R.surface, border: `1px solid ${R.border}`, borderTop: `3px solid ${R.purple}`, padding: '16px 18px' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: R.purple, textTransform: 'uppercase' as const, marginBottom: 8 }}>
+                  Próximo período ({proyeccion.duracionPeriodo}d)
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: R.text, letterSpacing: '-0.02em', marginBottom: 6 }}>
+                  {fmt(proyeccion.ventasProyectadasSiguiente)}
+                </div>
+                <div style={{ fontSize: 11, color: R.textSub }}>Basado en promedio diario del período actual</div>
+              </div>
+              {/* Promedio diario */}
+              <div style={{ background: R.surface, border: `1px solid ${R.border}`, borderTop: `3px solid ${R.green}`, padding: '16px 18px' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: R.green, textTransform: 'uppercase' as const, marginBottom: 8 }}>
+                  Promedio diario
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: R.text, letterSpacing: '-0.02em', marginBottom: 6 }}>
+                  {fmt(proyeccion.promedioDiario)}
+                </div>
+                <div style={{ fontSize: 11, color: R.textSub }}>
+                  Sobre {proyeccion.diasTranscurridos} día{proyeccion.diasTranscurridos !== 1 ? 's' : ''} con ventas
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ── Comparación de períodos ── */}
         <section>

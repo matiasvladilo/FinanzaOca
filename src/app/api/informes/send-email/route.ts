@@ -65,6 +65,17 @@ interface GastoFijoLocal {
 }
 interface GastoFijoData { porLocal: GastoFijoLocal[]; totalGeneral: number }
 
+interface Proyeccion {
+  diasTranscurridos: number;
+  promedioDiario: number;
+  diasRestantesMes: number;
+  diasTotalesMes: number;
+  diaDelMes: number;
+  ventasProyectadasMes: number;
+  duracionPeriodo: number;
+  ventasProyectadasSiguiente: number;
+}
+
 interface ReportData {
   filters: { fechaDesde: string; fechaHasta: string; sucursal?: string };
   generatedAt?: string;
@@ -81,6 +92,7 @@ interface ReportData {
   mermaData?: MermaData;
   produccionData?: ProduccionData;
   gastoFijoData?: GastoFijoData;
+  proyeccion?: Proyeccion;
 }
 
 interface SendEmailBody {
@@ -169,10 +181,10 @@ function sectionHeader(title: string, accent: string = C.blue): string {
   </tr>`;
 }
 
-function insightStyle(type: Insight['type']): { bg: string; bdr: string; col: string } {
-  if (type === 'positive') return { bg: C.greenBg,  bdr: C.greenBdr,  col: C.green  };
-  if (type === 'negative') return { bg: C.redBg,    bdr: C.redBdr,    col: C.red    };
-  return                          { bg: C.amberBg,  bdr: C.amberBdr,  col: C.amber  };
+function insightStyle(type: Insight['type']): { bg: string; bdr: string; col: string; cls: string } {
+  if (type === 'positive') return { bg: C.greenBg,  bdr: C.greenBdr,  col: C.green,  cls: 'em-green-bg'  };
+  if (type === 'negative') return { bg: C.redBg,    bdr: C.redBdr,    col: C.red,    cls: 'em-red-bg'    };
+  return                          { bg: C.amberBg,  bdr: C.amberBdr,  col: C.amber,  cls: 'em-amber-bg'  };
 }
 
 // ── Constructor del HTML ──────────────────────────────────────────────────────
@@ -180,7 +192,7 @@ function insightStyle(type: Insight['type']): { bg: string; bdr: string; col: st
 function buildEmailHtml(d: ReportData): string {
   const { filters, current, previous, deltaVentas, deltaGastos, deltaMargen, deltaTx,
           tendencia, insights, aiAnalysis, mermaData, produccionData, gastoFijoData,
-          generatedAt, periodoAnterior } = d;
+          generatedAt, periodoAnterior, proyeccion } = d;
 
   const sucursalLabel = filters.sucursal ? filters.sucursal : 'Todas las sucursales';
   const generadoLabel = generatedAt
@@ -196,6 +208,7 @@ function buildEmailHtml(d: ReportData): string {
   const deltaTicket   = pctDelta(current.ticketPromedio, previous.ticketPromedio);
 
   const thStyle = `padding:9px 14px;font-size:10px;font-weight:700;color:${C.textSub};background:${C.surface};text-transform:uppercase;letter-spacing:0.06em;border-bottom:2px solid ${C.borderStrong};text-align:`;
+  const thClass = `em-th`;
   const tdStyle = `padding:10px 14px;font-size:13px;border-bottom:1px solid ${C.border};color:${C.text};`;
 
   // ── KPIs del período ──────────────────────────────────────────────────────
@@ -206,9 +219,9 @@ function buildEmailHtml(d: ReportData): string {
     { label: 'Índice 50',      value: `${indice50Curr.toFixed(1)}%`, delta: -deltaIndice50,    invertGood: false, accent: indice50Curr <= 50 ? C.green : C.red },
   ].map(k => `
     <td width="25%" style="padding:4px">
-      <div style="background:${C.surface};border:1px solid ${C.border};border-top:3px solid ${k.accent};padding:14px 12px;">
-        <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.textMuted};text-transform:uppercase;margin-bottom:8px">${k.label}</div>
-        <div style="font-size:19px;font-weight:800;color:${C.text};margin-bottom:6px;line-height:1">${k.value}</div>
+      <div class="em-kpi" style="background:${C.surface};border:1px solid ${C.border};border-top:3px solid ${k.accent};padding:14px 12px;">
+        <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.textMuted};text-transform:uppercase;margin-bottom:8px">${k.label}</div>
+        <div class="em-text" style="font-size:19px;font-weight:800;color:${C.text};margin-bottom:6px;line-height:1">${k.value}</div>
         <div>${deltaBadge(k.delta, k.invertGood)}</div>
       </div>
     </td>`).join('');
@@ -228,10 +241,10 @@ function buildEmailHtml(d: ReportData): string {
                                   prev: previous.transacciones.toLocaleString('es-CL'), delta: deltaTx, inv: false },
     { label: 'Ticket promedio',  curr: fmt(current.ticketPromedio),           prev: fmt(previous.ticketPromedio),   delta: deltaTicket,    inv: false },
   ].map((r, i) => `
-    <tr style="background:${i % 2 === 0 ? C.bg : C.surface}">
-      <td style="${tdStyle}font-weight:600">${r.label}</td>
-      <td style="${tdStyle}text-align:right;font-weight:700">${r.curr}</td>
-      <td style="${tdStyle}text-align:right;color:${C.textSub}">${r.prev}</td>
+    <tr class="${i % 2 === 0 ? 'em-td-base' : 'em-td-alt'}" style="background:${i % 2 === 0 ? C.bg : C.surface}">
+      <td class="em-text" style="${tdStyle}font-weight:600">${r.label}</td>
+      <td class="em-text" style="${tdStyle}text-align:right;font-weight:700">${r.curr}</td>
+      <td class="em-text-sub" style="${tdStyle}text-align:right;color:${C.textSub}">${r.prev}</td>
       <td style="${tdStyle}text-align:right">${deltaBadge(r.delta, r.inv)}</td>
     </tr>`).join('');
 
@@ -246,12 +259,12 @@ function buildEmailHtml(d: ReportData): string {
         const indice50Suc = data.ventas > 0 ? (data.gastos / data.ventas) * 100 : 0;
         const indice50Color = indice50Suc <= 50 ? C.green : C.red;
         return `
-          <tr style="background:${i % 2 === 0 ? C.bg : C.surface}">
-            <td style="${tdStyle}font-weight:600">${nombre}</td>
-            <td style="${tdStyle}text-align:right;font-weight:700">${fmt(data.ventas)}</td>
+          <tr class="${i % 2 === 0 ? 'em-td-base' : 'em-td-alt'}" style="background:${i % 2 === 0 ? C.bg : C.surface}">
+            <td class="em-text" style="${tdStyle}font-weight:600">${nombre}</td>
+            <td class="em-text" style="${tdStyle}text-align:right;font-weight:700">${fmt(data.ventas)}</td>
             <td style="${tdStyle}text-align:right;color:${C.amber}">${fmt(data.gastos)}</td>
             <td style="${tdStyle}text-align:right;color:${data.margen >= 0 ? C.green : C.red};font-weight:600">${fmt(data.margen)}</td>
-            <td style="${tdStyle}text-align:right;font-size:11px;color:${C.textSub}">${margenPct.toFixed(1)}%</td>
+            <td class="em-text-sub" style="${tdStyle}text-align:right;font-size:11px;color:${C.textSub}">${margenPct.toFixed(1)}%</td>
             <td style="${tdStyle}text-align:right;font-size:11px;font-weight:700;color:${indice50Color}">${indice50Suc.toFixed(1)}%</td>
             <td style="${tdStyle}text-align:right">${deltaBadge(delta)}</td>
           </tr>`;
@@ -275,11 +288,11 @@ function buildEmailHtml(d: ReportData): string {
   // ── Top proveedores ───────────────────────────────────────────────────────
   const proveedoresSection = current.topProveedores.length > 0 ? (() => {
     const rows = current.topProveedores.map((p, i) => `
-      <tr style="background:${i % 2 === 0 ? C.bg : C.surface}">
-        <td style="${tdStyle}color:${C.textMuted};font-weight:700;font-size:11px;width:30px">${i + 1}</td>
-        <td style="${tdStyle}font-weight:500">${p.nombre || 'Sin nombre'}</td>
-        <td style="${tdStyle}text-align:right;font-weight:700">${fmt(p.monto)}</td>
-        <td style="${tdStyle}text-align:right;font-size:11px;color:${C.textSub}">${p.pct.toFixed(1)}%</td>
+      <tr class="${i % 2 === 0 ? 'em-td-base' : 'em-td-alt'}" style="background:${i % 2 === 0 ? C.bg : C.surface}">
+        <td class="em-text-muted" style="${tdStyle}color:${C.textMuted};font-weight:700;font-size:11px;width:30px">${i + 1}</td>
+        <td class="em-text" style="${tdStyle}font-weight:500">${p.nombre || 'Sin nombre'}</td>
+        <td class="em-text" style="${tdStyle}text-align:right;font-weight:700">${fmt(p.monto)}</td>
+        <td class="em-text-sub" style="${tdStyle}text-align:right;font-size:11px;color:${C.textSub}">${p.pct.toFixed(1)}%</td>
       </tr>`).join('');
     return `
       <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${C.border};margin-top:24px">
@@ -440,10 +453,10 @@ function buildEmailHtml(d: ReportData): string {
     const items = insights.slice(0, 8).map(ins => {
       const s = insightStyle(ins.type);
       return `
-        <div style="margin-bottom:8px;padding:12px 16px;background:${s.bg};border-left:4px solid ${s.col};border-top:1px solid ${s.bdr};border-right:1px solid ${s.bdr};border-bottom:1px solid ${s.bdr};">
+        <div class="${s.cls}" style="margin-bottom:8px;padding:12px 16px;background:${s.bg};border-left:4px solid ${s.col};border-top:1px solid ${s.bdr};border-right:1px solid ${s.bdr};border-bottom:1px solid ${s.bdr};">
           <div style="font-weight:700;font-size:13px;color:${s.col};margin-bottom:4px">${ins.titulo}</div>
-          <div style="font-size:12px;color:${C.textSub};line-height:1.5">${ins.descripcion}</div>
-          ${ins.accion ? `<div style="font-size:12px;color:${C.textSub};margin-top:5px;font-style:italic">Acción: ${ins.accion}</div>` : ''}
+          <div class="em-text-sub" style="font-size:12px;color:${C.textSub};line-height:1.5">${ins.descripcion}</div>
+          ${ins.accion ? `<div class="em-text-sub" style="font-size:12px;color:${C.textSub};margin-top:5px;font-style:italic">Acción: ${ins.accion}</div>` : ''}
         </div>`;
     }).join('');
     return `
@@ -458,37 +471,85 @@ function buildEmailHtml(d: ReportData): string {
     <div style="margin-top:24px">
       <table width="100%" cellpadding="0" cellspacing="0">${sectionHeader('Análisis inteligente', C.purple)}</table>
       ${aiAnalysis.resumen ? `
-        <div style="margin-bottom:10px;padding:16px 20px;background:${C.purpleBg};border-left:4px solid ${C.purple};border-top:1px solid ${C.purpleBdr};border-right:1px solid ${C.purpleBdr};border-bottom:1px solid ${C.purpleBdr}">
+        <div class="em-purple-bg" style="margin-bottom:10px;padding:16px 20px;background:${C.purpleBg};border-left:4px solid ${C.purple};border-top:1px solid ${C.purpleBdr};border-right:1px solid ${C.purpleBdr};border-bottom:1px solid ${C.purpleBdr}">
           <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.purple};text-transform:uppercase;margin-bottom:8px">Resumen ejecutivo</div>
-          <p style="font-size:13px;color:${C.text};line-height:1.65;margin:0">${aiAnalysis.resumen}</p>
+          <p class="em-text" style="font-size:13px;color:${C.text};line-height:1.65;margin:0">${aiAnalysis.resumen}</p>
         </div>` : ''}
       ${aiAnalysis.comparacion ? `
-        <div style="margin-bottom:10px;padding:16px 20px;background:${C.surface};border-left:4px solid ${C.borderStrong};border-top:1px solid ${C.border};border-right:1px solid ${C.border};border-bottom:1px solid ${C.border}">
-          <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.textMuted};text-transform:uppercase;margin-bottom:8px">Análisis comparativo</div>
-          <p style="font-size:13px;color:${C.text};line-height:1.65;margin:0">${aiAnalysis.comparacion}</p>
+        <div class="em-surface" style="margin-bottom:10px;padding:16px 20px;background:${C.surface};border-left:4px solid ${C.borderStrong};border-top:1px solid ${C.border};border-right:1px solid ${C.border};border-bottom:1px solid ${C.border}">
+          <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.textMuted};text-transform:uppercase;margin-bottom:8px">Análisis comparativo</div>
+          <p class="em-text" style="font-size:13px;color:${C.text};line-height:1.65;margin:0">${aiAnalysis.comparacion}</p>
         </div>` : ''}
       ${(aiAnalysis.problemas?.length ?? 0) > 0 ? `
-        <div style="margin-bottom:10px;padding:14px 18px;background:${C.redBg};border-left:4px solid ${C.red};border-top:1px solid ${C.redBdr};border-right:1px solid ${C.redBdr};border-bottom:1px solid ${C.redBdr}">
+        <div class="em-red-bg" style="margin-bottom:10px;padding:14px 18px;background:${C.redBg};border-left:4px solid ${C.red};border-top:1px solid ${C.redBdr};border-right:1px solid ${C.redBdr};border-bottom:1px solid ${C.redBdr}">
           <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.red};text-transform:uppercase;margin-bottom:10px">Problemas detectados</div>
-          ${(aiAnalysis.problemas ?? []).map(p => `<div style="font-size:13px;color:${C.text};margin-bottom:6px;padding-left:12px">• ${p}</div>`).join('')}
+          ${(aiAnalysis.problemas ?? []).map(p => `<div class="em-text" style="font-size:13px;color:${C.text};margin-bottom:6px;padding-left:12px">• ${p}</div>`).join('')}
         </div>` : ''}
       ${(aiAnalysis.recomendaciones?.length ?? 0) > 0 ? `
-        <div style="padding:14px 18px;background:${C.greenBg};border-left:4px solid ${C.green};border-top:1px solid ${C.greenBdr};border-right:1px solid ${C.greenBdr};border-bottom:1px solid ${C.greenBdr}">
+        <div class="em-green-bg" style="padding:14px 18px;background:${C.greenBg};border-left:4px solid ${C.green};border-top:1px solid ${C.greenBdr};border-right:1px solid ${C.greenBdr};border-bottom:1px solid ${C.greenBdr}">
           <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.green};text-transform:uppercase;margin-bottom:10px">Recomendaciones</div>
-          ${(aiAnalysis.recomendaciones ?? []).map((r, i) => `<div style="font-size:13px;color:${C.text};margin-bottom:6px;padding-left:12px">${i + 1}. ${r}</div>`).join('')}
+          ${(aiAnalysis.recomendaciones ?? []).map((r, i) => `<div class="em-text" style="font-size:13px;color:${C.text};margin-bottom:6px;padding-left:12px">${i + 1}. ${r}</div>`).join('')}
         </div>` : ''}
     </div>` : '';
 
   // ── HTML final ────────────────────────────────────────────────────────────
   return `<!DOCTYPE html>
-<html lang="es">
+<html lang="es" xmlns:v="urn:schemas-microsoft-com:vml">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
   <title>Informe FinanzasOca</title>
+  <style>
+    :root { color-scheme: light dark; }
+
+    /* ── Dark mode: Gmail (data-ogsc), Apple Mail, Outlook app ── */
+    @media (prefers-color-scheme: dark) {
+      body, .em-body        { background-color: #0d1117 !important; }
+      .em-wrap              { background-color: #161b22 !important; }
+      .em-surface           { background-color: #1c2128 !important; }
+      .em-surface-alt       { background-color: #21262d !important; }
+      .em-text              { color: #e6edf3 !important; }
+      .em-text-sub          { color: #8b949e !important; }
+      .em-text-muted        { color: #6e7681 !important; }
+      .em-border            { border-color: #30363d !important; }
+      .em-border-strong     { border-color: #484f58 !important; }
+      .em-th                { background-color: #21262d !important; color: #8b949e !important; border-color: #484f58 !important; }
+      .em-td-alt            { background-color: #1c2128 !important; }
+      .em-td-base           { background-color: #161b22 !important; }
+      .em-kpi               { background-color: #21262d !important; border-color: #30363d !important; }
+      .em-green-bg          { background-color: #0d2a1a !important; border-color: #1a4731 !important; }
+      .em-red-bg            { background-color: #2a0d0d !important; border-color: #4d1414 !important; }
+      .em-amber-bg          { background-color: #2a1d00 !important; border-color: #4d3800 !important; }
+      .em-purple-bg         { background-color: #1a0d2e !important; border-color: #3b1f6e !important; }
+      .em-blue-bg           { background-color: #0d1a2e !important; border-color: #1d3a6e !important; }
+      .em-cyan-bg           { background-color: #0d2233 !important; border-color: #0d4466 !important; }
+    }
+    /* Gmail forced dark mode selector */
+    [data-ogsc] body, [data-ogsc] .em-body  { background-color: #0d1117 !important; }
+    [data-ogsc] .em-wrap                    { background-color: #161b22 !important; }
+    [data-ogsc] .em-surface                 { background-color: #1c2128 !important; }
+    [data-ogsc] .em-surface-alt             { background-color: #21262d !important; }
+    [data-ogsc] .em-text                    { color: #e6edf3 !important; }
+    [data-ogsc] .em-text-sub                { color: #8b949e !important; }
+    [data-ogsc] .em-text-muted              { color: #6e7681 !important; }
+    [data-ogsc] .em-border                  { border-color: #30363d !important; }
+    [data-ogsc] .em-border-strong           { border-color: #484f58 !important; }
+    [data-ogsc] .em-th                      { background-color: #21262d !important; color: #8b949e !important; border-color: #484f58 !important; }
+    [data-ogsc] .em-td-alt                  { background-color: #1c2128 !important; }
+    [data-ogsc] .em-td-base                 { background-color: #161b22 !important; }
+    [data-ogsc] .em-kpi                     { background-color: #21262d !important; border-color: #30363d !important; }
+    [data-ogsc] .em-green-bg                { background-color: #0d2a1a !important; border-color: #1a4731 !important; }
+    [data-ogsc] .em-red-bg                  { background-color: #2a0d0d !important; border-color: #4d1414 !important; }
+    [data-ogsc] .em-amber-bg                { background-color: #2a1d00 !important; border-color: #4d3800 !important; }
+    [data-ogsc] .em-purple-bg               { background-color: #1a0d2e !important; border-color: #3b1f6e !important; }
+    [data-ogsc] .em-blue-bg                 { background-color: #0d1a2e !important; border-color: #1d3a6e !important; }
+    [data-ogsc] .em-cyan-bg                 { background-color: #0d2233 !important; border-color: #0d4466 !important; }
+  </style>
 </head>
-<body style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
-<div style="max-width:700px;margin:24px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.10)">
+<body class="em-body" style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
+<div class="em-wrap" style="max-width:700px;margin:24px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.10)">
 
   <!-- Header -->
   <div style="background:linear-gradient(135deg,${C.navy} 0%,${C.navyLight} 100%);padding:28px 32px">
@@ -501,13 +562,46 @@ function buildEmailHtml(d: ReportData): string {
   </div>
 
   <!-- Cuerpo -->
-  <div style="padding:28px 32px">
+  <div class="em-wrap" style="padding:28px 32px;background:#ffffff">
 
     <!-- KPIs del período -->
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px">
       ${sectionHeader('Indicadores clave del período')}
       <tr>${kpiCards}</tr>
     </table>
+
+    <!-- Proyección de ventas -->
+    ${proyeccion ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px">
+      ${sectionHeader('Proyección de ventas', C.blue)}
+      <tr>
+        <td width="34%" style="padding:4px 4px 4px 0;vertical-align:top">
+          <div style="background:${C.blueLight};border:1px solid #93c5fd;border-top:3px solid ${C.blue};padding:16px 18px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.blue};text-transform:uppercase;margin-bottom:8px">Proyección cierre del mes</div>
+            <div style="font-size:20px;font-weight:800;color:${C.text};margin-bottom:6px">${fmt(proyeccion.ventasProyectadasMes)}</div>
+            <div style="font-size:11px;color:${C.textSub}">
+              ${proyeccion.diasRestantesMes > 0
+                ? `Quedan ${proyeccion.diasRestantesMes} días (día ${proyeccion.diaDelMes} de ${proyeccion.diasTotalesMes})`
+                : 'Mes completado'}
+            </div>
+          </div>
+        </td>
+        <td width="33%" style="padding:4px;vertical-align:top">
+          <div style="background:${C.purpleBg};border:1px solid ${C.purpleBdr};border-top:3px solid ${C.purple};padding:16px 18px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.purple};text-transform:uppercase;margin-bottom:8px">Próximo período (${proyeccion.duracionPeriodo}d)</div>
+            <div style="font-size:20px;font-weight:800;color:${C.text};margin-bottom:6px">${fmt(proyeccion.ventasProyectadasSiguiente)}</div>
+            <div style="font-size:11px;color:${C.textSub}">Basado en promedio diario</div>
+          </div>
+        </td>
+        <td width="33%" style="padding:4px 0 4px 4px;vertical-align:top">
+          <div style="background:${C.greenBg};border:1px solid ${C.greenBdr};border-top:3px solid ${C.green};padding:16px 18px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.green};text-transform:uppercase;margin-bottom:8px">Promedio diario</div>
+            <div style="font-size:20px;font-weight:800;color:${C.text};margin-bottom:6px">${fmt(proyeccion.promedioDiario)}</div>
+            <div style="font-size:11px;color:${C.textSub}">${proyeccion.diasTranscurridos} día${proyeccion.diasTranscurridos !== 1 ? 's' : ''} con ventas</div>
+          </div>
+        </td>
+      </tr>
+    </table>` : ''}
 
     <!-- Comparación de períodos -->
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${C.border};margin-bottom:0">
@@ -545,7 +639,7 @@ function buildEmailHtml(d: ReportData): string {
   </div>
 
   <!-- Footer -->
-  <div style="background:${C.surface};padding:16px 32px;border-top:1px solid ${C.border}">
+  <div class="em-surface em-border" style="background:${C.surface};padding:16px 32px;border-top:1px solid ${C.border}">
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr>
         <td style="font-size:11px;font-weight:700;color:${C.navy};letter-spacing:0.05em">FINANZASOCA</td>
