@@ -43,6 +43,7 @@ export const ROLES: Record<Role, RolePermissions> = {
 export interface SessionUser {
   username: string;
   role: Role;
+  email?: string;
 }
 
 export const SESSION_COOKIE = 'session';

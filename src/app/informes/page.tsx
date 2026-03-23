@@ -226,7 +226,19 @@ function EmailModal({
   reportData: ReportData;
   onClose: () => void;
 }) {
-  const [recipients, setRecipients] = useState('');
+  // Leer email directo desde la cookie de sesión (httpOnly: false)
+  function getSessionEmail(): string {
+    try {
+      const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
+      if (!match) return '';
+      const session = JSON.parse(decodeURIComponent(match.split('=').slice(1).join('=')));
+      return session.email ?? '';
+    } catch { return ''; }
+  }
+
+  const sessionEmail = getSessionEmail();
+  const [recipients, setRecipients] = useState(sessionEmail);
+  const [savedEmail] = useState(sessionEmail);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
@@ -237,15 +249,36 @@ function EmailModal({
     setSending(true);
     setError('');
     try {
-      const res = await fetch('/api/informes/send-email', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipients: emails, reportData }),
-      });
-      const data = await res.json();
-      if (data.ok) { setSent(true); }
-      else { setError(data.error ?? 'Error al enviar'); }
+      // Quitar porDia (puede ser muy grande) antes de enviar
+      const { current, previous, ...rest } = reportData;
+      const slimData = {
+        ...rest,
+        current:  { ...current,  porDia: [] },
+        previous: { ...previous, porDia: [] },
+      };
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+      try {
+        const res = await fetch('/api/informes/send-email', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipients: emails, reportData: slimData }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        const data = await res.json();
+        if (data.ok) { setSent(true); }
+        else { setError(data.error ?? 'Error al enviar'); }
+      } catch (err: unknown) {
+        clearTimeout(timeout);
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('Tiempo de espera agotado. Intenta de nuevo.');
+        } else {
+          throw err;
+        }
+      }
     } catch {
       setError('Error de conexión');
     } finally {
@@ -275,10 +308,16 @@ function EmailModal({
               type="text"
               value={recipients}
               onChange={e => setRecipients(e.target.value)}
-              placeholder="email1@ejemplo.com, email2@ejemplo.com"
-              className="w-full rounded-lg px-3 py-2 text-sm border outline-none mb-4"
+              placeholder="email@ejemplo.com"
+              className="w-full rounded-lg px-3 py-2 text-sm border outline-none mb-1"
               style={{ background: 'var(--bg)', border: '1px solid var(--border-2)', color: 'var(--text)' }}
             />
+            {recipients !== savedEmail && recipients && (
+              <p className="text-xs mb-3" style={{ color: 'var(--text-2)' }}>
+                Enviando a un correo diferente al tuyo
+              </p>
+            )}
+            <div className="mb-4" />
             {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
             <div className="flex gap-3">
               <button onClick={onClose} className="flex-1 py-2 rounded-lg text-sm font-medium border" style={{ color: 'var(--text-2)', borderColor: 'var(--border-2)' }}>

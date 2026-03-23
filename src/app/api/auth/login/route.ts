@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Credenciales incorrectas' }, { status: 401 });
     }
 
-    const session: SessionUser = { username: user.username, role: user.role };
+    const session: SessionUser = { username: user.username, role: user.role, email: user.email };
 
     const res = NextResponse.json({ ok: true });
     res.cookies.set(SESSION_COOKIE, JSON.stringify(session), {
