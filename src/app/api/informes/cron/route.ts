@@ -67,9 +67,8 @@ function buildCronDateRange(type: CronType): DateRange {
     }
 
     case 'weekly': {
-      // Semana anterior completa: lunes–domingo previos
+      // Semana anterior completa: lunes–domingo
       const dayOfWeek = today.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
-      // Días hasta el lunes de la semana anterior
       const daysToLastMonday = dayOfWeek === 0 ? 13 : dayOfWeek + 6;
       const daysToLastSunday = dayOfWeek === 0 ? 7 : dayOfWeek;
 
@@ -135,17 +134,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 3. Leer destinatarios desde variable de entorno
-    const recipientsRaw = process.env.REPORT_RECIPIENTS ?? '';
-    const recipients = recipientsRaw
-      .split(',')
-      .map(r => r.trim())
-      .filter(r => r.length > 0 && r.includes('@'));
+    // 3. Leer destinatarios desde variables de entorno
+    const parseEmails = (raw: string) =>
+      raw.split(',').map(r => r.trim()).filter(r => r.length > 0 && r.includes('@'));
 
-    if (recipients.length === 0) {
-      console.warn('[cron] REPORT_RECIPIENTS no configurado o vacío');
+    const recipientsUsuario = parseEmails(process.env.REPORT_RECIPIENTS ?? '');
+    const recipientsAdmin   = parseEmails(process.env.REPORT_RECIPIENTS_ADMIN ?? '');
+
+    if (recipientsUsuario.length === 0 && recipientsAdmin.length === 0) {
+      console.warn('[cron] No hay destinatarios configurados');
       return NextResponse.json(
-        { ok: false, error: 'No hay destinatarios configurados (REPORT_RECIPIENTS)' },
+        { ok: false, error: 'No hay destinatarios configurados (REPORT_RECIPIENTS o REPORT_RECIPIENTS_ADMIN)' },
         { status: 500 },
       );
     }
@@ -162,7 +161,11 @@ export async function GET(req: NextRequest) {
     generateUrl.searchParams.set('fechaHasta', dateRange.fechaHasta);
     generateUrl.searchParams.set('tipo', type);
 
-    const generateRes = await fetch(generateUrl.toString());
+    // Generamos siempre con rol admin para obtener el reporte completo (incl. gastoFijo).
+    // Luego quitamos gastoFijoData antes de enviar a destinatarios no-admin.
+    const generateRes = await fetch(generateUrl.toString(), {
+      headers: { 'x-cron-secret': cronSecret, 'x-cron-role': 'admin' },
+    });
     if (!generateRes.ok) {
       const errText = await generateRes.text();
       console.error('[cron] Error al generar informe:', errText);
@@ -210,50 +213,63 @@ export async function GET(req: NextRequest) {
       console.warn('[cron] No se pudo obtener análisis IA (continúa sin él):', aiErr);
     }
 
-    // 7. Enviar email a todos los destinatarios
+    // 7. Enviar emails según rol del destinatario
     const typeLabels: Record<CronType, string> = {
       daily:   'Diario',
       weekly:  'Semanal',
       monthly: 'Mensual',
     };
 
-    const subject = `Informe ${typeLabels[type]} FinanzasOca — ${dateRange.fechaDesde}${type !== 'daily' ? ` al ${dateRange.fechaHasta}` : ''}`;
+    const dateLabel = type === 'daily'
+      ? dateRange.fechaDesde
+      : `${dateRange.fechaDesde} al ${dateRange.fechaHasta}`;
+    const subject = `Nuevo informe ${typeLabels[type].toLowerCase()} de La Oca — ${dateLabel}`;
 
-    const emailPayload = {
-      recipients,
-      subject,
-      reportData: {
-        ...reportData,
-        aiAnalysis,
-      },
+    const fullReport   = { ...reportData, aiAnalysis };
+    // Para no-admin: quitamos gastoFijoData
+    const { gastoFijoData: _gf, ...reportSinGastoFijo } = fullReport as typeof fullReport & { gastoFijoData?: unknown };
+    void _gf;
+
+    const sendEmail = async (recipients: string[], data: unknown) => {
+      const res = await fetch(`${baseUrl}/api/informes/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients, subject, reportData: data }),
+      });
+      return res.json() as Promise<SendEmailResponse>;
     };
 
-    const emailRes = await fetch(`${baseUrl}/api/informes/send-email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(emailPayload),
-    });
+    const results: SendEmailResponse[] = [];
 
-    const emailData = (await emailRes.json()) as SendEmailResponse;
+    if (recipientsAdmin.length > 0) {
+      const r = await sendEmail(recipientsAdmin, fullReport);
+      if (!r.ok) console.error('[cron] Error enviando a admins:', r.error);
+      else console.log(`[cron] Informe (admin) enviado a ${recipientsAdmin.length} destinatario(s)`);
+      results.push(r);
+    }
 
-    if (!emailData.ok) {
-      console.error('[cron] Error al enviar email:', emailData.error);
+    if (recipientsUsuario.length > 0) {
+      const r = await sendEmail(recipientsUsuario, reportSinGastoFijo);
+      if (!r.ok) console.error('[cron] Error enviando a usuarios:', r.error);
+      else console.log(`[cron] Informe (usuario) enviado a ${recipientsUsuario.length} destinatario(s)`);
+      results.push(r);
+    }
+
+    const anyFailed = results.some(r => !r.ok);
+    if (anyFailed && results.every(r => !r.ok)) {
       return NextResponse.json(
-        { ok: false, error: `Informe generado pero email falló: ${emailData.error}` },
+        { ok: false, error: 'Todos los envíos fallaron' },
         { status: 502 },
       );
     }
-
-    console.log(`[cron] Informe ${type} enviado a ${recipients.length} destinatario(s). messageId: ${emailData.messageId}`);
 
     return NextResponse.json({
       ok: true,
       type,
       fechaDesde: dateRange.fechaDesde,
       fechaHasta: dateRange.fechaHasta,
-      sent: recipients.length,
-      recipients,
-      messageId: emailData.messageId,
+      sentAdmin:   recipientsAdmin.length,
+      sentUsuario: recipientsUsuario.length,
       hasAiAnalysis: !!aiAnalysis,
       executedAt: new Date().toISOString(),
     });
