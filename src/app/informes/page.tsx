@@ -226,22 +226,22 @@ function EmailModal({
   reportData: ReportData;
   onClose: () => void;
 }) {
-  // Leer email directo desde la cookie de sesión (httpOnly: false)
-  function getSessionEmail(): string {
-    try {
-      const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
-      if (!match) return '';
-      const session = JSON.parse(decodeURIComponent(match.split('=').slice(1).join('=')));
-      return session.email ?? '';
-    } catch { return ''; }
-  }
-
-  const sessionEmail = getSessionEmail();
-  const [recipients, setRecipients] = useState(sessionEmail);
-  const [savedEmail] = useState(sessionEmail);
+  const [recipients, setRecipients] = useState('');
+  const [savedEmail, setSavedEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+
+  // Leer email desde la cookie de sesión una vez montado en el cliente
+  useEffect(() => {
+    try {
+      const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
+      if (!match) return;
+      const session = JSON.parse(decodeURIComponent(match.split('=').slice(1).join('=')));
+      const email: string = session.email ?? '';
+      if (email) { setRecipients(email); setSavedEmail(email); }
+    } catch { /* silencioso */ }
+  }, []);
 
   const handleSend = async () => {
     const emails = recipients.split(',').map(e => e.trim()).filter(Boolean);
