@@ -17,8 +17,8 @@ interface CacheEntry<T> {
 // Map global — persiste entre requests en el mismo proceso Node.js
 const store = new Map<string, CacheEntry<unknown>>();
 
-/** TTL por defecto: 5 minutos */
-export const DEFAULT_TTL_MS = 5 * 60 * 1000;
+/** TTL por defecto: 30 minutos */
+export const DEFAULT_TTL_MS = 30 * 60 * 1000;
 
 /**
  * Recupera un valor del caché.
@@ -72,6 +72,38 @@ export async function withCache<T>(
   const cached = getCached<T>(key);
   if (cached !== null) return cached;
 
+  const data = await fetcher();
+  setCached(key, data, ttlMs);
+  return data;
+}
+
+/**
+ * Stale-While-Revalidate: devuelve datos del caché inmediatamente (aunque estén
+ * vencidos) y lanza el fetch en background para actualizarlos.
+ * Si no hay caché en absoluto, bloquea hasta obtener datos frescos.
+ *
+ * Uso:
+ *   const data = await withCacheSWR('cierre-caja', () => fetchFromSheets());
+ */
+export async function withCacheSWR<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlMs: number = DEFAULT_TTL_MS,
+): Promise<T> {
+  const entry = store.get(key) as CacheEntry<T> | undefined;
+
+  if (entry) {
+    // Tenemos datos (frescos o vencidos) — devolverlos inmediatamente
+    if (Date.now() > entry.expiresAt) {
+      // Vencido: revalidar en background sin bloquear la respuesta
+      fetcher()
+        .then(fresh => setCached(key, fresh, ttlMs))
+        .catch(() => { /* silencioso: el caché stale sigue siendo válido */ });
+    }
+    return entry.data;
+  }
+
+  // Sin caché: bloquear hasta obtener datos frescos
   const data = await fetcher();
   setCached(key, data, ttlMs);
   return data;

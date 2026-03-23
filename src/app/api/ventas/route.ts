@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
-import { withCache } from '@/lib/data/cache';
+import { withCacheSWR } from '@/lib/data/cache';
 import { requireAuth } from '@/lib/auth-api';
 
 const CACHE_KEY = 'ventas-v10';
@@ -84,7 +84,7 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
 }
 
 export async function fetchVentasData() {
-  return withCache(CACHE_KEY, fetchVentasRaw);
+  return withCacheSWR(CACHE_KEY, fetchVentasRaw);
 }
 
 async function fetchVentasRaw() {

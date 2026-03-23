@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
-import { withCache } from '@/lib/data/cache';
+import { withCacheSWR } from '@/lib/data/cache';
 
 const CACHE_KEY = 'cierre-caja-v3';
 
@@ -65,7 +65,7 @@ async function fetchLocalCierreCaja(nombre: string, sheetId: string, tab: string
 }
 
 export async function fetchCierreCajaData() {
-  return withCache(CACHE_KEY, fetchCierreCajaRaw);
+  return withCacheSWR(CACHE_KEY, fetchCierreCajaRaw);
 }
 
 async function fetchCierreCajaRaw() {
