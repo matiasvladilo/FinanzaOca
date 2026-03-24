@@ -1662,11 +1662,11 @@ export default function InformesPage() {
 
       {/* Vista previa del informe */}
       {reportHTML && (
-        <div className="mb-6 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)' }}>
+        <div className="mb-6 rounded-xl" style={{ border: '1px solid var(--border)', boxShadow: 'var(--card-shadow)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
           <iframe
             ref={iframeRef}
             srcDoc={reportHTML}
-            style={{ width: '100%', minHeight: 600, display: 'block', border: 'none' }}
+            style={{ width: '100%', minWidth: 600, minHeight: 600, display: 'block', border: 'none' }}
             onLoad={() => {
               const iframe = iframeRef.current;
               if (iframe?.contentDocument?.body) {

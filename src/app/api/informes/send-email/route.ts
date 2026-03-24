@@ -180,10 +180,14 @@ function sectionHeader(title: string, accent: string = C.blue): string {
   return `
   <tr>
     <td colspan="10" style="padding:20px 0 10px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:4px;height:16px;background:${accent};border-radius:2px;display:inline-block;vertical-align:middle"></div>
-        <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;color:${C.textSub};text-transform:uppercase;vertical-align:middle">${title}</span>
-      </div>
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <tr>
+          <td style="width:4px;background:${accent};font-size:16px;line-height:16px">&nbsp;</td>
+          <td style="padding-left:10px;vertical-align:middle">
+            <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;color:${C.textSub};text-transform:uppercase">${title}</span>
+          </td>
+        </tr>
+      </table>
       <div style="border-top:1px solid ${C.border};margin-top:8px"></div>
     </td>
   </tr>`;
@@ -220,19 +224,25 @@ function buildEmailHtml(d: ReportData): string {
   const tdStyle = `padding:10px 14px;font-size:13px;border-bottom:1px solid ${C.border};color:${C.text};`;
 
   // ── KPIs del período ──────────────────────────────────────────────────────
-  const kpiCards = [
+  const kpiDefs = [
     { label: 'Ventas brutas',  value: fmt(current.ventas),           delta: deltaVentas,       invertGood: false, accent: C.blue   },
     { label: 'Gastos totales', value: fmt(current.gastos),           delta: deltaGastos,       invertGood: true,  accent: C.amber  },
     { label: 'Margen neto',    value: fmt(current.margen),           delta: deltaMargen,       invertGood: false, accent: C.green  },
     { label: 'Índice 50',      value: `${indice50Curr.toFixed(1)}%`, delta: -deltaIndice50,    invertGood: false, accent: indice50Curr <= 50 ? C.green : C.red },
-  ].map(k => `
-    <td width="25%" style="padding:4px">
-      <div class="em-kpi" style="background:${C.surface};border:1px solid ${C.border};border-top:3px solid ${k.accent};padding:14px 12px;">
-        <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.textMuted};text-transform:uppercase;margin-bottom:8px">${k.label}</div>
-        <div class="em-text" style="font-size:19px;font-weight:800;color:${C.text};margin-bottom:6px;line-height:1">${k.value}</div>
-        <div>${deltaBadge(k.delta, k.invertGood)}</div>
-      </div>
-    </td>`).join('');
+  ];
+  const kpiCell = (k: typeof kpiDefs[0]) => `
+    <td width="50%" style="padding:4px;vertical-align:top">
+      <table width="100%" cellpadding="0" cellspacing="0" class="em-kpi" style="border-collapse:collapse;background:${C.surface};border:1px solid ${C.border};border-top:3px solid ${k.accent}">
+        <tr><td style="padding:14px 12px">
+          <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.textMuted};text-transform:uppercase;margin-bottom:8px">${k.label}</div>
+          <div class="em-text" style="font-size:18px;font-weight:800;color:${C.text};margin-bottom:6px;line-height:1">${k.value}</div>
+          <div>${deltaBadge(k.delta, k.invertGood)}</div>
+        </td></tr>
+      </table>
+    </td>`;
+  const kpiCards = `
+    <tr>${kpiCell(kpiDefs[0])}${kpiCell(kpiDefs[1])}</tr>
+    <tr>${kpiCell(kpiDefs[2])}${kpiCell(kpiDefs[3])}</tr>`;
 
   // ── Comparación de períodos ───────────────────────────────────────────────
   const prevLabel = periodoAnterior
@@ -321,10 +331,12 @@ function buildEmailHtml(d: ReportData): string {
       ? `${((mermaData.totalMerma / current.ventas) * 100).toFixed(1)}% sobre ventas`
       : '—';
     const porLocalRows = mermaData.porLocal.map(l => `
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-        <span style="color:${C.textSub}">${l.local}</span>
-        <span style="font-weight:700">${fmt(l.monto)} <span style="color:${C.textMuted};font-weight:400">(${l.pct}%)</span></span>
-      </div>`).join('');
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:4px">
+        <tr>
+          <td style="font-size:12px;color:${C.textSub}">${l.local}</td>
+          <td style="font-size:12px;font-weight:700;text-align:right">${fmt(l.monto)} <span style="color:${C.textMuted};font-weight:400">(${l.pct}%)</span></td>
+        </tr>
+      </table>`).join('');
 
     const tipoRows = mermaData.porTipo.map((t, i) => `
       <tr style="background:${i % 2 === 0 ? C.bg : C.surface}">
@@ -424,9 +436,12 @@ function buildEmailHtml(d: ReportData): string {
           <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.cyan};text-transform:uppercase;margin-bottom:6px">${l.local}</div>
           <div style="font-size:18px;font-weight:800;color:${C.text};margin-bottom:8px">${fmt(l.total)}</div>
           ${l.categorias.map(c => `
-            <div style="display:flex;justify-content:space-between;font-size:11px;color:${C.textSub};margin-bottom:2px">
-              <span>${c.categoria}</span><span style="font-weight:600">${fmt(c.monto)}</span>
-            </div>`).join('')}
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:2px">
+              <tr>
+                <td style="font-size:11px;color:${C.textSub}">${c.categoria}</td>
+                <td style="font-size:11px;color:${C.textSub};font-weight:600;text-align:right">${fmt(c.monto)}</td>
+              </tr>
+            </table>`).join('')}
         </div>
       </td>`).join('');
 
@@ -557,25 +572,29 @@ function buildEmailHtml(d: ReportData): string {
   </style>
 </head>
 <body class="em-body" style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
-<div class="em-wrap" style="max-width:700px;margin:24px auto;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.10)">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7">
+<tr><td align="center" style="padding:16px 8px">
+  <table class="em-wrap" width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;background:#ffffff">
 
   <!-- Header -->
-  <div style="background:linear-gradient(135deg,${C.navy} 0%,${C.navyLight} 100%);padding:28px 32px">
-    <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;color:#93c5fd;text-transform:uppercase;margin-bottom:6px">FinanzasOca · Informe de gestión</div>
-    <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;margin-bottom:8px">
-      ${tendenciaChar} ${fd(filters.fechaDesde)} – ${fd(filters.fechaHasta)}
-    </div>
-    <div style="font-size:13px;color:#bfdbfe;margin-bottom:4px">${sucursalLabel}</div>
-    <div style="font-size:11px;color:#93c5fd">Generado: ${generadoLabel}</div>
-  </div>
+  <tr>
+    <td style="background-color:${C.navy};padding:24px 20px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;color:#93c5fd;text-transform:uppercase;margin-bottom:6px">FinanzasOca · Informe de gestión</div>
+      <div style="font-size:22px;font-weight:800;color:#ffffff;margin-bottom:8px">
+        ${tendenciaChar} ${fd(filters.fechaDesde)} – ${fd(filters.fechaHasta)}
+      </div>
+      <div style="font-size:13px;color:#bfdbfe;margin-bottom:4px">${sucursalLabel}</div>
+      <div style="font-size:11px;color:#93c5fd">Generado: ${generadoLabel}</div>
+    </td>
+  </tr>
 
   <!-- Cuerpo -->
-  <div class="em-wrap" style="padding:28px 32px;background:#ffffff">
+  <tr><td class="em-wrap" style="padding:20px 16px;background:#ffffff">
 
     <!-- KPIs del período -->
     <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px">
       ${sectionHeader('Indicadores clave del período')}
-      <tr>${kpiCards}</tr>
+      ${kpiCards}
     </table>
 
     <!-- Proyección de ventas -->
@@ -636,22 +655,25 @@ function buildEmailHtml(d: ReportData): string {
     <!-- Análisis IA -->
     ${aiSection}
 
-  </div>
+  </td></tr>
 
   <!-- Footer -->
-  <div class="em-surface em-border" style="background:${C.surface};padding:16px 32px;border-top:1px solid ${C.border}">
-    <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="font-size:11px;font-weight:700;color:${C.navy};letter-spacing:0.05em">FINANZASOCA</td>
-        <td style="font-size:11px;color:${C.textMuted};text-align:center">
-          ${fd(filters.fechaDesde)} al ${fd(filters.fechaHasta)}
-        </td>
-        <td style="font-size:11px;color:${C.textMuted};text-align:right">Confidencial</td>
-      </tr>
-    </table>
-  </div>
+  <tr>
+    <td class="em-surface em-border" style="background:${C.surface};padding:16px 20px;border-top:1px solid ${C.border}">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="font-size:11px;font-weight:700;color:${C.navy};letter-spacing:0.05em">FINANZASOCA</td>
+          <td style="font-size:11px;color:${C.textMuted};text-align:center">
+            ${fd(filters.fechaDesde)} al ${fd(filters.fechaHasta)}
+          </td>
+          <td style="font-size:11px;color:${C.textMuted};text-align:right">Confidencial</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
 
-</div>
+  </table>
+</td></tr></table>
 </body>
 </html>`;
 }
