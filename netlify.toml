@@ -17,7 +17,14 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Informe diario — 08:00 hora Chile (UTC-3 → 11:00 UTC)
+# Informe semanal — martes a las 09:00 hora Chile (UTC-3 → 12:00 UTC)
+# Cubre lunes a viernes de la semana anterior
 [[scheduled_functions]]
-  name = "scheduled-reports"
-  cron = "0 11 * * *"
+  name = "report-weekly"
+  cron = "0 12 * * 2"
+
+# Informe mensual — día 1 de cada mes a las 09:00 hora Chile (UTC-3 → 12:00 UTC)
+# Cubre el mes anterior completo
+[[scheduled_functions]]
+  name = "report-monthly"
+  cron = "0 12 1 * *"

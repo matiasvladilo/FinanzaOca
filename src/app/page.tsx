@@ -52,22 +52,36 @@ function ssGetJSON<T>(key: string, fallback: T): T {
 }
 
 export default function DashboardPage() {
-  const [filters, setFilters]   = useState<DashboardFilters>(() => ssGetJSON('dash_filters', defaultFilters));
-  const [mesFiltro, setMesFiltro] = useState<string>(() => ssGet('dash_mesFiltro', ''));
-  const [fechaDesde, setFechaDesde] = useState(() => ssGet('dash_fechaDesde', ''));
-  const [fechaHasta, setFechaHasta] = useState(() => ssGet('dash_fechaHasta', ''));
-  const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>(() => ssGet('dash_modoFiltro', 'mes') as 'mes' | 'dia');
+  const [filters, setFilters]   = useState<DashboardFilters>(defaultFilters);
+  const [mesFiltro, setMesFiltro] = useState<string>('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
+  const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
   const [dateOpen, setDateOpen] = useState(false);
-  const [mesComp, setMesComp]       = useState(() => ssGet('dash_mesComp', ''));
+  const [mesComp, setMesComp]       = useState('');
   const [selectedSucursales, setSelectedSucursales] = useState<string[]>([]);
-  const [compOn, setCompOn]         = useState(() => ssGet('dash_compOn', 'false') === 'true');
-  const [compareType, setCompareType] = useState<'mes' | 'local'>(() => ssGet('dash_compareType', 'mes') as 'mes' | 'local');
-  const [localA, setLocalA]         = useState(() => ssGet('dash_localA', ''));
-  const [localB, setLocalB]         = useState(() => ssGet('dash_localB', ''));
+  const [compOn, setCompOn]         = useState(false);
+  const [compareType, setCompareType] = useState<'mes' | 'local'>('mes');
+  const [localA, setLocalA]         = useState('');
+  const [localB, setLocalB]         = useState('');
   const dateRef = useRef<HTMLDivElement>(null);
   const [ccData, setCcData]     = useState<CierreCajaResponse | null>(null);
   const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
+
+  // Restaurar estado desde sessionStorage tras el primer render (evita hydration mismatch)
+  useEffect(() => {
+    setFilters(ssGetJSON('dash_filters', defaultFilters));
+    setMesFiltro(ssGet('dash_mesFiltro', ''));
+    setFechaDesde(ssGet('dash_fechaDesde', ''));
+    setFechaHasta(ssGet('dash_fechaHasta', ''));
+    setModoFiltro(ssGet('dash_modoFiltro', 'mes') as 'mes' | 'dia');
+    setMesComp(ssGet('dash_mesComp', ''));
+    setCompOn(ssGet('dash_compOn', 'false') === 'true');
+    setCompareType(ssGet('dash_compareType', 'mes') as 'mes' | 'local');
+    setLocalA(ssGet('dash_localA', ''));
+    setLocalB(ssGet('dash_localB', ''));
+  }, []);
 
   // Persistir filtros en sessionStorage
   useEffect(() => { try { sessionStorage.setItem('dash_filters', JSON.stringify(filters)); } catch {} }, [filters]);
@@ -80,7 +94,7 @@ export default function DashboardPage() {
   useEffect(() => { try { sessionStorage.setItem('dash_mesComp', mesComp); } catch {} }, [mesComp]);
   useEffect(() => { try { sessionStorage.setItem('dash_localA', localA); } catch {} }, [localA]);
   useEffect(() => { try { sessionStorage.setItem('dash_localB', localB); } catch {} }, [localB]);
-  useEffect(() => { try { const v = ssGetJSON('dash_selectedSucursales', []); if (v.length) setSelectedSucursales(v); } catch {} }, []);
+  useEffect(() => { try { const v = ssGetJSON<string[]>('dash_selectedSucursales', []); if (v.length) setSelectedSucursales(v); } catch {} }, []);
   useEffect(() => { try { sessionStorage.setItem('dash_selectedSucursales', JSON.stringify(selectedSucursales)); } catch {} }, [selectedSucursales]);
 
   useEffect(() => {
