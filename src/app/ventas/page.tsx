@@ -91,45 +91,54 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return (
     <div
       style={{
-        background: 'var(--card)',
-        border: '1px solid var(--border-2)',
-        borderRadius: 14,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-        padding: '12px 16px',
-        minWidth: 200,
+        background: 'rgba(10,14,28,0.88)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 12,
+        boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+        padding: '10px 14px',
+        minWidth: 195,
         fontSize: 12,
       }}
     >
       {/* Header */}
-      <div style={{ marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{label}</span>
+      <div style={{ marginBottom: 9, paddingBottom: 7, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.92)', letterSpacing: '-0.01em' }}>{label}</span>
       </div>
 
       {/* Período actual */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         {main.map((p: any) => {
           const matchComp = comp.find((c: any) => c.name.replace(' Comp', '') === p.name || c.dataKey === p.dataKey + 'Comp');
           const delta = matchComp && matchComp.value > 0
             ? ((p.value - matchComp.value) / matchComp.value) * 100
             : null;
+          const barColor = p.color ?? p.fill;
           return (
-            <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: p.color ?? p.fill, display: 'inline-block', flexShrink: 0 }} />
-                <span style={{ color: 'var(--text-3)' }}>{p.name}</span>
+            <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: barColor,
+                  display: 'inline-block', flexShrink: 0,
+                  boxShadow: `0 0 6px ${barColor}88`,
+                }} />
+                <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>{p.name}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontWeight: 700, color: 'var(--text)' }}>{fmtFull(p.value)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontVariantNumeric: 'tabular-nums' }}>{fmtFull(p.value)}</span>
                 {delta !== null && (
                   <span style={{
                     fontSize: 10,
-                    fontWeight: 600,
-                    padding: '1px 5px',
-                    borderRadius: 6,
-                    background: delta >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                    color: delta >= 0 ? '#16a34a' : '#dc2626',
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: 20,
+                    background: delta >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                    color: delta >= 0 ? '#4ade80' : '#f87171',
+                    letterSpacing: '-0.01em',
                   }}>
-                    {delta >= 0 ? '+' : ''}{delta.toFixed(1)}%
+                    {delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%
                   </span>
                 )}
               </div>
@@ -141,21 +150,21 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       {/* Período comparado */}
       {comp.length > 0 && (
         <>
-          <div style={{ margin: '10px 0 8px', borderTop: '1px dashed var(--border)', paddingTop: 8 }}>
+          <div style={{ margin: '9px 0 7px', borderTop: '1px dashed rgba(255,255,255,0.07)', paddingTop: 7 }}>
             {fechaComp && (
-              <span style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 vs {fechaComp}
               </span>
             )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {comp.map((p: any) => (
-              <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: p.color ?? p.fill, opacity: 0.45, display: 'inline-block', flexShrink: 0 }} />
-                  <span style={{ color: 'var(--text-3)' }}>{p.name.replace(' Comp', '')}</span>
+              <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color ?? p.fill, opacity: 0.4, display: 'inline-block', flexShrink: 0 }} />
+                  <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>{p.name.replace(' Comp', '')}</span>
                 </div>
-                <span style={{ fontWeight: 600, color: 'var(--text-2)' }}>{fmtFull(p.value)}</span>
+                <span style={{ fontWeight: 600, color: 'rgba(255,255,255,0.45)', fontVariantNumeric: 'tabular-nums' }}>{fmtFull(p.value)}</span>
               </div>
             ))}
           </div>
@@ -255,8 +264,12 @@ function InteractiveChart({
       <YAxis tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} tickFormatter={yFmt} width={52} />
       <Tooltip
         content={<CustomTooltip />}
-        cursor={{ stroke: 'var(--text-3)', strokeWidth: 1, strokeDasharray: '4 3', opacity: 0.4 }}
+        cursor={isBar
+          ? { fill: 'rgba(255,255,255,0.04)', radius: 4 }
+          : { stroke: 'rgba(255,255,255,0.18)', strokeWidth: 1, strokeDasharray: '4 3' }
+        }
         wrapperStyle={{ outline: 'none' }}
+        animationDuration={120}
       />
     </>
   );
@@ -325,15 +338,18 @@ function InteractiveChart({
           {commonChildren}
           {localDefs!.flatMap(d => [
             <Bar key={`v${d.idx}`} dataKey={`ventas_${d.idx}`} name={d.local}
-              fill={d.color} opacity={showVentas ? 1 : 0} radius={[4, 4, 0, 0]}>
+              fill={d.color} opacity={showVentas ? 1 : 0} radius={[4, 4, 0, 0]}
+              activeBar={{ fill: d.color, opacity: 0.85, filter: 'brightness(1.25)' }}>
               {showVentas ? barLabel(`ventas_${d.idx}`) : null}
             </Bar>,
             <Bar key={`g${d.idx}`} dataKey={`gastos_${d.idx}`} name={`${d.local} Gastos`}
-              fill={showGastos ? `url(#hatch_${d.idx})` : d.color} opacity={showGastos ? 1 : 0} radius={[4, 4, 0, 0]}>
+              fill={showGastos ? `url(#hatch_${d.idx})` : d.color} opacity={showGastos ? 1 : 0} radius={[4, 4, 0, 0]}
+              activeBar={{ fill: d.color, opacity: 0.75 }}>
               {showGastos ? barLabel(`gastos_${d.idx}`) : null}
             </Bar>,
             <Bar key={`pres${d.idx}`} dataKey={`presupuesto_${d.idx}`} name={`${d.local} Presup.`}
-              fill="#EF4444" opacity={showPresupuesto ? 0.55 : 0} radius={[4, 4, 0, 0]}>
+              fill="#EF4444" opacity={showPresupuesto ? 0.55 : 0} radius={[4, 4, 0, 0]}
+              activeBar={{ fill: '#EF4444', opacity: 0.8 }}>
               {showPresupuesto ? barLabel(`presupuesto_${d.idx}`) : null}
             </Bar>,
           ])}
@@ -380,11 +396,11 @@ function InteractiveChart({
     <ResponsiveContainer width="100%" height={260}>
       <BarChart data={sData} barCategoryGap="30%" barGap={2} margin={{ top: 22 }} style={{ background: 'transparent' }}>
         {commonChildren}
-        {showVentas && <Bar dataKey="ventas" name="Ventas" fill={colorVentas} radius={[4, 4, 0, 0]}>{barLabel('ventas')}</Bar>}
-        {showGastos && <Bar dataKey="gastos" name="Gastos" fill={colorGastos} radius={[4, 4, 0, 0]}>{barLabel('gastos')}</Bar>}
-        {hasComp && showVentas && <Bar dataKey="ventasComp" name="Ventas (comp.)" fill={colorVentas} opacity={0.5} radius={[4, 4, 0, 0]}>{barLabel('ventasComp')}</Bar>}
-        {hasComp && showGastos && <Bar dataKey="gastosComp" name="Gastos (comp.)" fill={colorGastos} opacity={0.5} radius={[4, 4, 0, 0]}>{barLabel('gastosComp')}</Bar>}
-        {showPresupuesto && <Bar dataKey="presupuesto" name="Presupuesto" fill="#EF4444" opacity={0.55} radius={[4, 4, 0, 0]}>{barLabel('presupuesto')}</Bar>}
+        {showVentas && <Bar dataKey="ventas" name="Ventas" fill={colorVentas} radius={[4, 4, 0, 0]} activeBar={{ fill: colorVentas, opacity: 0.85, filter: 'brightness(1.25)' }}>{barLabel('ventas')}</Bar>}
+        {showGastos && <Bar dataKey="gastos" name="Gastos" fill={colorGastos} radius={[4, 4, 0, 0]} activeBar={{ fill: colorGastos, opacity: 0.85, filter: 'brightness(1.25)' }}>{barLabel('gastos')}</Bar>}
+        {hasComp && showVentas && <Bar dataKey="ventasComp" name="Ventas (comp.)" fill={colorVentas} opacity={0.5} radius={[4, 4, 0, 0]} activeBar={{ fill: colorVentas, opacity: 0.75 }}>{barLabel('ventasComp')}</Bar>}
+        {hasComp && showGastos && <Bar dataKey="gastosComp" name="Gastos (comp.)" fill={colorGastos} opacity={0.5} radius={[4, 4, 0, 0]} activeBar={{ fill: colorGastos, opacity: 0.75 }}>{barLabel('gastosComp')}</Bar>}
+        {showPresupuesto && <Bar dataKey="presupuesto" name="Presupuesto" fill="#EF4444" opacity={0.55} radius={[4, 4, 0, 0]} activeBar={{ fill: '#EF4444', opacity: 0.8 }}>{barLabel('presupuesto')}</Bar>}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -1066,10 +1082,10 @@ export default function VentasPage() {
     <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
 
       {/* ── Header ── */}
-      <header className="flex items-center justify-between px-6 py-4 sticky top-0 z-30 transition-colors"
+      <header className="flex items-center justify-between flex-wrap px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30 transition-colors gap-2"
         style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
-        <h1 className="text-[18px] font-bold" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
-        <div className="flex items-center gap-3">
+        <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
 
           {/* Período mes */}
           <PeriodSelect
@@ -1249,21 +1265,21 @@ export default function VentasPage() {
             <span className="font-semibold text-[11px]">Presupuesto</span>
           </button>
 
-          <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 w-44">
+          <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 w-44">
             <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <input type="text" placeholder="Buscar..." className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400" />
           </div>
-          <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
+          <button className="hidden sm:block relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
             <Bell className="w-4 h-4" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
           </button>
         </div>
       </header>
 
-      <main className="flex-1 px-6 py-5 space-y-5 pb-8">
+      <main className="flex-1 px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 pb-8">
 
         {/* ── KPIs ── */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {[
             {
               label: 'Ventas Total', value: loadingSheet ? '...' : fmtFull(ventasReal),
@@ -1291,13 +1307,13 @@ export default function VentasPage() {
             const delta = k.deltaPct !== null ? parseFloat(k.deltaPct) : null;
             const pos = delta === null ? true : delta >= 0;
             return (
-            <div key={k.label} className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] font-bold tracking-widest text-gray-400 uppercase">{k.label}</p>
-                <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center', k.bg)}>{k.icon}</div>
+            <div key={k.label} className="rounded-2xl p-3 sm:p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between mb-2 sm:mb-3">
+                <p className="text-[9px] sm:text-[10px] font-bold tracking-widest text-gray-400 uppercase">{k.label}</p>
+                <div className={clsx('w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center', k.bg)}>{k.icon}</div>
               </div>
-              <div className="flex items-end gap-2 mb-1">
-                <p className="text-[22px] font-black text-gray-900 leading-none">{k.value}</p>
+              <div className="flex items-end gap-1.5 mb-1">
+                <p className="text-[17px] sm:text-[22px] font-black text-gray-900 leading-none truncate">{k.value}</p>
                 {delta !== null && (
                   <span className={clsx('text-[11px] font-bold pb-0.5', pos ? 'text-green-600' : 'text-red-500')}>
                     {pos ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
@@ -1438,10 +1454,10 @@ export default function VentasPage() {
         </div>
 
         {/* ── Bottom Row ── */}
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
 
           {/* Proyección de Ventas */}
-          <div className="col-span-1 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="sm:col-span-1 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Proyección de Ventas</h3>
             </div>
@@ -1498,7 +1514,7 @@ export default function VentasPage() {
           </div>
 
           {/* Top Proveedores (datos reales del Sheet) */}
-          <div className="col-span-2 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="sm:col-span-2 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Top Proveedores</h3>
               <button
@@ -1516,7 +1532,7 @@ export default function VentasPage() {
 
             {filteredData.hasComp && filteredData.topProveedoresComp.length > 0 ? (
               /* ── Modo comparativo: 2 columnas ── */
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
                   { label: localSel[0], list: filteredData.topProveedores, gastos: gastosReal, color: 'text-blue-600', bar: 'bg-blue-400' },
                   { label: localSel[1], list: filteredData.topProveedoresComp, gastos: gastosComp, color: 'text-purple-600', bar: 'bg-purple-400' },

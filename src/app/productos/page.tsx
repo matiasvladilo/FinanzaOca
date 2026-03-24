@@ -319,17 +319,17 @@ export default function ProductosPage() {
   // ── KPIs sección ventas/producción ───────────────────────
   const prodKpis = useMemo(() => {
     if (!usingReal || !sbData?.kpi) return [
-      { label: 'Ingresos Totales',  value: '$38.4M', delta: '+11%', pos: true,  color: 'text-blue-600',   bg: 'bg-blue-50' },
-      { label: 'Costos Totales',    value: '$15.1M', delta: '+4%',  pos: false, color: 'text-orange-500', bg: 'bg-orange-50' },
-      { label: 'Margen Bruto',      value: '60.7%',  delta: '+3.2pp', pos: true, color: 'text-green-600', bg: 'bg-green-50' },
-      { label: 'Costo / Unidad',    value: '$334',   delta: '-2.1%', pos: true,  color: 'text-purple-600', bg: 'bg-purple-50' },
+      { label: 'Ingresos Totales', value: '$38.4M', delta: '+11%',    pos: true,  color: 'text-sky-700',    bg: 'bg-sky-100' },
+      { label: 'Margen Bruto',     value: '60.7%',  delta: '+3.2pp',  pos: true,  color: 'text-emerald-700',bg: 'bg-emerald-100' },
+      { label: 'Costo / Unidad',   value: '$334',   delta: '-2.1%',   pos: true,  color: 'text-violet-700', bg: 'bg-violet-100' },
     ];
     const kpi = sbData.kpi;
+    const ticketProm = kpi.totalPedidos > 0 ? fmt(kpi.totalVentas / kpi.totalPedidos) : '—';
+    const unidPedido = kpi.totalPedidos > 0 ? (kpi.totalUnidades / kpi.totalPedidos).toFixed(1) : '—';
     return [
-      { label: 'Ventas Totales',   value: fmt(kpi.totalVentas),                    delta: '12 meses', pos: true,  color: 'text-blue-600',   bg: 'bg-blue-50' },
-      { label: 'Total Pedidos',    value: kpi.totalPedidos.toLocaleString('es-CL'), delta: 'ConectOca', pos: true, color: 'text-purple-600', bg: 'bg-purple-50' },
-      { label: 'Unidades Vendidas',value: kpi.totalUnidades.toLocaleString('es-CL'),delta: 'pedidos',  pos: true,  color: 'text-green-600',  bg: 'bg-green-50' },
-      { label: 'Área Estrella',    value: kpi.topCategoria ?? '—',                  delta: 'top área', pos: true,  color: 'text-orange-500', bg: 'bg-orange-50' },
+      { label: 'Ventas Totales',  value: fmt(kpi.totalVentas), delta: '12 meses',  pos: true, color: 'text-sky-700',    bg: 'bg-sky-100' },
+      { label: 'Ticket Promedio', value: ticketProm,           delta: 'por pedido', pos: true, color: 'text-violet-700', bg: 'bg-violet-100' },
+      { label: 'Unid. / Pedido',  value: unidPedido,           delta: 'promedio',   pos: true, color: 'text-emerald-700',bg: 'bg-emerald-100' },
     ];
   }, [usingReal, sbData]);
 
@@ -383,8 +383,8 @@ export default function ProductosPage() {
     <div className="flex flex-col flex-1 min-h-screen bg-gray-50">
 
       {/* ── Header ── */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-100 sticky top-0 z-30 gap-4">
-        <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 flex-1 max-w-xs">
+      <header className="flex items-center justify-between flex-wrap px-3 sm:px-6 py-3 sm:py-4 bg-white border-b border-gray-100 sticky top-0 z-30 gap-2 sm:gap-4">
+        <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 flex-1 max-w-xs">
           <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
           <input type="text" placeholder="Buscar productos, SKUs..." className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400" />
         </div>
@@ -443,7 +443,7 @@ export default function ProductosPage() {
         </div>
       </header>
 
-      <main className="flex-1 px-6 py-5 space-y-5 pb-8">
+      <main className="flex-1 px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 pb-8">
 
         {/* ── Título ── */}
         <div className="flex items-end justify-between">
@@ -461,7 +461,7 @@ export default function ProductosPage() {
         </div>
 
         {/* ── KPIs superiores ── */}
-        <div className={clsx('grid gap-4', kpiFmt.totalPedidos !== null ? 'grid-cols-4' : 'grid-cols-3')}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Unidades Vendidas</p>
             <div className="flex items-end gap-3">
@@ -473,34 +473,23 @@ export default function ProductosPage() {
             {usingReal && <p className="text-[10px] text-blue-500 font-medium mt-1">Datos reales · ConectOca</p>}
           </div>
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Área Estrella</p>
-            <div className="flex items-center justify-between">
-              <p className="text-[24px] font-black text-gray-900 leading-tight truncate">{loadingSb ? '...' : kpiFmt.topCategoria}</p>
-              <div className="w-11 h-11 rounded-2xl bg-blue-100 flex items-center justify-center flex-shrink-0 ml-2">
-                <Star className="w-5 h-5 text-blue-500 fill-blue-500" />
-              </div>
-            </div>
+            <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Total Pedidos</p>
+            <p className="text-[32px] font-black text-gray-900 leading-none">
+              {loadingSb ? '...' : (kpiFmt.totalPedidos !== null ? kpiFmt.totalPedidos.toLocaleString('es-CL') : '—')}
+            </p>
+            <p className="text-[10px] text-blue-500 font-medium mt-1">Últimos 12 meses</p>
           </div>
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Producto más Vendido</p>
             <p className="text-[18px] font-black text-gray-900 leading-tight truncate">{loadingSb ? '...' : kpiFmt.topProducto}</p>
           </div>
-          {kpiFmt.totalPedidos !== null && (
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-3">Total Pedidos</p>
-              <p className="text-[32px] font-black text-gray-900 leading-none">
-                {kpiFmt.totalPedidos.toLocaleString('es-CL')}
-              </p>
-              <p className="text-[10px] text-blue-500 font-medium mt-1">Últimos 12 meses</p>
-            </div>
-          )}
         </div>
 
         {/* ── Top Productos + Donut ── */}
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
 
           {/* Top productos por unidades */}
-          <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <div className="sm:col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-[15px] font-bold text-gray-900">Top Productos</h3>
@@ -678,12 +667,12 @@ export default function ProductosPage() {
           </div>
 
           {/* Mini KPIs */}
-          <div className="grid grid-cols-4 gap-3 mb-5">
+          <div className="grid grid-cols-3 gap-3 mb-5">
             {prodKpis.map(k => (
-              <div key={k.label} className={clsx('rounded-xl p-3.5', k.bg)}>
-                <p className="text-[10px] font-bold tracking-wide text-gray-500 uppercase mb-1.5">{k.label}</p>
-                <p className={clsx('text-[20px] font-black leading-none truncate', k.color)}>{loadingSb ? '...' : k.value}</p>
-                <p className={clsx('text-[10px] font-bold mt-1', k.pos ? 'text-green-600' : 'text-red-500')}>
+              <div key={k.label} className={clsx('rounded-xl p-4 border border-white/60', k.bg)}>
+                <p className={clsx('text-[10px] font-bold tracking-widest uppercase mb-2 opacity-60', k.color)}>{k.label}</p>
+                <p className={clsx('text-[22px] font-black leading-none truncate', k.color)}>{loadingSb ? '...' : k.value}</p>
+                <p className={clsx('text-[10px] font-semibold mt-1.5 opacity-70', k.color)}>
                   {k.delta}
                 </p>
               </div>

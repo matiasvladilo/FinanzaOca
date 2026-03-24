@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer, Legend,
@@ -57,35 +57,66 @@ const CustomDot = (props: any) => {
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
-  const fmt = (v: number) => v >= 1_000_000
+  const fmtMoney = (v: number) => v >= 1_000_000
     ? `$${(v / 1_000_000).toFixed(2)}M`
     : v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`;
   return (
-    <div className="rounded-xl shadow-lg px-4 py-3 text-[12px]"
-      style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
-      <p className="font-semibold mb-2" style={{ color: 'var(--text-2)' }}>{label}</p>
+    <div style={{
+      background: 'rgba(10,14,28,0.92)',
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 12,
+      boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+      padding: '10px 14px',
+      minWidth: 185,
+      fontSize: 12,
+    }}>
+      <p style={{ fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.07)', letterSpacing: '-0.01em' }}>
+        {label}
+      </p>
       {payload.map((p: any) => {
         const ventas = p.payload[`__ventas_${p.dataKey}`];
         const gastos = p.payload[`__gastos_${p.dataKey}`];
+        const isRisk = p.value > 50;
         return (
-          <div key={p.dataKey} className="mb-2">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-              <span className="font-semibold" style={{ color: 'var(--text-2)' }}>{p.dataKey}</span>
-              <span className="font-black ml-auto" style={{ color: p.value > 50 ? '#EF4444' : '#22C55E' }}>
+          <div key={p.dataKey} style={{ marginBottom: 9 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: p.color,
+                display: 'inline-block', flexShrink: 0,
+                boxShadow: `0 0 6px ${p.color}88`,
+              }} />
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{p.dataKey}</span>
+              <span style={{
+                marginLeft: 'auto',
+                fontWeight: 800,
+                fontSize: 13,
+                color: isRisk ? '#f87171' : '#4ade80',
+                letterSpacing: '-0.02em',
+              }}>
                 {p.value}%
+              </span>
+              <span style={{
+                fontSize: 9, fontWeight: 700,
+                padding: '2px 5px', borderRadius: 20,
+                background: isRisk ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+                color: isRisk ? '#f87171' : '#4ade80',
+              }}>
+                {isRisk ? 'RIESGO' : 'OK'}
               </span>
             </div>
             {ventas != null && (
-              <div className="pl-4 text-[10px]" style={{ color: 'var(--text-3)' }}>
-                <span className="text-blue-400">V:</span> {fmt(ventas)} &nbsp;
-                <span className="text-red-400">G:</span> {fmt(gastos)}
+              <div style={{ paddingLeft: 16, fontSize: 10, color: 'rgba(255,255,255,0.35)', display: 'flex', gap: 10 }}>
+                <span><span style={{ color: '#60a5fa' }}>V:</span> {fmtMoney(ventas)}</span>
+                <span><span style={{ color: '#f87171' }}>G:</span> {fmtMoney(gastos)}</span>
               </div>
             )}
           </div>
         );
       })}
-      <div className="mt-1 pt-1 text-[10px]" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-3)' }}>
+      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
         Verde ≤50% · Rojo &gt;50%
       </div>
     </div>
@@ -198,6 +229,46 @@ export default function FactorIndicePage() {
 
   const sucursalesVisibles = sucSel.length > 0 ? sucSel : allSucs;
 
+  // ── Zoom con rueda ──────────────────────────────────────────────────────────
+  const [zoomRange, setZoomRange] = useState<{ start: number; end: number } | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  // Reset zoom cuando cambian los datos
+  useEffect(() => { setZoomRange(null); }, [indice50Data]);
+
+  const visibleChartData = useMemo(() => {
+    if (!zoomRange || indice50Data.length === 0) return indice50Data;
+    return indice50Data.slice(zoomRange.start, zoomRange.end + 1);
+  }, [indice50Data, zoomRange]);
+
+  const handleChartWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    if (indice50Data.length < 2) return;
+    const total = indice50Data.length;
+    const cur = zoomRange ?? { start: 0, end: total - 1 };
+    const range = cur.end - cur.start;
+    const step = Math.max(1, Math.floor(range * 0.18));
+    const zoomIn = e.deltaY < 0;
+
+    if (zoomIn) {
+      const newStart = Math.min(cur.start + step, cur.end - 1);
+      const newEnd   = Math.max(cur.end   - step, cur.start + 1);
+      if (newEnd - newStart >= 1) setZoomRange({ start: newStart, end: newEnd });
+    } else {
+      const newStart = Math.max(0, cur.start - step);
+      const newEnd   = Math.min(total - 1, cur.end + step);
+      if (newStart === 0 && newEnd === total - 1) setZoomRange(null);
+      else setZoomRange({ start: newStart, end: newEnd });
+    }
+  }, [indice50Data, zoomRange]);
+
+  useEffect(() => {
+    const el = chartContainerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleChartWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleChartWheel);
+  }, [handleChartWheel]);
+
   // ── Factor global (filtered) ────────────────────────────────────────────────
   const { factorGlobal, totalVentas, totalGastos } = useMemo(() => {
     if (!cierreCajaData?.registrosDiarios || !mesSeleccionado)
@@ -269,9 +340,9 @@ export default function FactorIndicePage() {
     <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
 
       {/* ── Header ── */}
-      <header className="flex items-center justify-between px-6 py-4 sticky top-0 z-30 transition-colors"
+      <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30 transition-colors"
         style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
-        <h1 className="text-[18px] font-bold" style={{ color: 'var(--text)' }}>Factor Índice Overview</h1>
+        <h1 className="text-[16px] sm:text-[18px] font-bold" style={{ color: 'var(--text)' }}>Factor Índice Overview</h1>
         <div className="flex items-center gap-2">
           <button className="relative p-2 transition-colors" style={{ color: 'var(--text-3)' }}>
             <Bell className="w-4 h-4" />
@@ -289,7 +360,7 @@ export default function FactorIndicePage() {
       </header>
 
       {/* ── Subheader filters ── */}
-      <div className="flex flex-wrap items-center justify-between px-6 py-3 gap-3 transition-colors"
+      <div className="flex flex-wrap items-center justify-between px-3 sm:px-6 py-3 gap-2 sm:gap-3 transition-colors"
         style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -414,15 +485,15 @@ export default function FactorIndicePage() {
 
         {/* Export */}
         <button onClick={handleExport}
-          className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold transition-colors shadow-sm"
+          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-[12px] font-semibold transition-colors shadow-sm"
           style={{ background: 'var(--active-text)', color: '#fff' }}>
           <Download className="w-3.5 h-3.5" />
-          Exportar
+          <span className="hidden sm:inline">Exportar</span>
         </button>
       </div>
 
       {/* ── Main ── */}
-      <main className="flex-1 px-6 py-5 space-y-5">
+      <main className="flex-1 px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
 
         {/* ── Panel de Comparación ── */}
         {compOn && compFactorData && (
@@ -469,13 +540,26 @@ export default function FactorIndicePage() {
                 (Gastos / Ventas) × 100 · punto verde ≤50% · rojo &gt;50%
               </p>
             </div>
-            <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤50%
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;50%
-              </span>
+            <div className="flex items-center gap-3">
+              {zoomRange && (
+                <button
+                  onClick={() => setZoomRange(null)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all hover:opacity-80"
+                  style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', color: '#818cf8' }}
+                  title="Doble clic para restablecer"
+                >
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#818cf8" strokeWidth="1.5"/><line x1="4" y1="6" x2="8" y2="6" stroke="#818cf8" strokeWidth="1.5"/></svg>
+                  Restablecer zoom
+                </button>
+              )}
+              <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤50%
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;50%
+                </span>
+              </div>
             </div>
           </div>
 
@@ -486,48 +570,72 @@ export default function FactorIndicePage() {
               <p className="text-[12px]" style={{ color: 'var(--text-3)' }}>Sin datos para el período seleccionado</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={indice50Data} style={{ background: 'transparent' }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="semana" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} />
-                <YAxis
-                  domain={[0, 100]}
-                  tick={{ fontSize: 10, fill: 'var(--chart-axis)' }}
-                  axisLine={false} tickLine={false}
-                  tickFormatter={v => `${v}%`}
-                  width={38}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" iconSize={8}
-                  wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
-                  formatter={v => <span style={{ color: 'var(--chart-axis)' }}>{v}</span>} />
-                <ReferenceLine
-                  y={50} stroke="#EF4444" strokeWidth={1.5}
-                  label={{ value: '50', position: 'insideTopRight', fontSize: 10, fill: '#EF4444', fontWeight: 700 }}
-                />
-                {sucursalesVisibles.map((suc, i) => (
-                  <Line
-                    key={suc}
-                    type="monotone"
-                    dataKey={suc}
-                    name={suc}
-                    stroke={getSucColor(suc, i)}
-                    strokeWidth={2.5}
-                    dot={<CustomDot />}
-                    activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2 }}
-                    connectNulls
+            <div
+              ref={chartContainerRef}
+              onDoubleClick={() => setZoomRange(null)}
+              style={{ cursor: zoomRange ? 'zoom-out' : 'crosshair', userSelect: 'none' }}
+            >
+              {zoomRange && (
+                <div style={{ textAlign: 'center', marginBottom: 4, fontSize: 10, color: 'rgba(129,140,248,0.7)', letterSpacing: '0.04em' }}>
+                  {visibleChartData[0]?.semana} → {visibleChartData[visibleChartData.length - 1]?.semana}
+                  &nbsp;·&nbsp;{visibleChartData.length} de {indice50Data.length} períodos
+                  &nbsp;·&nbsp;rueda para ajustar · doble clic para restablecer
+                </div>
+              )}
+              {!zoomRange && indice50Data.length > 1 && (
+                <div style={{ textAlign: 'center', marginBottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.03em' }}>
+                  Usá la rueda del mouse sobre el gráfico para hacer zoom
+                </div>
+              )}
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={visibleChartData} style={{ background: 'transparent' }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="semana" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    domain={[0, 'auto']}
+                    tick={{ fontSize: 10, fill: 'var(--chart-axis)' }}
+                    axisLine={false} tickLine={false}
+                    tickFormatter={v => `${v}%`}
+                    width={38}
                   />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    cursor={{ stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1, strokeDasharray: '4 3' }}
+                    wrapperStyle={{ outline: 'none' }}
+                    animationDuration={100}
+                  />
+                  <Legend iconType="circle" iconSize={8}
+                    wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
+                    formatter={v => <span style={{ color: 'var(--chart-axis)' }}>{v}</span>} />
+                  <ReferenceLine
+                    y={50} stroke="#EF4444" strokeWidth={1.5} strokeDasharray="6 3"
+                    label={{ value: '50', position: 'insideTopRight', fontSize: 10, fill: '#EF4444', fontWeight: 700 }}
+                  />
+                  {sucursalesVisibles.map((suc, i) => (
+                    <Line
+                      key={suc}
+                      type="monotone"
+                      dataKey={suc}
+                      name={suc}
+                      stroke={getSucColor(suc, i)}
+                      strokeWidth={2.5}
+                      dot={<CustomDot />}
+                      activeDot={{ r: 7, stroke: '#fff', strokeWidth: 2 }}
+                      connectNulls
+                      animationDuration={300}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
 
         {/* Bottom row */}
-        <div className="grid grid-cols-4 gap-5 pb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-5 pb-6">
 
           {/* Factor Card — compacto */}
-          <div className="col-span-1 rounded-2xl p-4 shadow-sm flex flex-col gap-3"
+          <div className="sm:col-span-1 rounded-2xl p-4 shadow-sm flex flex-col gap-3"
             style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between">
               <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: 'var(--text-3)' }}>
@@ -585,7 +693,7 @@ export default function FactorIndicePage() {
           </div>
 
           {/* Ventas vs Gastos */}
-          <div className="col-span-2 rounded-2xl p-6 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="sm:col-span-2 rounded-2xl p-6 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <h3 className="text-[15px] font-bold mb-5" style={{ color: 'var(--text)' }}>Comparación Ventas vs Gastos</h3>
             <div className="space-y-5">
               <div>
@@ -632,7 +740,7 @@ export default function FactorIndicePage() {
           </div>
 
           {/* Alertas */}
-          <div className="col-span-1 rounded-2xl p-5 shadow-sm flex flex-col" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="sm:col-span-1 rounded-2xl p-5 shadow-sm flex flex-col" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-orange-500" />

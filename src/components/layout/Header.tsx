@@ -35,20 +35,20 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
   };
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b sticky top-0 z-30 transition-colors"
+    <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b sticky top-0 z-30 transition-colors"
       style={{ background: 'var(--header-bg)', borderColor: 'var(--border)' }}>
 
-      <h1 className="text-[18px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
+      <h1 className="text-[15px] sm:text-[18px] font-bold tracking-tight shrink-0" style={{ color: 'var(--text)' }}>
         Data Analytics Desk
       </h1>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1 sm:gap-3">
         {/* View Toggle */}
-        <div className="flex items-center rounded-full p-1 gap-1" style={{ background: 'var(--hover)' }}>
+        <div className="flex items-center rounded-full p-1 gap-0.5 sm:gap-1" style={{ background: 'var(--hover)' }}>
           {(['overview', 'granular'] as const).map(v => (
             <button key={v}
               onClick={() => setVista(v)}
-              className={clsx('px-4 py-1.5 rounded-full text-[12px] font-medium transition-all duration-150')}
+              className={clsx('px-2 sm:px-4 py-1.5 rounded-full text-[11px] sm:text-[12px] font-medium transition-all duration-150')}
               style={filters.vista === v
                 ? { background: 'var(--card)', color: 'var(--text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
                 : { color: 'var(--text-3)' }}
@@ -61,10 +61,11 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
         {/* Sucursal Selector */}
         <div className="relative">
           <button onClick={() => setSucursalOpen(!sucursalOpen)}
-            className="flex items-center gap-2 px-3 py-2 rounded-full text-[12px] border transition-colors hover:border-[var(--active-text)]"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-full text-[12px] border transition-colors hover:border-[var(--active-text)]"
             style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}>
             <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--text-3)' }} />
-            <span>{filters.sucursal === 'Todas' ? 'Todas las sucursales' : filters.sucursal}</span>
+            <span className="hidden sm:inline">{filters.sucursal === 'Todas' ? 'Todas las sucursales' : filters.sucursal}</span>
+            <span className="sm:hidden">{filters.sucursal === 'Todas' ? 'Todas' : filters.sucursal}</span>
             <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
           </button>
 
@@ -99,12 +100,12 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
 
         {/* Export */}
         <button onClick={onExport}
-          className="flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-semibold transition-colors shadow-sm"
+          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-[12px] font-semibold transition-colors shadow-sm"
           style={{ background: 'var(--active-text)', color: '#ffffff' }}
           onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
           onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
           <Download className="w-3.5 h-3.5" />
-          Exportar
+          <span className="hidden sm:inline">Exportar</span>
         </button>
       </div>
     </header>
