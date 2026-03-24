@@ -16,6 +16,10 @@ interface PeriodSelectProps {
   label?: string;
   /** Texto a mostrar cuando ningún valor está seleccionado (value === '') */
   allLabel?: string;
+  /** 'sm' para barra de filtros oscura en mobile */
+  size?: 'sm' | 'md';
+  /** Variante oscura para fondo oscuro */
+  dark?: boolean;
 }
 
 export function PeriodSelect({
@@ -24,6 +28,8 @@ export function PeriodSelect({
   onChange,
   label,
   allLabel = 'Todos',
+  size = 'md',
+  dark = false,
 }: PeriodSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,10 +55,13 @@ export function PeriodSelect({
         onClick={() => setOpen(o => !o)}
         suppressHydrationWarning
         className={clsx(
-          'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all select-none',
+          'flex items-center gap-1 border rounded-xl font-medium transition-all select-none',
+          size === 'sm' ? 'px-2.5 py-1.5 text-[11px]' : 'px-3.5 py-2 text-[12px]',
           isFiltered
             ? 'bg-blue-600 border-blue-600 text-white'
-            : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
+            : dark
+              ? 'bg-slate-700 border-slate-600 text-slate-200 hover:border-blue-400 hover:text-blue-400'
+              : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
         )}
       >
         {label && (
