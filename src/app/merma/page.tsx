@@ -328,9 +328,9 @@ export default function MermaPage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen bg-gray-50 relative">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-100 sticky top-0 z-30">
+      <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 bg-white border-b border-gray-100 sticky top-0 z-30">
         <h1 className="text-[18px] font-bold text-gray-900">Dashboard de Merma</h1>
-        <div className="flex items-center gap-2 flex-1 max-w-xs mx-6">
+        <div className="hidden sm:flex items-center gap-2 flex-1 max-w-xs mx-3 sm:mx-6">
           <div className="flex items-center gap-2 w-full bg-gray-100 rounded-full px-3 py-2">
             <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
             <input
@@ -496,7 +496,7 @@ export default function MermaPage() {
         </div>
       </div>
 
-      <main className="flex-1 px-6 py-5 space-y-5 pb-24">
+      <main className="flex-1 px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 pb-24">
 
         {/* ── Panel de Comparación ─────────────────────────────────────────── */}
         {compOn && compKPI && (

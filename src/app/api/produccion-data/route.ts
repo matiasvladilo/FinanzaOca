@@ -134,50 +134,60 @@ async function fetchMerma(local: string, desde: Date, hasta: Date) {
     .filter(r => !filterLocal || r.local.toLowerCase() === filterLocal);
 }
 
+const OCA_BUSINESS_ID = 'd1fa7f40-c5e1-4bc2-9ffc-c8483950b758';
+
 // ── Fetch ventas desde Supabase (ConectOca) ──────────────────────────────────
 async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-    return { orders: [], items: [], areaMap: {} as Record<string, string>, productCategoryMap: {} as Record<string, string> };
+    return { orders: [], items: [], areaMap: {} as Record<string, string> };
   }
   const db = getSupabaseClient();
-  const [ordersRes, itemsRes, categoriesRes, productsRes] = await Promise.all([
-    db.from('orders')
-      .select('created_at, total, status')
-      .gte('created_at', desdeStr)
-      .lte('created_at', hastaStr),
-    db.from('order_items')
-      .select('product_id, product_name, quantity, price, created_at')
-      .gte('created_at', desdeStr)
-      .lte('created_at', hastaStr),
-    db.from('categories').select('id, name'),
-    db.from('products').select('id, category_id'),
-  ]);
 
-  // category_id → nombre normalizado
-  const categoryMap: Record<string, string> = {};
-  for (const c of (categoriesRes.data ?? [])) {
-    const id   = String((c as Record<string, unknown>).id   ?? '');
-    const name = String((c as Record<string, unknown>).name ?? '');
-    // Normalizar: PANADERIA/panaderia → Panadería, PASTELERIA → Pastelería, EMPANADAS → Empanadas
-    const normalized = name.toUpperCase().includes('PASTELERIA') ? 'Pastelería'
-                     : name.toUpperCase().includes('PANADERIA')  ? 'Panadería'
-                     : name.toUpperCase().includes('EMPANADA')   ? 'Empanadas'
-                     : name;
-    if (id) categoryMap[id] = normalized;
+  // Paginar order_items — Supabase devuelve máx 1000 filas por request
+  const PAGE = 1000;
+  const allItems: Record<string, unknown>[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from('order_items')
+      .select('product_name, quantity, price, production_area_id, orders!inner(created_at)')
+      .eq('orders.business_id', OCA_BUSINESS_ID)
+      .gte('orders.created_at', desdeStr)
+      .lte('orders.created_at', hastaStr)
+      .range(from, from + PAGE - 1);
+    if (error) { console.error('[produccion-data] order_items page error:', error.message); break; }
+    if (!data?.length) break;
+    allItems.push(...(data as Record<string, unknown>[]));
+    if (data.length < PAGE) break;
+    from += PAGE;
   }
 
-  // product_id → category name
-  const productCategoryMap: Record<string, string> = {};
-  for (const p of (productsRes.data ?? [])) {
-    const pid = String((p as Record<string, unknown>).id          ?? '');
-    const cid = String((p as Record<string, unknown>).category_id ?? '');
-    if (pid) productCategoryMap[pid] = cid ? (categoryMap[cid] ?? 'Otros') : 'Otros';
+  const [ordersRes, areasRes] = await Promise.all([
+    db.from('orders')
+      .select('created_at, total, status')
+      .eq('business_id', OCA_BUSINESS_ID)
+      .gte('created_at', desdeStr)
+      .lte('created_at', hastaStr)
+      .limit(50000),
+    db.from('production_areas').select('id, name'),
+  ]);
+
+  if (ordersRes.error) console.error('[produccion-data] orders error:', ordersRes.error.message);
+  if (areasRes.error)  console.error('[produccion-data] production_areas error:', areasRes.error.message);
+  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length} | areas: ${areasRes.data?.length ?? 0}`);
+
+  // production_area_id → nombre de área
+  const areaMap: Record<string, string> = {};
+  for (const a of (areasRes.data ?? [])) {
+    const id   = String((a as Record<string, unknown>).id   ?? '');
+    const name = String((a as Record<string, unknown>).name ?? 'Sin área');
+    if (id) areaMap[id] = name;
   }
 
   return {
-    orders:             (ordersRes.data ?? []) as Record<string, unknown>[],
-    items:              (itemsRes.data  ?? []) as Record<string, unknown>[],
-    productCategoryMap,
+    orders: (ordersRes.data ?? []) as Record<string, unknown>[],
+    items:  allItems,
+    areaMap,
   };
 }
 
@@ -202,8 +212,10 @@ export async function GET(req: NextRequest) {
     const fechaHasta = searchParams.get('fechaHasta') ?? '';
 
     const { desde, hasta } = getDateRange({ mesDesde, mesHasta, fechaDesde, fechaHasta });
-    const desdeStr = desde.toISOString().slice(0, 10);
-    const hastaStr = hasta.toISOString().slice(0, 10);
+    // Formatear como fecha local (sin conversión UTC) para que "marzo" no incluya abril
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const desdeStr = `${desde.getFullYear()}-${pad(desde.getMonth() + 1)}-${pad(desde.getDate())}`;
+    const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth() + 1)}-${pad(hasta.getDate())}`;
 
     // Fetch en paralelo
     const [gastos, mermaData, ventasData] = await Promise.all([
@@ -212,18 +224,19 @@ export async function GET(req: NextRequest) {
       fetchVentasSupabase(desdeStr, hastaStr),
     ]);
 
-    const { orders, items, productCategoryMap } = ventasData;
+    const { orders, items, areaMap } = ventasData;
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
-    const totalCostos = gastos.reduce((s, r) => s + r.monto, 0);
-    const totalMerma  = mermaData.reduce((s, r) => s + r.monto, 0);
-    const totalVentas = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    const totalCostos  = gastos.reduce((s, r) => s + r.monto, 0);
+    const totalMerma   = mermaData.reduce((s, r) => s + r.monto, 0);
+    // Ventas desde orders.total (fuente confiable del POS)
+    const totalVentas  = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
     const totalPedidos = orders.length;
     const rentabilidad = totalVentas > 0
       ? Math.round(((totalVentas - totalCostos - totalMerma) / totalVentas) * 100)
       : 0;
 
-    // ── Ventas por mes (Supabase) ─────────────────────────────────────────────
+    // ── Ventas por mes (desde orders.total) ──────────────────────────────────
     const ventasMesMap: Record<string, { ventas: number; pedidos: number }> = {};
     for (const o of orders) {
       const mes = String(o.created_at ?? '').slice(0, 7);
@@ -263,13 +276,14 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, v]) => ({ key, mes: getMesLabel(v.mes, v.anio), monto: v.monto }));
 
-    // ── Top productos (Supabase order_items) ──────────────────────────────────
+    // ── Top productos (Supabase order_items, por production_area) ────────────
     const prodMap: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
     for (const item of items) {
       const nombre    = String(item.product_name ?? '(sin nombre)');
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
-      const categoria = productCategoryMap[String(item.product_id ?? '')] ?? 'Otros';
+      const areaId    = String(item.production_area_id ?? '');
+      const categoria = areaMap[areaId] ?? 'Sin área';
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;
@@ -278,10 +292,11 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.unidades - a.unidades)
       .slice(0, 15);
 
-    // ── Por categoría ─────────────────────────────────────────────────────────
+    // ── Por área de producción ────────────────────────────────────────────────
     const categoriaVentasMap: Record<string, { unidades: number; ingresos: number }> = {};
     for (const item of items) {
-      const categoria = productCategoryMap[String(item.product_id ?? '')] ?? 'Otros';
+      const areaId    = String(item.production_area_id ?? '');
+      const categoria = areaMap[areaId] ?? 'Sin área';
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
       if (!categoriaVentasMap[categoria]) categoriaVentasMap[categoria] = { unidades: 0, ingresos: 0 };
@@ -339,7 +354,7 @@ export interface ProduccionReportData {
 
 export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta: string): Promise<ProduccionReportData> {
   try {
-    const { orders, items, productCategoryMap } = await fetchVentasSupabase(fechaDesde, fechaHasta);
+    const { orders, items, areaMap } = await fetchVentasSupabase(fechaDesde, fechaHasta);
 
     const totalPedidos = orders.length;
 
@@ -348,7 +363,8 @@ export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta:
       const nombre    = String(item.product_name ?? '(sin nombre)');
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
-      const categoria = productCategoryMap[String(item.product_id ?? '')] ?? 'Otros';
+      const areaId    = String(item.production_area_id ?? '');
+      const categoria = areaMap[areaId] ?? 'Sin área';
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;

@@ -50,7 +50,7 @@ const CustomDot = (props: any) => {
   if (cx == null || cy == null || value == null) return null;
   return (
     <circle cx={cx} cy={cy} r={5}
-      fill={value <= 50 ? '#22C55E' : '#EF4444'}
+      fill={value <= 60 ? '#22C55E' : '#EF4444'}
       stroke="#fff" strokeWidth={2} />
   );
 };
@@ -78,7 +78,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       {payload.map((p: any) => {
         const ventas = p.payload[`__ventas_${p.dataKey}`];
         const gastos = p.payload[`__gastos_${p.dataKey}`];
-        const isRisk = p.value > 50;
+        const isRisk = p.value > 60;
         return (
           <div key={p.dataKey} style={{ marginBottom: 9 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -117,7 +117,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         );
       })}
       <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
-        Verde ≤50% · Rojo &gt;50%
+        Verde ≤60% · Rojo &gt;60%
       </div>
     </div>
   );
@@ -126,7 +126,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 // ── Static alert data ─────────────────────────────────────────────────────────
 const ALERTAS_INIT = [
   { id: 1, tipo: 'critical', titulo: 'Pico Crítico', tiempo: 'Hoy, 10:45 AM', mensaje: 'Índice alcanzó 62.4% en sucursal PV. Spike causado por mantenimiento no planificado y bajo volumen de transacciones.', acknowledged: false },
-  { id: 2, tipo: 'warning',  titulo: 'Alerta de Merma', tiempo: 'Ayer', mensaje: 'La merma en La Reina subió un 15%. Se proyecta que empuje el índice semanal sobre 50% si no se corrige.', acknowledged: false },
+  { id: 2, tipo: 'warning',  titulo: 'Alerta de Merma', tiempo: 'Ayer', mensaje: 'La merma en La Reina subió un 15%. Se proyecta que empuje el índice semanal sobre 60% si no se corrige.', acknowledged: false },
   { id: 3, tipo: 'info',     titulo: 'Alerta de Eficiencia', tiempo: 'Hace 2 días', mensaje: 'PT está en 48.2%. Mantiene tendencia positiva pero requiere monitoreo durante fin de semana.', acknowledged: true },
 ];
 
@@ -315,7 +315,7 @@ export default function FactorIndicePage() {
     return { factor, totalVentas: tv, totalGastos: tg };
   }, [cierreCajaData, ventasData, compMes2, compOn, sucSel, allSucs]);
 
-  const isOpt       = factorGlobal !== null && factorGlobal < 50;
+  const isOpt       = factorGlobal !== null && factorGlobal < 60;
   const mesesDisp   = cierreCajaData?.mesesDisponibles ?? [];
   const fmt         = (v: number) => v >= 1_000_000
     ? `$${(v / 1_000_000).toFixed(1)}M`
@@ -534,10 +534,10 @@ export default function FactorIndicePage() {
           <div className="flex items-start justify-between mb-4">
             <div>
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>
-                Índice 50 por {modo === 'semana' ? 'Semana' : 'Día'}
+                Índice 60 por {modo === 'semana' ? 'Semana' : 'Día'}
               </h3>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
-                (Gastos / Ventas) × 100 · punto verde ≤50% · rojo &gt;50%
+                (Gastos / Ventas) × 100 · punto verde ≤60% · rojo &gt;60%
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -554,10 +554,10 @@ export default function FactorIndicePage() {
               )}
               <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤50%
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤60%
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;50%
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;60%
                 </span>
               </div>
             </div>
@@ -608,8 +608,8 @@ export default function FactorIndicePage() {
                     wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
                     formatter={v => <span style={{ color: 'var(--chart-axis)' }}>{v}</span>} />
                   <ReferenceLine
-                    y={50} stroke="#EF4444" strokeWidth={1.5} strokeDasharray="6 3"
-                    label={{ value: '50', position: 'insideTopRight', fontSize: 10, fill: '#EF4444', fontWeight: 700 }}
+                    y={60} stroke="#EF4444" strokeWidth={1.5} strokeDasharray="6 3"
+                    label={{ value: '60', position: 'insideTopRight', fontSize: 10, fill: '#EF4444', fontWeight: 700 }}
                   />
                   {sucursalesVisibles.map((suc, i) => (
                     <Line
@@ -668,17 +668,17 @@ export default function FactorIndicePage() {
             {factorGlobal !== null && (
               <div>
                 <div className="flex justify-between text-[9px] mb-1" style={{ color: 'var(--text-3)' }}>
-                  <span>0%</span><span className="text-orange-500 font-semibold">50%</span><span>100%</span>
+                  <span>0%</span><span className="text-orange-500 font-semibold">60%</span><span>100%</span>
                 </div>
                 <div className="w-full rounded-full h-2 relative" style={{ background: 'var(--hover)' }}>
                   <div className={clsx('h-2 rounded-full transition-all duration-700', isOpt ? 'bg-blue-500' : 'bg-red-500')}
                     style={{ width: `${Math.min(factorGlobal, 100)}%` }} />
-                  <div className="absolute top-0 left-1/2 w-0.5 h-2 bg-orange-400" />
+                  <div className="absolute top-0 w-0.5 h-2 bg-orange-400" style={{ left: '60%' }} />
                 </div>
               </div>
             )}
             <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-              (Gastos / Ventas) × 100 · objetivo &lt;50%
+              (Gastos / Ventas) × 100 · objetivo &lt;60%
               {sucSel.length > 0 && sucSel.length < allSucs.length && (
                 <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
               )}
@@ -801,7 +801,7 @@ export default function FactorIndicePage() {
             style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>
-                Índice 50 por {modo === 'semana' ? 'Semana' : 'Día'} — {mesSeleccionado ? mesLabel(mesSeleccionado) : ''}
+                Índice 60 por {modo === 'semana' ? 'Semana' : 'Día'} — {mesSeleccionado ? mesLabel(mesSeleccionado) : ''}
               </h2>
               <button onClick={() => setShowModal(false)} style={{ color: 'var(--text-3)' }}>
                 <X className="w-5 h-5" />

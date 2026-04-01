@@ -200,7 +200,7 @@ function KPICard({
 }: {
   label: string; value: number; delta: number; isMonetary?: boolean; prefix?: string; suffix?: string; invertDelta?: boolean;
 }) {
-  // invertDelta: para métricas donde bajar es bueno (ej. Índice 50)
+  // invertDelta: para métricas donde bajar es bueno (ej. Índice 60)
   const displayDelta = invertDelta ? -delta : delta;
   return (
     <div
@@ -546,7 +546,7 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
     { label: 'Ventas brutas',  value: fmt(current.ventas),           delta: deltaVentas,            accentColor: R.blue    },
     { label: 'Gastos totales', value: fmt(current.gastos),           delta: deltaGastos,            accentColor: R.amber   },
     { label: 'Margen neto',    value: fmt(current.margen),           delta: deltaMargen,            accentColor: R.green   },
-    { label: 'Índice 50',      value: `${indice50Curr.toFixed(1)}%`, delta: -(deltaIndice50),       accentColor: indice50Curr <= 50 ? R.green : R.red },
+    { label: 'Índice 60',      value: `${indice50Curr.toFixed(1)}%`, delta: -(deltaIndice50),       accentColor: indice50Curr <= 60 ? R.green : R.red },
   ];
 
   return (
@@ -676,7 +676,7 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
                 { label: 'Gastos totales',  curr: current.gastos,         prev: previous.gastos,         delta: deltaGastos,                              fmt: fmt },
                 { label: 'Margen neto',     curr: current.margen,         prev: previous.margen,         delta: deltaMargen,                              fmt: fmt },
                 { label: 'Margen %',        curr: current.margenPct,      prev: previous.margenPct,      delta: current.margenPct - previous.margenPct,   fmt: (v: number) => `${v.toFixed(1)}%`, isPp: true },
-                { label: 'Índice 50',       curr: indice50Curr,           prev: indice50Prev,            delta: -(deltaIndice50),                         fmt: (v: number) => `${v.toFixed(1)}%`, isPp: true },
+                { label: 'Índice 60',       curr: indice50Curr,           prev: indice50Prev,            delta: -(deltaIndice50),                         fmt: (v: number) => `${v.toFixed(1)}%`, isPp: true },
                 { label: 'Ticket promedio', curr: current.ticketPromedio, prev: previous.ticketPromedio, delta: deltaTicket,                              fmt: fmt },
               ].map((row, i) => (
                 <tr key={i} style={{ background: i % 2 === 1 ? R.surface : R.bg }}>
@@ -699,7 +699,7 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
             <table style={{ ...tblStyle, fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Sucursal', 'Ventas', 'Gastos', 'Margen', 'Margen %', 'Índice 50'].map((h, i) => (
+                  {['Sucursal', 'Ventas', 'Gastos', 'Margen', 'Margen %', 'Índice 60'].map((h, i) => (
                     <th key={h} style={{ ...thBase, textAlign: i === 0 ? 'left' : 'right' }}>{h}</th>
                   ))}
                 </tr>
@@ -1004,7 +1004,7 @@ function buildReportHTML(data: ReportData): string {
     { label: 'Ventas brutas',  value: fmtHTML(current.ventas),           delta: deltaVentas,   accent: '#1d4ed8' },
     { label: 'Gastos totales', value: fmtHTML(current.gastos),           delta: deltaGastos,   accent: '#d97706' },
     { label: 'Margen neto',    value: fmtHTML(current.margen),           delta: deltaMargen,   accent: '#059669' },
-    { label: 'Índice 50',      value: `${indice50Curr.toFixed(1)}%`,     delta: -(deltaIndice50), accent: indice50Curr <= 50 ? '#059669' : '#dc2626' },
+    { label: 'Índice 60',      value: `${indice50Curr.toFixed(1)}%`,     delta: -(deltaIndice50), accent: indice50Curr <= 60 ? '#059669' : '#dc2626' },
   ];
 
   const kpiCards = kpis.map(k => {
@@ -1024,7 +1024,7 @@ function buildReportHTML(data: ReportData): string {
     { label: 'Gastos totales',  curr: current.gastos,         prev: previous.gastos,         delta: deltaGastos,                           f: fmtHTML },
     { label: 'Margen neto',     curr: current.margen,         prev: previous.margen,         delta: deltaMargen,                           f: fmtHTML },
     { label: 'Margen %',        curr: current.margenPct,      prev: previous.margenPct,      delta: current.margenPct - previous.margenPct, f: (v: number) => `${v.toFixed(1)}%`, isPp: true },
-    { label: 'Índice 50',       curr: indice50Curr,           prev: indice50Prev,            delta: -(deltaIndice50),                      f: (v: number) => `${v.toFixed(1)}%`, isPp: true },
+    { label: 'Índice 60',       curr: indice50Curr,           prev: indice50Prev,            delta: -(deltaIndice50),                      f: (v: number) => `${v.toFixed(1)}%`, isPp: true },
     { label: 'Ticket promedio', curr: current.ticketPromedio, prev: previous.ticketPromedio, delta: deltaTicket,                           f: fmtHTML },
   ].map((row, i) => `
     <tr style="background:${i%2===1?'#f8fafc':'#ffffff'}">
@@ -1059,7 +1059,7 @@ function buildReportHTML(data: ReportData): string {
       <table>
         <thead><tr>
           <th>Sucursal</th><th class="right">Ventas</th><th class="right">Gastos</th>
-          <th class="right">Margen</th><th class="right">Margen %</th><th class="right">Índice 50</th>
+          <th class="right">Margen</th><th class="right">Margen %</th><th class="right">Índice 60</th>
         </tr></thead>
         <tbody>${sucursalRows}</tbody>
       </table>
@@ -1666,7 +1666,7 @@ export default function InformesPage() {
           <iframe
             ref={iframeRef}
             srcDoc={reportHTML}
-            style={{ width: '100%', minWidth: 600, minHeight: 600, display: 'block', border: 'none' }}
+            style={{ width: '100%', minHeight: 400, display: 'block', border: 'none' }}
             onLoad={() => {
               const iframe = iframeRef.current;
               if (iframe?.contentDocument?.body) {

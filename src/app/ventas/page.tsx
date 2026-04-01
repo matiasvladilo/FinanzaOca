@@ -277,7 +277,7 @@ function InteractiveChart({
   const wrap = (chart: React.ReactNode) => (
     <div className="flex items-stretch gap-2">
       <div className="flex-1 min-w-0">{chart}</div>
-      <SideLegend />
+      <div className="hidden sm:flex"><SideLegend /></div>
     </div>
   );
 
@@ -630,11 +630,13 @@ export default function VentasPage() {
         const meses = [...new Set([...setCaja, ...setFactura])].sort();
         setMesesDisponibles(meses);
         if (meses.length) {
-          // Default: mostrar solo el mes más reciente disponible
-          const ultimo = meses[meses.length - 1];
-          setMesDesde(ultimo);
-          setMesHasta(ultimo);
-          setMesPill(ultimo);
+          // Default: mes actual si está disponible, si no el más reciente
+          const hoy = new Date();
+          const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+          const seleccionado = meses.includes(mesActual) ? mesActual : meses[meses.length - 1];
+          setMesDesde(seleccionado);
+          setMesHasta(seleccionado);
+          setMesPill(seleccionado);
         }
       })
       .catch(() => {})
@@ -1300,7 +1302,7 @@ export default function VentasPage() {
               icon: <BarChart2 className="w-4 h-4 text-green-600" />, bg: 'bg-green-50',
             },
             {
-              label: 'Índice 50', value: loadingSheet ? '...' : ventasReal > 0 ? `${((gastosReal / ventasReal) * 100).toFixed(1)}%` : '—', comp: null, deltaPct: null,
+              label: 'Índice 60', value: loadingSheet ? '...' : ventasReal > 0 ? `${((gastosReal / ventasReal) * 100).toFixed(1)}%` : '—', comp: null, deltaPct: null,
               icon: <Activity className="w-4 h-4 text-purple-600" />, bg: 'bg-purple-50',
             },
           ].map(k => {

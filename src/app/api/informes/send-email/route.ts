@@ -213,7 +213,7 @@ function buildEmailHtml(d: ReportData): string {
 
   const tendenciaChar = tendencia === 'up' ? '▲' : tendencia === 'down' ? '▼' : '►';
 
-  // Índice 50
+  // Índice 60
   const indice50Curr = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -228,7 +228,7 @@ function buildEmailHtml(d: ReportData): string {
     { label: 'Ventas brutas',  value: fmt(current.ventas),           delta: deltaVentas,       invertGood: false, accent: C.blue   },
     { label: 'Gastos totales', value: fmt(current.gastos),           delta: deltaGastos,       invertGood: true,  accent: C.amber  },
     { label: 'Margen neto',    value: fmt(current.margen),           delta: deltaMargen,       invertGood: false, accent: C.green  },
-    { label: 'Índice 50',      value: `${indice50Curr.toFixed(1)}%`, delta: -deltaIndice50,    invertGood: false, accent: indice50Curr <= 50 ? C.green : C.red },
+    { label: 'Índice 60',      value: `${indice50Curr.toFixed(1)}%`, delta: -deltaIndice50,    invertGood: false, accent: indice50Curr <= 60 ? C.green : C.red },
   ];
   const kpiCell = (k: typeof kpiDefs[0]) => `
     <td width="50%" style="padding:4px;vertical-align:top">
@@ -254,7 +254,7 @@ function buildEmailHtml(d: ReportData): string {
     { label: 'Gastos',           curr: fmt(current.gastos),                  prev: fmt(previous.gastos),           delta: deltaGastos,    inv: true  },
     { label: 'Margen',           curr: `${fmt(current.margen)} (${current.margenPct.toFixed(1)}%)`,
                                   prev: `${fmt(previous.margen)} (${previous.margenPct.toFixed(1)}%)`, delta: deltaMargen, inv: false },
-    { label: 'Índice 50',        curr: `${indice50Curr.toFixed(1)}%`,         prev: `${indice50Prev.toFixed(1)}%`,  delta: -deltaIndice50, inv: false },
+    { label: 'Índice 60',        curr: `${indice50Curr.toFixed(1)}%`,         prev: `${indice50Prev.toFixed(1)}%`,  delta: -deltaIndice50, inv: false },
     { label: 'Transacciones',    curr: current.transacciones.toLocaleString('es-CL'),
                                   prev: previous.transacciones.toLocaleString('es-CL'), delta: deltaTx, inv: false },
     { label: 'Ticket promedio',  curr: fmt(current.ticketPromedio),           prev: fmt(previous.ticketPromedio),   delta: deltaTicket,    inv: false },
@@ -275,7 +275,7 @@ function buildEmailHtml(d: ReportData): string {
         const delta = prevSuc && prevSuc.ventas > 0 ? pctDelta(data.ventas, prevSuc.ventas) : undefined;
         const margenPct = data.ventas > 0 ? (data.margen / data.ventas) * 100 : 0;
         const indice50Suc = data.ventas > 0 ? (data.gastos / data.ventas) * 100 : 0;
-        const indice50Color = indice50Suc <= 50 ? C.green : C.red;
+        const indice50Color = indice50Suc <= 60 ? C.green : C.red;
         return `
           <tr class="${i % 2 === 0 ? 'em-td-base' : 'em-td-alt'}" style="background:${i % 2 === 0 ? C.bg : C.surface}">
             <td class="em-text" style="${tdStyle}font-weight:600">${nombre}</td>
@@ -296,7 +296,7 @@ function buildEmailHtml(d: ReportData): string {
           <th style="${thStyle}right">Gastos</th>
           <th style="${thStyle}right">Margen</th>
           <th style="${thStyle}right">Margen %</th>
-          <th style="${thStyle}right">Índice 50</th>
+          <th style="${thStyle}right">Índice 60</th>
           <th style="${thStyle}right">Δ Ventas</th>
         </tr>
         ${rows}

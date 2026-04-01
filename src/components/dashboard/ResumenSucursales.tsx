@@ -32,7 +32,7 @@ export default function ResumenSucursales({
       <div className="mb-4">
         <h3 className="text-[14px] font-bold text-gray-900 dark:text-white">Resumen por Sucursal</h3>
         <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-0.5">
-          Ventas · Gastos · Índice 50 · Participación
+          Ventas · Gastos · Índice 60 · Participación
         </p>
       </div>
 
@@ -44,7 +44,7 @@ export default function ResumenSucursales({
               <th className="text-left pb-2 font-semibold">Sucursal</th>
               <th className="text-right pb-2 font-semibold">Ventas</th>
               <th className="text-right pb-2 font-semibold hidden sm:table-cell">Gastos</th>
-              <th className="text-right pb-2 font-semibold hidden md:table-cell">Índice 50</th>
+              <th className="text-right pb-2 font-semibold hidden md:table-cell">Índice 60</th>
               <th className="text-right pb-2 font-semibold">% Total</th>
             </tr>
           </thead>

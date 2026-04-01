@@ -8,8 +8,9 @@ import {
 } from 'recharts';
 import {
   Factory, TrendingUp, TrendingDown,
-  DollarSign, Package, AlertTriangle, ChevronDown, Calendar,
+  DollarSign, Package, AlertTriangle, ChevronDown, Calendar, X,
 } from 'lucide-react';
+import clsx from 'clsx';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface ProduccionData {
@@ -102,6 +103,10 @@ export default function ProduccionPage() {
   const [localOpen, setLocalOpen] = useState(false);
   const localRef = useRef<HTMLDivElement>(null);
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
+  const [mesOpen, setMesOpen] = useState(false);
+  const mesRef = useRef<HTMLDivElement>(null);
+  const [dateOpen, setDateOpen] = useState(false);
+  const dateRef = useRef<HTMLDivElement>(null);
 
   // Defaults: mes actual y hace 2 meses
   const hoy = new Date();
@@ -126,6 +131,24 @@ export default function ProduccionPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [localOpen]);
+
+  useEffect(() => {
+    if (!mesOpen) return;
+    function handler(e: MouseEvent) {
+      if (mesRef.current && !mesRef.current.contains(e.target as Node)) setMesOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [mesOpen]);
+
+  useEffect(() => {
+    if (!dateOpen) return;
+    function handler(e: MouseEvent) {
+      if (dateRef.current && !dateRef.current.contains(e.target as Node)) setDateOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dateOpen]);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -171,7 +194,7 @@ export default function ProduccionPage() {
   const kpi = data?.kpi;
 
   return (
-    <div className="flex-1 min-h-screen p-5 md:p-7 space-y-6"
+    <div className="flex-1 min-h-screen p-3 sm:p-5 md:p-7 space-y-6"
       style={{ background: 'var(--bg)' }}>
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
@@ -193,72 +216,103 @@ export default function ProduccionPage() {
         {/* Filtros */}
         <div className="flex items-center gap-2 flex-wrap">
 
-          {/* Toggle modo mes / fecha */}
-          <div className="flex rounded-xl border overflow-hidden text-[12px] font-medium"
-            style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+          {/* Pill — Por mes (rango) */}
+          <div className="relative" ref={mesRef}>
             <button
-              onClick={() => setModoFiltro('mes')}
-              className="flex items-center gap-1.5 px-3 py-1.5 transition-colors"
-              style={modoFiltro === 'mes'
-                ? { background: 'var(--active-bg)', color: 'var(--active-text)' }
-                : { color: 'var(--text-3)' }}
+              onClick={() => { setMesOpen(o => !o); setDateOpen(false); }}
+              className={clsx(
+                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                modoFiltro === 'mes'
+                  ? 'bg-blue-600 border-blue-600 text-white'
+                  : 'border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
+              )}
+              style={modoFiltro !== 'mes' ? { background: 'var(--card)' } : {}}
             >
-              Por mes
+              <Calendar className="w-3.5 h-3.5 opacity-80" />
+              <span className="font-semibold text-[11px]">
+                {mesDesde === mesHasta ? mesDesde : `${mesDesde} – ${mesHasta}`}
+              </span>
+              <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
-            <button
-              onClick={() => setModoFiltro('dia')}
-              className="flex items-center gap-1.5 px-3 py-1.5 transition-colors"
-              style={modoFiltro === 'dia'
-                ? { background: 'var(--active-bg)', color: 'var(--active-text)' }
-                : { color: 'var(--text-3)' }}
-            >
-              <Calendar className="w-3 h-3" />
-              Por fecha
-            </button>
+            {mesOpen && (
+              <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg z-50 p-4 min-w-[220px]"
+                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-3)' }}>Rango de meses</p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Desde</p>
+                    <input type="month" value={mesDesde} max={mesHasta}
+                      onChange={e => { setMesDesde(e.target.value); setModoFiltro('mes'); }}
+                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
+                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Hasta</p>
+                    <input type="month" value={mesHasta} min={mesDesde}
+                      onChange={e => { setMesHasta(e.target.value); setModoFiltro('mes'); }}
+                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
+                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
+                  </div>
+                </div>
+                <button onClick={() => { setModoFiltro('mes'); setMesOpen(false); }}
+                  className="mt-3 w-full text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg py-1.5 transition-colors">
+                  Aplicar
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Inputs según modo */}
-          <div className="flex items-center gap-1.5">
-            {modoFiltro === 'mes' ? (
-              <>
-                <input
-                  type="month"
-                  value={mesDesde}
-                  max={mesHasta}
-                  onChange={e => setMesDesde(e.target.value)}
-                  className="px-2 py-1.5 rounded-xl border text-[12px] font-medium"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
-                />
-                <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>→</span>
-                <input
-                  type="month"
-                  value={mesHasta}
-                  min={mesDesde}
-                  onChange={e => setMesHasta(e.target.value)}
-                  className="px-2 py-1.5 rounded-xl border text-[12px] font-medium"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
-                />
-              </>
-            ) : (
-              <>
-                <input
-                  type="date"
-                  value={fechaDesde}
-                  max={fechaHasta}
-                  onChange={e => setFechaDesde(e.target.value)}
-                  className="px-2 py-1.5 rounded-xl border text-[12px] font-medium"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
-                />
-                <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>→</span>
-                <input
-                  type="date"
-                  value={fechaHasta}
-                  min={fechaDesde}
-                  onChange={e => setFechaHasta(e.target.value)}
-                  className="px-2 py-1.5 rounded-xl border text-[12px] font-medium"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
-                />
-              </>
+          {/* Pill — Rango días */}
+          <div className="relative" ref={dateRef}>
+            <button
+              onClick={() => { setDateOpen(o => !o); setMesOpen(false); }}
+              className={clsx(
+                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                modoFiltro === 'dia'
+                  ? 'bg-blue-600 border-blue-600 text-white'
+                  : 'border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
+              )}
+              style={modoFiltro !== 'dia' ? { background: 'var(--card)' } : {}}
+            >
+              <Calendar className="w-3.5 h-3.5 opacity-80" />
+              <span className="font-semibold text-[11px]">
+                {modoFiltro === 'dia' && (fechaDesde || fechaHasta)
+                  ? `${fechaDesde || '…'} – ${fechaHasta || '…'}`
+                  : 'Rango días'}
+              </span>
+              <ChevronDown className="w-3 h-3 opacity-70" />
+            </button>
+            {dateOpen && (
+              <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg z-50 p-4 min-w-[220px]"
+                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+                <p className="text-[10px] font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-3)' }}>Rango de días</p>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Desde</p>
+                    <input type="date" value={fechaDesde} max={fechaHasta}
+                      onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); }}
+                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
+                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Hasta</p>
+                    <input type="date" value={fechaHasta} min={fechaDesde}
+                      onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); }}
+                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
+                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
+                  </div>
+                </div>
+                {(fechaDesde || fechaHasta) && (
+                  <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setModoFiltro('mes'); }}
+                    className="mt-2 flex items-center gap-1 text-[10px] text-red-400 hover:text-red-600 font-semibold">
+                    <X className="w-3 h-3" /> Limpiar fechas
+                  </button>
+                )}
+                <button onClick={() => setDateOpen(false)}
+                  className="mt-3 w-full text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg py-1.5 transition-colors">
+                  Aplicar
+                </button>
+              </div>
             )}
           </div>
 

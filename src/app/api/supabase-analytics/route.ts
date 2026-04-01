@@ -74,49 +74,56 @@ function resolveRango(params: {
   return { desde: d.toISOString().slice(0, 10), hasta: f.toISOString().slice(0, 10) };
 }
 
+const OCA_BUSINESS_ID = 'd1fa7f40-c5e1-4bc2-9ffc-c8483950b758';
+
 // ─── Fetch principal ──────────────────────────────────────────────────────
 async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   const db = getSupabaseClient();
 
-  // Tres queries en paralelo — solo columnas necesarias, rango acotado
-  const [ordersRes, itemsRes, areasRes] = await Promise.all([
+  // orders y areas en paralelo
+  const [ordersRes, areasRes] = await Promise.all([
     db
       .from(SCHEMA.orders.table)
-      .select([
-        SCHEMA.orders.fecha,
-        SCHEMA.orders.total,
-        SCHEMA.orders.estado,
-      ].join(', '))
+      .select([SCHEMA.orders.fecha, SCHEMA.orders.total, SCHEMA.orders.estado].join(', '))
+      .eq('business_id', OCA_BUSINESS_ID)
       .gte(SCHEMA.orders.fecha, fechaDesde)
       .lte(SCHEMA.orders.fecha, fechaHasta)
       .order(SCHEMA.orders.fecha, { ascending: true }),
-
-    db
-      .from(SCHEMA.items.table)
-      .select([
-        SCHEMA.items.productoNombre,
-        SCHEMA.items.cantidad,
-        SCHEMA.items.precioUnitario,
-        SCHEMA.items.areaId,
-        SCHEMA.items.fecha,
-      ].join(', '))
-      .gte(SCHEMA.items.fecha, fechaDesde)
-      .lte(SCHEMA.items.fecha, fechaHasta),
-
-    // production_areas es una tabla pequeña (sin filtro de fecha)
     db
       .from(SCHEMA.areas.table)
       .select([SCHEMA.areas.id, SCHEMA.areas.nombre].join(', ')),
   ]);
 
   if (ordersRes.error) throw new Error(`[orders] ${ordersRes.error.message}`);
-  if (itemsRes.error)  throw new Error(`[items]  ${itemsRes.error.message}`);
   if (areasRes.error)  throw new Error(`[areas]  ${areasRes.error.message}`);
+
+  // Paginar order_items filtrando por business_id via join con orders
+  const PAGE = 1000;
+  const allItemsRaw: Record<string, unknown>[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await db
+      .from(SCHEMA.items.table)
+      .select(`${SCHEMA.items.productoNombre}, ${SCHEMA.items.cantidad}, ${SCHEMA.items.precioUnitario}, ${SCHEMA.items.areaId}, orders!inner(created_at)`)
+      .eq('orders.business_id', OCA_BUSINESS_ID)
+      .gte('orders.created_at', fechaDesde)
+      .lte('orders.created_at', fechaHasta)
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`[items] ${error.message}`);
+    if (!data?.length) break;
+    // Extraer created_at del join para mantener compatibilidad
+    const normalized = (data as Record<string, unknown>[]).map(item => ({
+      ...item,
+      [SCHEMA.items.fecha]: (item.orders as Record<string, unknown>)?.created_at ?? '',
+    }));
+    allItemsRaw.push(...normalized);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orders: Record<string, unknown>[] = (ordersRes.data ?? []) as any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const items:  Record<string, unknown>[] = (itemsRes.data  ?? []) as any[];
+  const items:  Record<string, unknown>[] = allItemsRaw;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const areas:  Record<string, unknown>[] = (areasRes.data  ?? []) as any[];
 

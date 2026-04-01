@@ -765,6 +765,9 @@ export default function ProductosPage() {
             ))}
           </div>
 
+          {/* Table — scrollable on mobile */}
+          <div className="overflow-x-auto -mx-1 px-1">
+          <div className="min-w-[420px]">
           {/* Table head */}
           <div className={clsx('grid gap-3 pb-3 border-b border-gray-100', usingReal ? 'grid-cols-5' : 'grid-cols-6')}>
             {['Producto', 'Categoría', 'Unidades', 'Tendencia', 'Ingresos', ...(usingReal ? [] : ['Margen %'])].map(c => (
@@ -812,6 +815,8 @@ export default function ProductosPage() {
               );
             })}
           </div>
+          </div>{/* min-w */}
+          </div>{/* overflow-x-auto */}
 
           {/* Paginación */}
           <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-2">
