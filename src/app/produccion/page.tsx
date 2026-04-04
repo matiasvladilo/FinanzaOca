@@ -8,11 +8,33 @@ import {
 } from 'recharts';
 import {
   Factory, TrendingUp, TrendingDown,
-  DollarSign, Package, AlertTriangle, ChevronDown, Calendar, X,
+  DollarSign, Package, AlertTriangle, ChevronDown, Calendar,
+  Truck, Banknote, Scale, CircleDollarSign,
 } from 'lucide-react';
-import clsx from 'clsx';
+import { MesPicker, defaultMesRange } from '@/components/ui/MesPicker';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
+interface ControlPanCliente {
+  nombre: string;
+  precioKg: number;
+  kgEntregados: number;
+  deudaTotal: number;
+  totalPagado: number;
+  saldoPendiente: number;
+  porcentajePagado: number;
+  estado: string;
+}
+interface ControlPanData {
+  kpi: {
+    totalKg: number;
+    totalDeudaGenerada: number;
+    totalPagado: number;
+    saldoPendiente: number;
+  };
+  salidasPorCliente: { local: string; kg: number; deudaGenerada: number }[];
+  cuentaCorriente: ControlPanCliente[];
+}
+
 interface ProduccionData {
   ok: boolean;
   kpi: {
@@ -28,6 +50,7 @@ interface ProduccionData {
   topProductos:  { nombre: string; categoria: string; unidades: number; ingresos: number }[];
   porArea:       { area: string; unidades: number; ingresos: number; color: string }[];
   porTipoMerma:  { tipo: string; monto: number; porcentaje: number; color: string }[];
+  controlPan:    ControlPanData | null;
   locales:       string[];
   mesDesde:      string;
   mesHasta:      string;
@@ -94,12 +117,25 @@ function KPICard({
   );
 }
 
+// ─── Badge de estado de cuenta corriente ──────────────────────────────────────
+function EstadoBadge({ estado }: { estado: string }) {
+  const e = estado.toLowerCase();
+  const isPagado  = e.includes('pagado') && !e.includes('parcial');
+  const isParcial = e.includes('parcial');
+  const isPendiente = e.includes('pendiente') || e.includes('sin');
+  const base = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium';
+  if (isPagado)   return <span className={`${base} bg-emerald-100 text-emerald-700`}>{estado}</span>;
+  if (isParcial)  return <span className={`${base} bg-yellow-100 text-yellow-700`}>{estado}</span>;
+  if (isPendiente)return <span className={`${base} bg-red-100 text-red-700`}>{estado}</span>;
+  return <span className={`${base} bg-gray-100 text-gray-600`}>{estado}</span>;
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function ProduccionPage() {
   const [data, setData]       = useState<ProduccionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [local, setLocal]     = useState('Todos');
+  const [local, setLocal]         = useState('Todos');
   const [localOpen, setLocalOpen] = useState(false);
   const localRef = useRef<HTMLDivElement>(null);
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
@@ -108,28 +144,22 @@ export default function ProduccionPage() {
   const [dateOpen, setDateOpen] = useState(false);
   const dateRef = useRef<HTMLDivElement>(null);
 
-  // Defaults: mes actual y hace 2 meses
-  const hoy = new Date();
-  const defaultMesHasta = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
-  const d2 = new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1);
-  const defaultMesDesde = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, '0')}`;
-  const defaultFechaHasta = hoy.toISOString().slice(0, 10);
-  const d3 = new Date(hoy); d3.setDate(d3.getDate() - 30);
-  const defaultFechaDesde = d3.toISOString().slice(0, 10);
+  const { desde: _defDesde, hasta: _defHasta } = defaultMesRange();
+  const _hoy = new Date();
 
-  const [mesDesde,   setMesDesde]   = useState(defaultMesDesde);
-  const [mesHasta,   setMesHasta]   = useState(defaultMesHasta);
-  const [fechaDesde, setFechaDesde] = useState(defaultFechaDesde);
-  const [fechaHasta, setFechaHasta] = useState(defaultFechaHasta);
+  const [mesDesde,   setMesDesde]   = useState(_defDesde);
+  const [mesHasta,   setMesHasta]   = useState(_defHasta);
+  const [fechaDesde, setFechaDesde] = useState(_hoy.toISOString().slice(0, 10));
+  const [fechaHasta, setFechaHasta] = useState(_hoy.toISOString().slice(0, 10));
 
-  // Cierra dropdown al hacer click fuera
+  // Cierra dropdown local al hacer click fuera
   useEffect(() => {
     if (!localOpen) return;
-    function handler(e: MouseEvent) {
+    const h = (e: MouseEvent) => {
       if (localRef.current && !localRef.current.contains(e.target as Node)) setLocalOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, [localOpen]);
 
   useEffect(() => {
@@ -216,105 +246,56 @@ export default function ProduccionPage() {
         {/* Filtros */}
         <div className="flex items-center gap-2 flex-wrap">
 
-          {/* Pill — Por mes (rango) */}
-          <div className="relative" ref={mesRef}>
+          {/* Selector de meses o fecha específica */}
+          {modoFiltro === 'mes' ? (
+            <MesPicker
+              desde={mesDesde}
+              hasta={mesHasta}
+              onChange={(d, h) => { setMesDesde(d); setMesHasta(h); }}
+            />
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={fechaDesde}
+                max={fechaHasta}
+                onChange={e => setFechaDesde(e.target.value)}
+                className="px-2 py-1.5 rounded-xl border text-[12px] font-medium"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
+              />
+              <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>→</span>
+              <input
+                type="date"
+                value={fechaHasta}
+                min={fechaDesde}
+                onChange={e => setFechaHasta(e.target.value)}
+                className="px-2 py-1.5 rounded-xl border text-[12px] font-medium"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
+              />
+            </div>
+          )}
+
+          {/* Toggle modo mes / fecha específica */}
+          <div className="flex rounded-xl border overflow-hidden text-[12px] font-medium"
+            style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
             <button
-              onClick={() => { setMesOpen(o => !o); setDateOpen(false); }}
-              className={clsx(
-                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
-                modoFiltro === 'mes'
-                  ? 'bg-blue-600 border-blue-600 text-white'
-                  : 'border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
-              )}
-              style={modoFiltro !== 'mes' ? { background: 'var(--card)' } : {}}
-            >
-              <Calendar className="w-3.5 h-3.5 opacity-80" />
-              <span className="font-semibold text-[11px]">
-                {mesDesde === mesHasta ? mesDesde : `${mesDesde} – ${mesHasta}`}
-              </span>
-              <ChevronDown className="w-3 h-3 opacity-70" />
-            </button>
-            {mesOpen && (
-              <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg z-50 p-4 min-w-[220px]"
-                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                <p className="text-[10px] font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-3)' }}>Rango de meses</p>
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Desde</p>
-                    <input type="month" value={mesDesde} max={mesHasta}
-                      onChange={e => { setMesDesde(e.target.value); setModoFiltro('mes'); }}
-                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
-                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Hasta</p>
-                    <input type="month" value={mesHasta} min={mesDesde}
-                      onChange={e => { setMesHasta(e.target.value); setModoFiltro('mes'); }}
-                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
-                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
-                  </div>
-                </div>
-                <button onClick={() => { setModoFiltro('mes'); setMesOpen(false); }}
-                  className="mt-3 w-full text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg py-1.5 transition-colors">
-                  Aplicar
-                </button>
-              </div>
-            )}
+              onClick={() => setModoFiltro('mes')}
+              className="px-3 py-1.5 transition-colors"
+              style={{
+                background: modoFiltro === 'mes' ? 'var(--active-bg)' : 'transparent',
+                color: modoFiltro === 'mes' ? 'var(--active-text)' : 'var(--text-2)',
+              }}
+            >Por mes</button>
+            <button
+              onClick={() => setModoFiltro('dia')}
+              className="px-3 py-1.5 transition-colors"
+              style={{
+                background: modoFiltro === 'dia' ? 'var(--active-bg)' : 'transparent',
+                color: modoFiltro === 'dia' ? 'var(--active-text)' : 'var(--text-2)',
+              }}
+            >Por fecha</button>
           </div>
 
-          {/* Pill — Rango días */}
-          <div className="relative" ref={dateRef}>
-            <button
-              onClick={() => { setDateOpen(o => !o); setMesOpen(false); }}
-              className={clsx(
-                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
-                modoFiltro === 'dia'
-                  ? 'bg-blue-600 border-blue-600 text-white'
-                  : 'border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
-              )}
-              style={modoFiltro !== 'dia' ? { background: 'var(--card)' } : {}}
-            >
-              <Calendar className="w-3.5 h-3.5 opacity-80" />
-              <span className="font-semibold text-[11px]">
-                {modoFiltro === 'dia' && (fechaDesde || fechaHasta)
-                  ? `${fechaDesde || '…'} – ${fechaHasta || '…'}`
-                  : 'Rango días'}
-              </span>
-              <ChevronDown className="w-3 h-3 opacity-70" />
-            </button>
-            {dateOpen && (
-              <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg z-50 p-4 min-w-[220px]"
-                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                <p className="text-[10px] font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-3)' }}>Rango de días</p>
-                <div className="flex flex-col gap-3">
-                  <div>
-                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Desde</p>
-                    <input type="date" value={fechaDesde} max={fechaHasta}
-                      onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); }}
-                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
-                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] mb-1 font-semibold" style={{ color: 'var(--text-3)' }}>Hasta</p>
-                    <input type="date" value={fechaHasta} min={fechaDesde}
-                      onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); }}
-                      className="w-full text-[12px] rounded-lg px-2 py-1.5 outline-none border"
-                      style={{ background: 'var(--bg)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }} />
-                  </div>
-                </div>
-                {(fechaDesde || fechaHasta) && (
-                  <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setModoFiltro('mes'); }}
-                    className="mt-2 flex items-center gap-1 text-[10px] text-red-400 hover:text-red-600 font-semibold">
-                    <X className="w-3 h-3" /> Limpiar fechas
-                  </button>
-                )}
-                <button onClick={() => setDateOpen(false)}
-                  className="mt-3 w-full text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg py-1.5 transition-colors">
-                  Aplicar
-                </button>
-              </div>
-            )}
-          </div>
 
           {/* Local */}
           {data?.locales && data.locales.length > 1 && (
@@ -360,9 +341,11 @@ export default function ProduccionPage() {
       {/* ── KPI Cards ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          label="Ventas"
-          value={kpi ? fmt(kpi.totalVentas) : '—'}
-          sub={kpi ? `${kpi.totalPedidos} pedidos` : undefined}
+          label="Ventas totales"
+          value={kpi ? fmt(kpi.totalVentas + (data?.controlPan?.kpi.totalPagado ?? 0)) : '—'}
+          sub={kpi
+            ? `ConectOca ${fmt(kpi.totalVentas)} + Pan externo ${fmt(data?.controlPan?.kpi.totalPagado ?? 0)}`
+            : undefined}
           icon={TrendingUp}
           color="bg-blue-500"
           loading={loading}
@@ -519,6 +502,176 @@ export default function ProduccionPage() {
               )}
         </div>
       </div>
+
+      {/* ── Control Pan ──────────────────────────────────────────────────────── */}
+      {(loading || data?.controlPan) && (
+        <div className="space-y-4">
+
+          {/* Header sección */}
+          <div className="flex items-center gap-3 pt-2">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center flex-shrink-0">
+              <Truck className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-[15px] font-bold leading-tight" style={{ color: 'var(--text)' }}>
+                Salida de Pan — Clientes Externos
+              </h2>
+              <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                Entregas, deuda generada y estado de cobranza
+              </p>
+            </div>
+          </div>
+
+          {/* KPIs Control Pan */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                label: 'KG Entregados',
+                value: loading ? '—' : `${(data?.controlPan?.kpi.totalKg ?? 0).toLocaleString('es-CL', { maximumFractionDigits: 1 })} kg`,
+                icon: Scale,
+                color: 'bg-amber-500',
+              },
+              {
+                label: 'Deuda Generada',
+                value: loading ? '—' : fmt(data?.controlPan?.kpi.totalDeudaGenerada ?? 0),
+                icon: CircleDollarSign,
+                color: 'bg-orange-500',
+              },
+              {
+                label: 'Total Cobrado',
+                value: loading ? '—' : fmt(data?.controlPan?.kpi.totalPagado ?? 0),
+                icon: Banknote,
+                color: 'bg-emerald-500',
+              },
+              {
+                label: 'Saldo Pendiente',
+                value: loading ? '—' : fmt(data?.controlPan?.kpi.saldoPendiente ?? 0),
+                sub: data?.controlPan?.kpi.totalDeudaGenerada
+                  ? `${Math.round(((data.controlPan.kpi.saldoPendiente) / data.controlPan.kpi.totalDeudaGenerada) * 100)}% sin cobrar`
+                  : undefined,
+                icon: AlertTriangle,
+                color: (data?.controlPan?.kpi.saldoPendiente ?? 0) > 0 ? 'bg-red-500' : 'bg-gray-400',
+              },
+            ].map((k, i) => (
+              <div key={i} className="rounded-2xl p-5 border flex items-start gap-4"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${k.color}`}>
+                  <k.icon className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium uppercase tracking-wide mb-1"
+                    style={{ color: 'var(--text-3)' }}>{k.label}</p>
+                  {loading
+                    ? <div className="h-7 w-28 rounded-lg animate-pulse" style={{ background: 'var(--border)' }} />
+                    : <p className="text-2xl font-bold leading-tight" style={{ color: 'var(--text)' }}>{k.value}</p>}
+                  {k.sub && !loading && (
+                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>{k.sub}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Fila: gráfico KG por cliente + tabla cuenta corriente */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+            {/* Gráfico KG por cliente (período seleccionado) */}
+            <div className="rounded-2xl border p-5"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+              <h3 className="text-[13px] font-semibold mb-4" style={{ color: 'var(--text)' }}>
+                KG entregados por cliente <span className="font-normal text-[11px]" style={{ color: 'var(--text-3)' }}>(período)</span>
+              </h3>
+              {loading
+                ? <div className="h-48 rounded-xl animate-pulse" style={{ background: 'var(--border)' }} />
+                : !data?.controlPan?.salidasPorCliente.length
+                  ? <p className="text-center py-10 text-[13px]" style={{ color: 'var(--text-3)' }}>Sin entregas en el período</p>
+                  : (
+                    <ResponsiveContainer width="100%" height={Math.min(data.controlPan.salidasPorCliente.length * 36, 360)}>
+                      <BarChart
+                        data={data.controlPan.salidasPorCliente}
+                        layout="vertical"
+                        barCategoryGap="25%"
+                        maxBarSize={20}
+                        margin={{ left: 10, right: 64 }}
+                      >
+                        <CartesianGrid strokeDasharray="4 2" stroke="var(--chart-grid)" horizontal={false} strokeWidth={1} />
+                        <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false}
+                          tickFormatter={v => `${v} kg`} />
+                        <YAxis type="category" dataKey="local" width={130}
+                          tick={{ fontSize: 10, fill: 'var(--text-2)' }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          formatter={(v: unknown, name: unknown) => {
+                            if (String(name) === 'kg') return [`${Number(v).toLocaleString('es-CL', { maximumFractionDigits: 1 })} kg`, 'KG'];
+                            return [fmtFull(Number(v)), 'Deuda'];
+                          }}
+                          contentStyle={{
+                            borderRadius: '12px', border: '1px solid var(--border-2)',
+                            background: 'var(--card)', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '12px',
+                          }}
+                        />
+                        <Bar dataKey="kg" name="kg" fill="#F59E0B" radius={[0, 6, 6, 0]}>
+                          <LabelList dataKey="kg" position="right"
+                            style={{ fontSize: 10, fill: 'var(--text-3)', fontWeight: 600 }}
+                            formatter={(v: unknown) => `${Number(v).toLocaleString('es-CL', { maximumFractionDigits: 1 })} kg`} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+            </div>
+
+            {/* Tabla cuenta corriente (mes actual) */}
+            <div className="rounded-2xl border p-5"
+              style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+              <h3 className="text-[13px] font-semibold mb-4" style={{ color: 'var(--text)' }}>
+                Cuenta corriente <span className="font-normal text-[11px]" style={{ color: 'var(--text-3)' }}>(mes actual)</span>
+              </h3>
+              {loading
+                ? <div className="h-48 rounded-xl animate-pulse" style={{ background: 'var(--border)' }} />
+                : !data?.controlPan?.cuentaCorriente.length
+                  ? <p className="text-center py-10 text-[13px]" style={{ color: 'var(--text-3)' }}>Sin datos</p>
+                  : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[12px]">
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                            {['Cliente', 'KG', 'Deuda', 'Pagado', 'Saldo', 'Estado'].map(h => (
+                              <th key={h} className="text-left pb-2 pr-3 font-semibold last:pr-0"
+                                style={{ color: 'var(--text-3)' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.controlPan.cuentaCorriente.map((c, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td className="py-2 pr-3 font-medium max-w-[110px] truncate" style={{ color: 'var(--text)' }} title={c.nombre}>
+                                {c.nombre}
+                              </td>
+                              <td className="py-2 pr-3" style={{ color: 'var(--text-2)' }}>
+                                {c.kgEntregados.toLocaleString('es-CL', { maximumFractionDigits: 1 })}
+                              </td>
+                              <td className="py-2 pr-3 font-medium" style={{ color: 'var(--text)' }}>
+                                {fmtFull(c.deudaTotal)}
+                              </td>
+                              <td className="py-2 pr-3" style={{ color: '#10B981' }}>
+                                {fmtFull(c.totalPagado)}
+                              </td>
+                              <td className="py-2 pr-3 font-semibold"
+                                style={{ color: c.saldoPendiente > 0 ? '#EF4444' : 'var(--text-3)' }}>
+                                {fmtFull(c.saldoPendiente)}
+                              </td>
+                              <td className="py-2">
+                                <EstadoBadge estado={c.estado} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Top productos ─────────────────────────────────────────────────────── */}
       <div className="rounded-2xl border p-5"

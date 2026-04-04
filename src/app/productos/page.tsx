@@ -11,6 +11,7 @@ import {
   ChevronLeft, ChevronRight, Download, Star,
   TrendingUp, Activity, LayoutGrid, Package, Calendar,
 } from 'lucide-react';
+import { MesPicker, defaultMesRange } from '@/components/ui/MesPicker';
 import clsx from 'clsx';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
@@ -216,19 +217,13 @@ export default function ProductosPage() {
   const [filtroCat, setFiltroCat] = useState('Todas');
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
 
-  // Defaults
+  const { desde: _defDesde, hasta: _defHasta } = defaultMesRange();
   const _hoy = new Date();
-  const _defMesHasta = `${_hoy.getFullYear()}-${String(_hoy.getMonth() + 1).padStart(2, '0')}`;
-  const _d2 = new Date(_hoy.getFullYear(), _hoy.getMonth() - 2, 1);
-  const _defMesDesde = `${_d2.getFullYear()}-${String(_d2.getMonth() + 1).padStart(2, '0')}`;
-  const _defFechaHasta = _hoy.toISOString().slice(0, 10);
-  const _d3 = new Date(_hoy); _d3.setDate(_d3.getDate() - 30);
-  const _defFechaDesde = _d3.toISOString().slice(0, 10);
 
-  const [mesDesde,   setMesDesde]   = useState(_defMesDesde);
-  const [mesHasta,   setMesHasta]   = useState(_defMesHasta);
-  const [fechaDesde, setFechaDesde] = useState(_defFechaDesde);
-  const [fechaHasta, setFechaHasta] = useState(_defFechaHasta);
+  const [mesDesde,   setMesDesde]   = useState(_defDesde);
+  const [mesHasta,   setMesHasta]   = useState(_defHasta);
+  const [fechaDesde, setFechaDesde] = useState(_hoy.toISOString().slice(0, 10));
+  const [fechaHasta, setFechaHasta] = useState(_hoy.toISOString().slice(0, 10));
 
   // ── Datos Supabase ────────────────────────────────────────
   const [sbData, setSbData] = useState<SupabaseAnalytics | null>(null);
@@ -391,6 +386,23 @@ export default function ProductosPage() {
 
         {/* Filtro de fecha */}
         <div className="flex items-center gap-2 flex-wrap">
+          {modoFiltro === 'mes' ? (
+            <MesPicker
+              desde={mesDesde}
+              hasta={mesHasta}
+              onChange={(d, h) => { setMesDesde(d); setMesHasta(h); setPage(1); }}
+            />
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <input type="date" value={fechaDesde} max={fechaHasta}
+                onChange={e => { setFechaDesde(e.target.value); setPage(1); }}
+                className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
+              <span className="text-gray-300 text-[11px]">→</span>
+              <input type="date" value={fechaHasta} min={fechaDesde}
+                onChange={e => { setFechaHasta(e.target.value); setPage(1); }}
+                className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
+            </div>
+          )}
           <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-0.5">
             <button
               onClick={() => { setModoFiltro('mes'); setPage(1); }}
@@ -404,29 +416,6 @@ export default function ProductosPage() {
                 modoFiltro === 'dia' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
               <Calendar className="w-3 h-3" />Por fecha
             </button>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {modoFiltro === 'mes' ? (
-              <>
-                <input type="month" value={mesDesde} max={mesHasta}
-                  onChange={e => { setMesDesde(e.target.value); setPage(1); }}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
-                <span className="text-gray-300 text-[11px]">→</span>
-                <input type="month" value={mesHasta} min={mesDesde}
-                  onChange={e => { setMesHasta(e.target.value); setPage(1); }}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
-              </>
-            ) : (
-              <>
-                <input type="date" value={fechaDesde} max={fechaHasta}
-                  onChange={e => { setFechaDesde(e.target.value); setPage(1); }}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
-                <span className="text-gray-300 text-[11px]">→</span>
-                <input type="date" value={fechaHasta} min={fechaDesde}
-                  onChange={e => { setFechaHasta(e.target.value); setPage(1); }}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 bg-white text-[11px] font-medium text-gray-600" />
-              </>
-            )}
           </div>
         </div>
 

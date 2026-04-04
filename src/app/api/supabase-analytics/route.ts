@@ -19,6 +19,8 @@ import { withCache } from '@/lib/data/cache';
 
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutos
 
+const CATS_EXCLUIDAS = new Set(['Bebidas', 'bebidas', 'BEBIDAS']);
+
 // ─── SCHEMA — nombres reales de ConectOca ────────────────────────────────
 const SCHEMA = {
   orders: {
@@ -49,29 +51,30 @@ function resolveRango(params: {
   mesDesde?: string; mesHasta?: string;
   fechaDesde?: string; fechaHasta?: string;
 }): { desde: string; hasta: string } {
-  // 1) Fechas exactas (YYYY-MM-DD)
+  // 1) Fechas exactas (YYYY-MM-DD) — extiende hasta el final del día UTC
   if (params.fechaDesde && params.fechaHasta) {
-    return { desde: params.fechaDesde, hasta: params.fechaHasta };
+    return {
+      desde: `${params.fechaDesde}T00:00:00.000Z`,
+      hasta: `${params.fechaHasta}T23:59:59.999Z`,
+    };
   }
   // 2) Rango por mes (YYYY-MM)
   if (params.mesDesde && params.mesHasta) {
     const [dy, dm] = params.mesDesde.split('-').map(Number);
     const [hy, hm] = params.mesHasta.split('-').map(Number);
-    const desde = new Date(dy, dm - 1, 1);
-    const hasta = new Date(hy, hm, 0); // último día del mes hasta
+    const desde = new Date(Date.UTC(dy, dm - 1, 1, 0, 0, 0, 0));
+    const hasta = new Date(Date.UTC(hy, hm, 0, 23, 59, 59, 999)); // último ms del mes
     return {
-      desde: desde.toISOString().slice(0, 10),
-      hasta: hasta.toISOString().slice(0, 10),
+      desde: desde.toISOString(),
+      hasta: hasta.toISOString(),
     };
   }
   // 3) Fallback: N meses hacia atrás
   const meses = params.meses ?? 12;
-  const d = new Date();
-  d.setMonth(d.getMonth() - meses);
-  d.setDate(1);
-  const f = new Date();
-  f.setDate(f.getDate() + 1);
-  return { desde: d.toISOString().slice(0, 10), hasta: f.toISOString().slice(0, 10) };
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - meses, 1, 0, 0, 0, 0));
+  const f = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+  return { desde: d.toISOString(), hasta: f.toISOString() };
 }
 
 const OCA_BUSINESS_ID = 'd1fa7f40-c5e1-4bc2-9ffc-c8483950b758';
@@ -160,6 +163,7 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
     const precio = Number(item[SCHEMA.items.precioUnitario] ?? 0);
     const areaId = String(item[SCHEMA.items.areaId]         ?? '');
     const cat    = areaMap[areaId] ?? 'Sin área';
+    if (CATS_EXCLUIDAS.has(cat)) continue;
     if (!porProductoMap[nombre]) {
       porProductoMap[nombre] = { nombre, categoria: cat, unidades: 0, ingresos: 0, porSucursal: {} };
     }
@@ -175,6 +179,7 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   for (const item of items) {
     const areaId = String(item[SCHEMA.items.areaId] ?? '');
     const cat    = areaMap[areaId] ?? 'Sin área';
+    if (CATS_EXCLUIDAS.has(cat)) continue;
     const cant   = Number(item[SCHEMA.items.cantidad]       ?? 0);
     const precio = Number(item[SCHEMA.items.precioUnitario] ?? 0);
     if (!porCategoriaMap[cat]) porCategoriaMap[cat] = { unidades: 0, ingresos: 0 };

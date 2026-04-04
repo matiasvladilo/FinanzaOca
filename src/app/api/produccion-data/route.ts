@@ -18,35 +18,48 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { readSheet, getProduccionConfig } from '@/lib/google-sheets';
+import { readSheet, readSheetBatch, getProduccionConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { getSupabaseClient } from '@/lib/supabase';
 import { requireAuth } from '@/lib/auth-api';
 
 const COLORES = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444', '#06B6D4', '#D1D5DB'];
 
+// Categorías excluidas de todos los análisis
+const CATS_EXCLUIDAS = new Set(['Bebidas', 'bebidas', 'BEBIDAS']);
+
+// ── Helper: normaliza headers con saltos de línea ──────────────────────────────
+function normH(s: string) { return (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+function findHeaderNorm(headers: string[], ...candidates: string[]): number {
+  for (const c of candidates) {
+    const idx = headers.findIndex(h => normH(h) === normH(c));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
 // ── Rango de fechas ──────────────────────────────────────────────────────────
 function getDateRange(params: {
   mesDesde?: string; mesHasta?: string;
   fechaDesde?: string; fechaHasta?: string;
 }) {
-  // Modo fecha específica (YYYY-MM-DD) tiene prioridad
+  // Modo fecha específica (YYYY-MM-DD) — usa UTC explícito
   if (params.fechaDesde && params.fechaHasta) {
     const [dy, dm, dd] = params.fechaDesde.split('-').map(Number);
     const [hy, hm, hd] = params.fechaHasta.split('-').map(Number);
     return {
-      desde: new Date(dy, dm - 1, dd, 0, 0, 0, 0),
-      hasta: new Date(hy, hm - 1, hd, 23, 59, 59, 999),
+      desde: new Date(Date.UTC(dy, dm - 1, dd, 0, 0, 0, 0)),
+      hasta: new Date(Date.UTC(hy, hm - 1, hd, 23, 59, 59, 999)),
     };
   }
-  // Modo mes (YYYY-MM)
+  // Modo mes (YYYY-MM) — usa UTC explícito para evitar drift de timezone
   const mesDesde = params.mesDesde ?? '';
   const mesHasta = params.mesHasta ?? '';
   const [dy, dm] = mesDesde.split('-').map(Number);
   const [hy, hm] = mesHasta.split('-').map(Number);
   return {
-    desde: new Date(dy, dm - 1, 1, 0, 0, 0, 0),
-    hasta: new Date(hy, hm, 0, 23, 59, 59, 999), // último día del mes
+    desde: new Date(Date.UTC(dy, dm - 1, 1, 0, 0, 0, 0)),
+    hasta: new Date(Date.UTC(hy, hm, 0, 23, 59, 59, 999)), // último ms del mes
   };
 }
 
@@ -191,6 +204,137 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   };
 }
 
+// ── Fetch Control Pan ─────────────────────────────────────────────────────────
+export interface ControlPanCliente {
+  nombre: string;
+  precioKg: number;
+  kgEntregados: number;
+  deudaTotal: number;
+  totalPagado: number;
+  saldoPendiente: number;
+  porcentajePagado: number;
+  estado: string;
+}
+export interface ControlPanSalidaCliente {
+  local: string;
+  kg: number;
+  deudaGenerada: number;
+}
+export interface ControlPanData {
+  kpi: {
+    totalKg: number;
+    totalDeudaGenerada: number;
+    totalPagado: number;
+    saldoPendiente: number;
+  };
+  salidasPorCliente: ControlPanSalidaCliente[];
+  cuentaCorriente: ControlPanCliente[];
+}
+
+async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData | null> {
+  const sheetId = process.env.SHEET_CONTROL_PAN_ID ?? '';
+  if (!sheetId) return null;
+
+  const parseKg = (raw: string) => parseFloat((raw ?? '').replace(',', '.')) || 0;
+
+  // ── Leer SALIDAS + PAGOS en una sola llamada API ─────────────────────────
+  const [salidasRaw, pagosRaw] = await readSheetBatch(sheetId, [
+    'SALIDAS!A1:G500',
+    'PAGOS!A1:D500',
+  ]);
+
+  // ── SALIDAS: filtrar por fecha del período ────────────────────────────────
+  const salidasHeaderIdx = salidasRaw.findIndex(r =>
+    r.some(c => normH(c).includes('kg entregados') || normH(c) === 'local')
+  );
+  const salidasPorCliente: ControlPanSalidaCliente[] = [];
+  if (salidasHeaderIdx !== -1 && salidasHeaderIdx < salidasRaw.length - 1) {
+    const headers = salidasRaw[salidasHeaderIdx];
+    const iLocal  = findHeaderNorm(headers, 'LOCAL', 'Local');
+    const iFecha  = findHeaderNorm(headers, 'FECHA', 'Fecha');
+    const iKg     = findHeaderNorm(headers, 'KG ENTREGADOS');
+    const iDeuda  = findHeaderNorm(headers, 'DEUDA GENERADA ($)', 'DEUDA GENERADA');
+    const clienteMap: Record<string, ControlPanSalidaCliente> = {};
+    for (const row of salidasRaw.slice(salidasHeaderIdx + 1)) {
+      const localName = (row[iLocal] ?? '').trim();
+      if (!localName) continue;
+      const fp = parseFecha(row[iFecha] ?? '');
+      if (!fp.date || fp.date < desde || fp.date > hasta) continue;
+      const kg    = parseKg(row[iKg] ?? '');
+      const deuda = parseMonto(row[iDeuda] ?? '');
+      if (!clienteMap[localName]) clienteMap[localName] = { local: localName, kg: 0, deudaGenerada: 0 };
+      clienteMap[localName].kg            += kg;
+      clienteMap[localName].deudaGenerada += deuda;
+    }
+    Object.values(clienteMap)
+      .filter(c => c.kg > 0)
+      .sort((a, b) => b.kg - a.kg)
+      .forEach(c => salidasPorCliente.push(c));
+  }
+
+  // ── PAGOS: filtrar por fecha del período → totales por cliente ───────────
+  const pagosHeaderIdx = pagosRaw.findIndex(r =>
+    r.some(c => normH(c).includes('pagado') || normH(c).includes('fecha'))
+  );
+  let totalPagado = 0;
+  const pagosClienteMap: Record<string, number> = {};
+  if (pagosHeaderIdx !== -1 && pagosHeaderIdx < pagosRaw.length - 1) {
+    const headers    = pagosRaw[pagosHeaderIdx];
+    const iFechaPago = findHeaderNorm(headers, 'FECHA PAGO', 'FECHA\nPAGO', 'Fecha Pago', 'Fecha');
+    const iLocalP    = findHeaderNorm(headers, 'LOCAL', 'Local');
+    const iPagado    = findHeaderNorm(headers, 'PAGADO ($)MONTO', 'PAGADO ($)', 'PAGADO', 'Monto', 'MONTO');
+    for (const row of pagosRaw.slice(pagosHeaderIdx + 1)) {
+      const fp = parseFecha(row[iFechaPago] ?? '');
+      if (!fp.date || fp.date < desde || fp.date > hasta) continue;
+      const monto     = parseMonto(row[iPagado] ?? '');
+      const localName = (row[iLocalP] ?? '').trim();
+      totalPagado += monto;
+      if (localName) pagosClienteMap[localName] = (pagosClienteMap[localName] ?? 0) + monto;
+    }
+  }
+
+  // ── CUENTA CORRIENTE: calculada desde SALIDAS + PAGOS del período ─────────
+  // Obtener precioKg por cliente desde SALIDAS
+  const precioKgMap: Record<string, number> = {};
+  if (salidasHeaderIdx !== -1) {
+    const headers  = salidasRaw[salidasHeaderIdx];
+    const iLocalS  = findHeaderNorm(headers, 'LOCAL', 'Local');
+    const iPrecio  = findHeaderNorm(headers, 'PRECIO x KG ($)\n(desde Config.)', 'PRECIO x KG ($)', 'PRECIO x KG');
+    for (const row of salidasRaw.slice(salidasHeaderIdx + 1)) {
+      const localName = (row[iLocalS] ?? '').trim();
+      if (!localName || precioKgMap[localName]) continue;
+      const precio = parseMonto(row[iPrecio] ?? '');
+      if (precio > 0) precioKgMap[localName] = precio;
+    }
+  }
+
+  const cuentaCorriente: ControlPanCliente[] = salidasPorCliente.map(c => {
+    const pagado    = pagosClienteMap[c.local] ?? 0;
+    const saldo     = Math.max(0, c.deudaGenerada - pagado);
+    const pct       = c.deudaGenerada > 0 ? Math.round((pagado / c.deudaGenerada) * 100) : 0;
+    const estado    = saldo === 0       ? '✅ Pagado'
+                    : pct >= 50         ? '🟡 Pago parcial'
+                    :                     '🔴 Pendiente';
+    return {
+      nombre:           c.local,
+      precioKg:         precioKgMap[c.local] ?? 0,
+      kgEntregados:     c.kg,
+      deudaTotal:       c.deudaGenerada,
+      totalPagado:      pagado,
+      saldoPendiente:   saldo,
+      porcentajePagado: pct,
+      estado,
+    };
+  });
+
+  const totalKg            = salidasPorCliente.reduce((s, c) => s + c.kg, 0);
+  const totalDeudaGenerada = salidasPorCliente.reduce((s, c) => s + c.deudaGenerada, 0);
+  // Saldo = deuda generada en el período menos lo cobrado en el período
+  const saldoPendiente     = Math.max(0, totalDeudaGenerada - totalPagado);
+
+  return { kpi: { totalKg, totalDeudaGenerada, totalPagado, saldoPendiente }, salidasPorCliente, cuentaCorriente };
+}
+
 // ── Route handler ────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const auth = requireAuth(req);
@@ -218,10 +362,11 @@ export async function GET(req: NextRequest) {
     const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth() + 1)}-${pad(hasta.getDate())}`;
 
     // Fetch en paralelo
-    const [gastos, mermaData, ventasData] = await Promise.all([
+    const [gastos, mermaData, ventasData, controlPan] = await Promise.all([
       fetchGastos(local, desde, hasta),
       fetchMerma(local, desde, hasta),
       fetchVentasSupabase(desdeStr, hastaStr),
+      fetchControlPan(desde, hasta),
     ]);
 
     const { orders, items, areaMap } = ventasData;
@@ -284,6 +429,7 @@ export async function GET(req: NextRequest) {
       const precio    = Number(item.price    ?? 0);
       const areaId    = String(item.production_area_id ?? '');
       const categoria = areaMap[areaId] ?? 'Sin área';
+      if (CATS_EXCLUIDAS.has(categoria)) continue;
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;
@@ -297,6 +443,7 @@ export async function GET(req: NextRequest) {
     for (const item of items) {
       const areaId    = String(item.production_area_id ?? '');
       const categoria = areaMap[areaId] ?? 'Sin área';
+      if (CATS_EXCLUIDAS.has(categoria)) continue;
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
       if (!categoriaVentasMap[categoria]) categoriaVentasMap[categoria] = { unidades: 0, ingresos: 0 };
@@ -333,6 +480,7 @@ export async function GET(req: NextRequest) {
       topProductos,
       porArea,
       porTipoMerma,
+      controlPan,
       locales,
       mesDesde,
       mesHasta,
@@ -378,5 +526,73 @@ export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta:
   } catch (err) {
     console.error('[produccion-data] fetchTopProductosForReport:', err);
     return { topProductos: [], totalPedidos: 0 };
+  }
+}
+
+// ── Función completa para inyectar Producción en el informe ──────────────────
+
+export interface ProduccionReportDataFull {
+  topProductos: Array<{ nombre: string; categoria: string; unidades: number; ingresos: number }>;
+  totalPedidos: number;
+  ventasConectOca: number;
+  panExterno: number;
+  totalVentas: number;
+  gastos: number;
+  deudaPendiente: number;
+}
+
+export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: string): Promise<ProduccionReportDataFull> {
+  const empty: ProduccionReportDataFull = {
+    topProductos: [], totalPedidos: 0,
+    ventasConectOca: 0, panExterno: 0, totalVentas: 0, gastos: 0, deudaPendiente: 0,
+  };
+  try {
+    // Usar fechas locales (YYYY-MM-DD) igual que el route handler principal
+    const [dy, dm, dd] = fechaDesde.split('-').map(Number);
+    const [hy, hm, hd] = fechaHasta.split('-').map(Number);
+    const desde = new Date(dy, dm - 1, dd, 0, 0, 0, 0);
+    const hasta = new Date(hy, hm - 1, hd, 23, 59, 59, 999);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const desdeStr = `${desde.getFullYear()}-${pad(desde.getMonth() + 1)}-${pad(desde.getDate())}`;
+    const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth() + 1)}-${pad(hasta.getDate())}`;
+
+    const [ventasRes, gastosRes, controlPanRes] = await Promise.allSettled([
+      fetchVentasSupabase(desdeStr, hastaStr),
+      fetchGastos('todos', desde, hasta),
+      fetchControlPan(desde, hasta),
+    ]);
+
+    const { orders, items, areaMap: areaMapR } = ventasRes.status === 'fulfilled'
+      ? ventasRes.value
+      : { orders: [], items: [], areaMap: {} as Record<string, string> };
+
+    const ventasConectOca = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    const totalPedidos    = orders.length;
+    const panExterno      = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.totalPagado ?? 0) : 0;
+    const deudaPendiente  = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.saldoPendiente ?? 0) : 0;
+    const totalGastos     = gastosRes.status === 'fulfilled'
+      ? gastosRes.value.reduce((s, r) => s + r.monto, 0)
+      : 0;
+
+    const prodMap: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
+    for (const item of items) {
+      const nombre    = String(item.product_name ?? '(sin nombre)');
+      const cant      = Number(item.quantity ?? 0);
+      const precio    = Number(item.price    ?? 0);
+      const areaId    = String(item.production_area_id ?? '');
+      const categoria = areaMapR[areaId] ?? 'Sin área';
+      if (CATS_EXCLUIDAS.has(categoria)) continue;
+      if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
+      prodMap[nombre].unidades += cant;
+      prodMap[nombre].ingresos += cant * precio;
+    }
+    const topProductos = Object.values(prodMap)
+      .sort((a, b) => b.unidades - a.unidades)
+      .slice(0, 10);
+
+    return { topProductos, totalPedidos, ventasConectOca, panExterno, totalVentas: ventasConectOca + panExterno, gastos: totalGastos, deudaPendiente };
+  } catch (err) {
+    console.error('[produccion-data] fetchProduccionForReport:', err);
+    return empty;
   }
 }

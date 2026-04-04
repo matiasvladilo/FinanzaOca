@@ -49,6 +49,41 @@ export async function readSheet(
   throw lastError;
 }
 
+// ── Leer múltiples rangos de una misma planilla en una sola llamada ───────────
+/**
+ * Equivalente a readSheet pero para múltiples rangos en una sola llamada API.
+ * Útil para evitar quota exceeded cuando se necesitan varias pestañas.
+ *
+ * Ejemplo:
+ *   const [salidas, pagos, cc] = await readSheetBatch(id, ['SALIDAS!A1:G500', 'PAGOS!A1:D500', 'CUENTA_CORRIENTE!A1:H60'])
+ */
+export async function readSheetBatch(
+  sheetId: string,
+  ranges: string[],
+  maxRetries = 3,
+): Promise<string[][][]> {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await sheets.spreadsheets.values.batchGet({
+        spreadsheetId: sheetId,
+        ranges,
+      });
+      const valueRanges = response.data.valueRanges ?? [];
+      return ranges.map((_, i) => (valueRanges[i]?.values as string[][]) ?? []);
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries - 1) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 // ── Función genérica: leer columnas específicas por nombre de encabezado ──────
 /**
  * Lee una hoja y devuelve solo las columnas que pidas por nombre de encabezado.

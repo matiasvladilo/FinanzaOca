@@ -68,6 +68,11 @@ interface MermaReportData {
 interface ProduccionReportData {
   topProductos: Array<{ nombre: string; categoria: string; unidades: number; ingresos: number }>;
   totalPedidos: number;
+  ventasConectOca?: number;
+  panExterno?: number;
+  totalVentas?: number;
+  gastos?: number;
+  deudaPendiente?: number;
 }
 
 interface GastoFijoCategoria {
@@ -119,6 +124,7 @@ interface ReportData {
   insights: Insight[];
   mermaData?: MermaReportData;
   produccionData?: ProduccionReportData;
+  deudaPendienteProduccion?: number;
   gastoFijoData?: GastoFijoData;
   aiAnalysis?: AIAnalysis | null;
   proyeccion?: Proyeccion | null;
@@ -525,7 +531,7 @@ function pctChange(curr: number, prev: number) {
 }
 
 function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData; canAccessGastoFijo?: boolean }) {
-  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData, proyeccion } = data;
+  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, deudaPendienteProduccion, gastoFijoData, proyeccion } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -708,9 +714,20 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
                 {Object.entries(current.porSucursal).sort(([, a], [, b]) => b.ventas - a.ventas).map(([nombre, d], i) => {
                   const mPct = d.ventas > 0 ? (d.margen / d.ventas) * 100 : 0;
                   const idx  = d.ventas > 0 ? (d.gastos / d.ventas) * 100 : 0;
+                  const deuda = nombre === 'Producción' ? (deudaPendienteProduccion ?? 0) : 0;
                   return (
                     <tr key={i} style={{ background: i % 2 === 1 ? R.surface : R.bg }}>
-                      <td style={{ ...tdBase, fontWeight: 600 }}>{nombre}</td>
+                      <td style={{ ...tdBase, fontWeight: 600 }}>
+                        {nombre}
+                        {deuda > 0 && (
+                          <span style={{
+                            marginLeft: 6, fontSize: 10, fontWeight: 600, padding: '1px 5px',
+                            borderRadius: 4, background: '#FEF3C7', color: '#92400E',
+                          }}>
+                            Deuda {fmt(deuda)}
+                          </span>
+                        )}
+                      </td>
                       <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700 }}>{fmt(d.ventas)}</td>
                       <td style={{ ...tdBase, textAlign: 'right', color: R.textSub }}>{fmt(d.gastos)}</td>
                       <td style={{ ...tdBase, textAlign: 'right', fontWeight: 600, color: d.margen >= 0 ? R.green : R.red }}>{fmt(d.margen)}</td>

@@ -15,7 +15,7 @@ import { requireAuth } from '@/lib/auth-api';
 import { fetchCierreCajaData } from '@/app/api/cierre-caja/route';
 import { fetchVentasData } from '@/app/api/ventas/route';
 import { fetchMermaForReport, MermaReportData } from '@/app/api/merma-data/route';
-import { fetchTopProductosForReport, ProduccionReportData } from '@/app/api/produccion-data/route';
+import { fetchProduccionForReport, ProduccionReportDataFull } from '@/app/api/produccion-data/route';
 import { fetchGastoFijoForReport, GastoFijoData } from '@/lib/gasto-fijo';
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
@@ -369,19 +369,27 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Obtener datos en paralelo (cierre-caja, ventas, merma, producción, gasto fijo)
-    const [ccResult, ventasResult, mermaResult, produccionResult, gastoFijoResult] = await Promise.allSettled([
+    // Período anterior: calcular antes del fetch paralelo para incluirlo
+    const duration     = daysBetween(fechaDesde, fechaHasta) + 1;
+    const prevHastaStr = offsetDate(fechaDesde, -1);
+    const prevDesdeStr = offsetDate(prevHastaStr, -(duration - 1));
+
+    // Obtener datos en paralelo (cierre-caja, ventas, merma, producción actual+anterior, gasto fijo)
+    const [ccResult, ventasResult, mermaResult, produccionCurrResult, produccionPrevResult, gastoFijoResult] = await Promise.allSettled([
       fetchCierreCajaData(),
       fetchVentasData(),
       fetchMermaForReport(fechaDesde, fechaHasta),
-      fetchTopProductosForReport(fechaDesde, fechaHasta),
+      fetchProduccionForReport(fechaDesde, fechaHasta),
+      fetchProduccionForReport(prevDesdeStr, prevHastaStr),
       perms.canAccessGastoFijo ? fetchGastoFijoForReport(fechaDesde, fechaHasta) : Promise.resolve({ porLocal: [], totalGeneral: 0 } as GastoFijoData),
     ]);
 
     const ccData      = ccResult.status      === 'fulfilled' ? ccResult.value      : null;
     const ventasData  = ventasResult.status  === 'fulfilled' ? ventasResult.value  : null;
     const mermaData   = mermaResult.status   === 'fulfilled' ? mermaResult.value   : { totalMerma: 0, porTipo: [], porLocal: [] } as MermaReportData;
-    const produccionData = produccionResult.status === 'fulfilled' ? produccionResult.value : { topProductos: [], totalPedidos: 0 } as ProduccionReportData;
+    const emptyProduccion: ProduccionReportDataFull = { topProductos: [], totalPedidos: 0, ventasConectOca: 0, panExterno: 0, totalVentas: 0, gastos: 0, deudaPendiente: 0 };
+    const produccionCurr = produccionCurrResult.status === 'fulfilled' ? produccionCurrResult.value : emptyProduccion;
+    const produccionPrev = produccionPrevResult.status === 'fulfilled' ? produccionPrevResult.value : emptyProduccion;
     const gastoFijoData  = gastoFijoResult.status  === 'fulfilled' ? gastoFijoResult.value  : { porLocal: [], totalGeneral: 0 } as GastoFijoData;
 
     const registrosDiarios       = ccData?.registrosDiarios          ?? [];
@@ -396,10 +404,6 @@ export async function GET(req: NextRequest) {
       return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
     })();
 
-    // Período anterior: misma duración inmediatamente antes de fechaDesde
-    const duration = daysBetween(fechaDesde, fechaHasta) + 1; // inclusive
-    const prevHastaStr  = offsetDate(fechaDesde, -1);
-    const prevDesdeStr  = offsetDate(prevHastaStr, -(duration - 1));
     const prevDesde = toLocalDate(prevDesdeStr);
     const prevHasta = (() => {
       const d = toLocalDate(prevHastaStr);
@@ -410,6 +414,35 @@ export async function GET(req: NextRequest) {
     // Calcular métricas
     const current  = calcMetrics(registrosDiarios, registrosDiariosGastos, currDesde, currHasta, sucursal, allProveedores);
     const previous = calcMetrics(registrosDiarios, registrosDiariosGastos, prevDesde, prevHasta, sucursal, allProveedores);
+
+    // Inyectar "Producción" como local virtual (solo cuando no hay filtro de sucursal)
+    if (!sucursal) {
+      if (produccionCurr.totalVentas > 0 || produccionCurr.gastos > 0) {
+        const margenProd = produccionCurr.totalVentas - produccionCurr.gastos;
+        current.porSucursal['Producción'] = {
+          ventas: produccionCurr.totalVentas,
+          gastos: produccionCurr.gastos,
+          margen: margenProd,
+          transacciones: produccionCurr.totalPedidos,
+        };
+        current.ventas   += produccionCurr.totalVentas;
+        current.gastos   += produccionCurr.gastos;
+        current.margen    = current.ventas - current.gastos;
+        current.margenPct = current.ventas > 0 ? (current.margen / current.ventas) * 100 : 0;
+      }
+      if (produccionPrev.totalVentas > 0 || produccionPrev.gastos > 0) {
+        previous.porSucursal['Producción'] = {
+          ventas: produccionPrev.totalVentas,
+          gastos: produccionPrev.gastos,
+          margen: produccionPrev.totalVentas - produccionPrev.gastos,
+          transacciones: produccionPrev.totalPedidos,
+        };
+        previous.ventas   += produccionPrev.totalVentas;
+        previous.gastos   += produccionPrev.gastos;
+        previous.margen    = previous.ventas - previous.gastos;
+        previous.margenPct = previous.ventas > 0 ? (previous.margen / previous.ventas) * 100 : 0;
+      }
+    }
 
     // Deltas porcentuales
     const deltaVentas = pctDelta(current.ventas, previous.ventas);
@@ -471,7 +504,8 @@ export async function GET(req: NextRequest) {
       tendencia,
       insights,
       mermaData,
-      produccionData,
+      produccionData: produccionCurr,
+      deudaPendienteProduccion: produccionCurr.deudaPendiente,
       gastoFijoData,
       proyeccion,
     });
