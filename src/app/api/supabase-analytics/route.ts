@@ -46,59 +46,85 @@ const SCHEMA = {
 } as const;
 
 // ─── Rango de consulta ────────────────────────────────────────────────────
+// Retorna fechas en formato YYYY-MM-DD (local) para evitar drift de timezone
+// al comparar con Supabase (igual que produccion-data/route.ts)
+const pad = (n: number) => String(n).padStart(2, '0');
+function toLocalDate(d: Date) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function resolveRango(params: {
   meses?: number;
   mesDesde?: string; mesHasta?: string;
   fechaDesde?: string; fechaHasta?: string;
 }): { desde: string; hasta: string } {
-  // 1) Fechas exactas (YYYY-MM-DD) — extiende hasta el final del día UTC
+  // 1) Fechas exactas (YYYY-MM-DD) — ya en formato correcto
   if (params.fechaDesde && params.fechaHasta) {
-    return {
-      desde: `${params.fechaDesde}T00:00:00.000Z`,
-      hasta: `${params.fechaHasta}T23:59:59.999Z`,
-    };
+    return { desde: params.fechaDesde, hasta: params.fechaHasta };
   }
   // 2) Rango por mes (YYYY-MM)
   if (params.mesDesde && params.mesHasta) {
     const [dy, dm] = params.mesDesde.split('-').map(Number);
     const [hy, hm] = params.mesHasta.split('-').map(Number);
-    const desde = new Date(Date.UTC(dy, dm - 1, 1, 0, 0, 0, 0));
-    const hasta = new Date(Date.UTC(hy, hm, 0, 23, 59, 59, 999)); // último ms del mes
-    return {
-      desde: desde.toISOString(),
-      hasta: hasta.toISOString(),
-    };
+    const desde = new Date(dy, dm - 1, 1);                   // primer día del mes
+    const hasta = new Date(hy, hm, 0);                       // último día del mes
+    return { desde: toLocalDate(desde), hasta: toLocalDate(hasta) };
   }
   // 3) Fallback: N meses hacia atrás
   const meses = params.meses ?? 12;
   const now = new Date();
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - meses, 1, 0, 0, 0, 0));
-  const f = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-  return { desde: d.toISOString(), hasta: f.toISOString() };
+  const d = new Date(now.getFullYear(), now.getMonth() - meses, 1);
+  const f = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { desde: toLocalDate(d), hasta: toLocalDate(f) };
 }
 
 const OCA_BUSINESS_ID = 'd1fa7f40-c5e1-4bc2-9ffc-c8483950b758';
+
+// ─── Normalización de nombres de categoría ────────────────────────────────
+function normalizeCat(name: string): string {
+  const u = name.toUpperCase();
+  if (u.includes('PANADERIA') || u.includes('PANADERÍA')) return 'Panadería';
+  if (u.includes('PASTELERIA') || u.includes('PASTELERÍA')) return 'Pastelería';
+  if (u.includes('EMPANADA')) return 'Empanadas';
+  if (u.includes('BEBIDA')) return 'Bebidas';
+  return name;
+}
 
 // ─── Fetch principal ──────────────────────────────────────────────────────
 async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   const db = getSupabaseClient();
 
-  // orders y areas en paralelo
-  const [ordersRes, areasRes] = await Promise.all([
+  // orders, categories y products en paralelo
+  const [ordersRes, categoriesRes, productsRes] = await Promise.all([
     db
       .from(SCHEMA.orders.table)
       .select([SCHEMA.orders.fecha, SCHEMA.orders.total, SCHEMA.orders.estado].join(', '))
       .eq('business_id', OCA_BUSINESS_ID)
       .gte(SCHEMA.orders.fecha, fechaDesde)
       .lte(SCHEMA.orders.fecha, fechaHasta)
-      .order(SCHEMA.orders.fecha, { ascending: true }),
-    db
-      .from(SCHEMA.areas.table)
-      .select([SCHEMA.areas.id, SCHEMA.areas.nombre].join(', ')),
+      .order(SCHEMA.orders.fecha, { ascending: true })
+      .limit(50000),
+    db.from('categories').select('id, name'),
+    db.from('products').select('id, category_id'),
   ]);
 
   if (ordersRes.error) throw new Error(`[orders] ${ordersRes.error.message}`);
-  if (areasRes.error)  throw new Error(`[areas]  ${areasRes.error.message}`);
+
+  // ── productCategoryMap: product_id → nombre de categoría ─────────────────
+  const categoryNameMap: Record<string, string> = {};
+  for (const c of (categoriesRes.data ?? [])) {
+    const r = c as Record<string, unknown>;
+    const id   = String(r.id   ?? '');
+    const name = String(r.name ?? '');
+    if (id) categoryNameMap[id] = normalizeCat(name);
+  }
+  const productCategoryMap: Record<string, string> = {};
+  for (const p of (productsRes.data ?? [])) {
+    const r  = p as Record<string, unknown>;
+    const id = String(r.id          ?? '');
+    const ci = String(r.category_id ?? '');
+    if (id && ci) productCategoryMap[id] = categoryNameMap[ci] ?? 'Sin área';
+  }
 
   // Paginar order_items filtrando por business_id via join con orders
   const PAGE = 1000;
@@ -107,14 +133,13 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   while (true) {
     const { data, error } = await db
       .from(SCHEMA.items.table)
-      .select(`${SCHEMA.items.productoNombre}, ${SCHEMA.items.cantidad}, ${SCHEMA.items.precioUnitario}, ${SCHEMA.items.areaId}, orders!inner(created_at)`)
+      .select(`product_id, ${SCHEMA.items.productoNombre}, ${SCHEMA.items.cantidad}, ${SCHEMA.items.precioUnitario}, orders!inner(created_at)`)
       .eq('orders.business_id', OCA_BUSINESS_ID)
       .gte('orders.created_at', fechaDesde)
       .lte('orders.created_at', fechaHasta)
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`[items] ${error.message}`);
     if (!data?.length) break;
-    // Extraer created_at del join para mantener compatibilidad
     const normalized = (data as Record<string, unknown>[]).map(item => ({
       ...item,
       [SCHEMA.items.fecha]: (item.orders as Record<string, unknown>)?.created_at ?? '',
@@ -127,16 +152,6 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orders: Record<string, unknown>[] = (ordersRes.data ?? []) as any[];
   const items:  Record<string, unknown>[] = allItemsRaw;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const areas:  Record<string, unknown>[] = (areasRes.data  ?? []) as any[];
-
-  // ── Mapeo id → nombre de área de producción ─────────────────────────────
-  const areaMap: Record<string, string> = {};
-  for (const area of areas) {
-    const id     = String(area[SCHEMA.areas.id]     ?? '');
-    const nombre = String(area[SCHEMA.areas.nombre] ?? 'Sin área');
-    if (id) areaMap[id] = nombre;
-  }
 
   // ── Agregación: pedidos por mes ─────────────────────────────────────────
   const porMesMap: Record<string, { ventas: number; pedidos: number }> = {};
@@ -158,11 +173,11 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
     porSucursal: Record<string, number>;
   }> = {};
   for (const item of items) {
-    const nombre = String(item[SCHEMA.items.productoNombre] ?? '(sin nombre)');
-    const cant   = Number(item[SCHEMA.items.cantidad]       ?? 0);
-    const precio = Number(item[SCHEMA.items.precioUnitario] ?? 0);
-    const areaId = String(item[SCHEMA.items.areaId]         ?? '');
-    const cat    = areaMap[areaId] ?? 'Sin área';
+    const nombre    = String(item[SCHEMA.items.productoNombre] ?? '(sin nombre)');
+    const cant      = Number(item[SCHEMA.items.cantidad]       ?? 0);
+    const precio    = Number(item[SCHEMA.items.precioUnitario] ?? 0);
+    const productId = String(item['product_id']               ?? '');
+    const cat       = productCategoryMap[productId] ?? 'Sin área';
     if (CATS_EXCLUIDAS.has(cat)) continue;
     if (!porProductoMap[nombre]) {
       porProductoMap[nombre] = { nombre, categoria: cat, unidades: 0, ingresos: 0, porSucursal: {} };
@@ -174,11 +189,11 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
     .sort((a, b) => b.unidades - a.unidades)
     .slice(0, 20);
 
-  // ── Agregación: ventas por área de producción (proxy de categoría) ──────
+  // ── Agregación: ventas por categoría ────────────────────────────────────
   const porCategoriaMap: Record<string, { unidades: number; ingresos: number }> = {};
   for (const item of items) {
-    const areaId = String(item[SCHEMA.items.areaId] ?? '');
-    const cat    = areaMap[areaId] ?? 'Sin área';
+    const productId = String(item['product_id'] ?? '');
+    const cat       = productCategoryMap[productId] ?? 'Sin área';
     if (CATS_EXCLUIDAS.has(cat)) continue;
     const cant   = Number(item[SCHEMA.items.cantidad]       ?? 0);
     const precio = Number(item[SCHEMA.items.precioUnitario] ?? 0);
@@ -203,7 +218,7 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
     porSucursal: {}, // ConectOca no tiene columna de sucursal en orders
     topProductos,
     porCategoria,
-    areas: Object.values(areaMap), // nombres de áreas disponibles
+    areas: Object.keys(categoryNameMap).map(id => categoryNameMap[id]), // nombres de categorías
     fechaDesde,
     fechaHasta,
     fetchedAt: new Date().toISOString(),

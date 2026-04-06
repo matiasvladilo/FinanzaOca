@@ -149,10 +149,20 @@ async function fetchMerma(local: string, desde: Date, hasta: Date) {
 
 const OCA_BUSINESS_ID = 'd1fa7f40-c5e1-4bc2-9ffc-c8483950b758';
 
+// ── Normalización de nombres de categoría ─────────────────────────────────────
+function normalizeCat(name: string): string {
+  const u = name.toUpperCase();
+  if (u.includes('PANADERIA') || u.includes('PANADERÍA')) return 'Panadería';
+  if (u.includes('PASTELERIA') || u.includes('PASTELERÍA')) return 'Pastelería';
+  if (u.includes('EMPANADA')) return 'Empanadas';
+  if (u.includes('BEBIDA')) return 'Bebidas';
+  return name;
+}
+
 // ── Fetch ventas desde Supabase (ConectOca) ──────────────────────────────────
 async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
-    return { orders: [], items: [], areaMap: {} as Record<string, string> };
+    return { orders: [], items: [], productCategoryMap: {} as Record<string, string> };
   }
   const db = getSupabaseClient();
 
@@ -163,7 +173,7 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   while (true) {
     const { data, error } = await db
       .from('order_items')
-      .select('product_name, quantity, price, production_area_id, orders!inner(created_at)')
+      .select('product_id, product_name, quantity, price, orders!inner(created_at)')
       .eq('orders.business_id', OCA_BUSINESS_ID)
       .gte('orders.created_at', desdeStr)
       .lte('orders.created_at', hastaStr)
@@ -175,32 +185,39 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
     from += PAGE;
   }
 
-  const [ordersRes, areasRes] = await Promise.all([
+  const [ordersRes, categoriesRes, productsRes] = await Promise.all([
     db.from('orders')
       .select('created_at, total, status')
       .eq('business_id', OCA_BUSINESS_ID)
       .gte('created_at', desdeStr)
       .lte('created_at', hastaStr)
       .limit(50000),
-    db.from('production_areas').select('id, name'),
+    db.from('categories').select('id, name'),
+    db.from('products').select('id, category_id'),
   ]);
 
   if (ordersRes.error) console.error('[produccion-data] orders error:', ordersRes.error.message);
-  if (areasRes.error)  console.error('[produccion-data] production_areas error:', areasRes.error.message);
-  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length} | areas: ${areasRes.data?.length ?? 0}`);
+  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length}`);
 
-  // production_area_id → nombre de área
-  const areaMap: Record<string, string> = {};
-  for (const a of (areasRes.data ?? [])) {
-    const id   = String((a as Record<string, unknown>).id   ?? '');
-    const name = String((a as Record<string, unknown>).name ?? 'Sin área');
-    if (id) areaMap[id] = name;
+  // product_id → nombre de categoría normalizado
+  const categoryNameMap: Record<string, string> = {};
+  for (const c of (categoriesRes.data ?? [])) {
+    const r = c as Record<string, unknown>;
+    const id = String(r.id ?? '');
+    if (id) categoryNameMap[id] = normalizeCat(String(r.name ?? ''));
+  }
+  const productCategoryMap: Record<string, string> = {};
+  for (const p of (productsRes.data ?? [])) {
+    const r  = p as Record<string, unknown>;
+    const id = String(r.id          ?? '');
+    const ci = String(r.category_id ?? '');
+    if (id && ci) productCategoryMap[id] = categoryNameMap[ci] ?? 'Sin área';
   }
 
   return {
     orders: (ordersRes.data ?? []) as Record<string, unknown>[],
     items:  allItems,
-    areaMap,
+    productCategoryMap,
   };
 }
 
@@ -369,7 +386,7 @@ export async function GET(req: NextRequest) {
       fetchControlPan(desde, hasta),
     ]);
 
-    const { orders, items, areaMap } = ventasData;
+    const { orders, items, productCategoryMap } = ventasData;
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const totalCostos  = gastos.reduce((s, r) => s + r.monto, 0);
@@ -421,14 +438,14 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, v]) => ({ key, mes: getMesLabel(v.mes, v.anio), monto: v.monto }));
 
-    // ── Top productos (Supabase order_items, por production_area) ────────────
+    // ── Top productos (Supabase order_items) ─────────────────────────────────
     const prodMap: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
     for (const item of items) {
       const nombre    = String(item.product_name ?? '(sin nombre)');
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
-      const areaId    = String(item.production_area_id ?? '');
-      const categoria = areaMap[areaId] ?? 'Sin área';
+      const productId = String(item.product_id ?? '');
+      const categoria = productCategoryMap[productId] ?? 'Sin área';
       if (CATS_EXCLUIDAS.has(categoria)) continue;
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
@@ -441,8 +458,8 @@ export async function GET(req: NextRequest) {
     // ── Por área de producción ────────────────────────────────────────────────
     const categoriaVentasMap: Record<string, { unidades: number; ingresos: number }> = {};
     for (const item of items) {
-      const areaId    = String(item.production_area_id ?? '');
-      const categoria = areaMap[areaId] ?? 'Sin área';
+      const productId = String(item.product_id ?? '');
+      const categoria = productCategoryMap[productId] ?? 'Sin área';
       if (CATS_EXCLUIDAS.has(categoria)) continue;
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
@@ -502,7 +519,7 @@ export interface ProduccionReportData {
 
 export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta: string): Promise<ProduccionReportData> {
   try {
-    const { orders, items, areaMap } = await fetchVentasSupabase(fechaDesde, fechaHasta);
+    const { orders, items, productCategoryMap } = await fetchVentasSupabase(fechaDesde, fechaHasta);
 
     const totalPedidos = orders.length;
 
@@ -511,8 +528,8 @@ export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta:
       const nombre    = String(item.product_name ?? '(sin nombre)');
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
-      const areaId    = String(item.production_area_id ?? '');
-      const categoria = areaMap[areaId] ?? 'Sin área';
+      const productId = String(item.product_id ?? '');
+      const categoria = productCategoryMap[productId] ?? 'Sin área';
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;
@@ -562,9 +579,9 @@ export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: s
       fetchControlPan(desde, hasta),
     ]);
 
-    const { orders, items, areaMap: areaMapR } = ventasRes.status === 'fulfilled'
+    const { orders, items, productCategoryMap: prodCatMap } = ventasRes.status === 'fulfilled'
       ? ventasRes.value
-      : { orders: [], items: [], areaMap: {} as Record<string, string> };
+      : { orders: [], items: [], productCategoryMap: {} as Record<string, string> };
 
     const ventasConectOca = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
     const totalPedidos    = orders.length;
@@ -579,8 +596,8 @@ export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: s
       const nombre    = String(item.product_name ?? '(sin nombre)');
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
-      const areaId    = String(item.production_area_id ?? '');
-      const categoria = areaMapR[areaId] ?? 'Sin área';
+      const productId = String(item.product_id ?? '');
+      const categoria = prodCatMap[productId] ?? 'Sin área';
       if (CATS_EXCLUIDAS.has(categoria)) continue;
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
