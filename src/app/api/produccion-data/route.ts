@@ -389,12 +389,15 @@ export async function GET(req: NextRequest) {
     const { orders, items, productCategoryMap } = ventasData;
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
-    const totalCostos  = gastos.reduce((s, r) => s + r.monto, 0);
-    const totalMerma   = mermaData.reduce((s, r) => s + r.monto, 0);
+    const totalCostos     = gastos.reduce((s, r) => s + r.monto, 0);
+    const totalMerma      = mermaData.reduce((s, r) => s + r.monto, 0);
     // Ventas desde orders.total (fuente confiable del POS)
-    const totalVentas  = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
-    const totalPedidos = orders.length;
-    const rentabilidad = totalVentas > 0
+    const ventasConectOca = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    const totalPedidos    = orders.length;
+    // Pan externo: se usa deuda total generada (= lo vendido, independiente de cobro)
+    const panExternoKpi   = controlPan?.kpi.totalDeudaGenerada ?? 0;
+    const totalVentas     = ventasConectOca + panExternoKpi;
+    const rentabilidad    = totalVentas > 0
       ? Math.round(((totalVentas - totalCostos - totalMerma) / totalVentas) * 100)
       : 0;
 
@@ -585,7 +588,7 @@ export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: s
 
     const ventasConectOca = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
     const totalPedidos    = orders.length;
-    const panExterno      = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.totalPagado ?? 0) : 0;
+    const panExterno      = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.totalDeudaGenerada ?? 0) : 0;
     const deudaPendiente  = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.saldoPendiente ?? 0) : 0;
     const totalGastos     = gastosRes.status === 'fulfilled'
       ? gastosRes.value.reduce((s, r) => s + r.monto, 0)

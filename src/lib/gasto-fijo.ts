@@ -13,10 +13,11 @@ const SHEET_ID = process.env.SHEET_GASTO_FIJO_ID ?? '';
 
 // Mapeo: nombre de hoja en el Sheet → nombre canónico del local en el sistema
 const LOCALES_MAP: Record<string, string> = {
-  'LAREINA': 'La Reina',
-  'PV':      'PV',
-  'PT':      'PT',
-  'BILBAO':  'Bilbao',
+  'LAREINA':    'La Reina',
+  'PV':         'PV',
+  'PT':         'PT',
+  'BILBAO':     'Bilbao',
+  'PRODUCCION': 'Producción',
 };
 
 const SHEET_TABS = Object.keys(LOCALES_MAP);
