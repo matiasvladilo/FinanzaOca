@@ -16,7 +16,7 @@ import { fetchCierreCajaData } from '@/app/api/cierre-caja/route';
 import { fetchVentasData } from '@/app/api/ventas/route';
 import { fetchMermaForReport, MermaReportData } from '@/app/api/merma-data/route';
 import { fetchProduccionForReport, ProduccionReportDataFull } from '@/app/api/produccion-data/route';
-import { fetchGastoFijoForReport, GastoFijoData } from '@/lib/gasto-fijo';
+import { fetchGastoFijoForReport, GastoFijoData, fetchGastoIndirectoForReport, GastoIndirectoData } from '@/lib/gasto-fijo';
 
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -375,13 +375,14 @@ export async function GET(req: NextRequest) {
     const prevDesdeStr = offsetDate(prevHastaStr, -(duration - 1));
 
     // Obtener datos en paralelo (cierre-caja, ventas, merma, producción actual+anterior, gasto fijo)
-    const [ccResult, ventasResult, mermaResult, produccionCurrResult, produccionPrevResult, gastoFijoResult] = await Promise.allSettled([
+    const [ccResult, ventasResult, mermaResult, produccionCurrResult, produccionPrevResult, gastoFijoResult, gastoIndirectoResult] = await Promise.allSettled([
       fetchCierreCajaData(),
       fetchVentasData(),
       fetchMermaForReport(fechaDesde, fechaHasta),
       fetchProduccionForReport(fechaDesde, fechaHasta),
       fetchProduccionForReport(prevDesdeStr, prevHastaStr),
       perms.canAccessGastoFijo ? fetchGastoFijoForReport(fechaDesde, fechaHasta) : Promise.resolve({ porLocal: [], totalGeneral: 0 } as GastoFijoData),
+      perms.canAccessGastoFijo ? fetchGastoIndirectoForReport(fechaDesde, fechaHasta) : Promise.resolve({ categorias: [], total: 0 } as GastoIndirectoData),
     ]);
 
     const ccData      = ccResult.status      === 'fulfilled' ? ccResult.value      : null;
@@ -390,7 +391,8 @@ export async function GET(req: NextRequest) {
     const emptyProduccion: ProduccionReportDataFull = { topProductos: [], totalPedidos: 0, ventasConectOca: 0, panExterno: 0, totalVentas: 0, gastos: 0, deudaPendiente: 0 };
     const produccionCurr = produccionCurrResult.status === 'fulfilled' ? produccionCurrResult.value : emptyProduccion;
     const produccionPrev = produccionPrevResult.status === 'fulfilled' ? produccionPrevResult.value : emptyProduccion;
-    const gastoFijoData  = gastoFijoResult.status  === 'fulfilled' ? gastoFijoResult.value  : { porLocal: [], totalGeneral: 0 } as GastoFijoData;
+    const gastoFijoData      = gastoFijoResult.status      === 'fulfilled' ? gastoFijoResult.value      : { porLocal: [], totalGeneral: 0 } as GastoFijoData;
+    const gastoIndirectoData = gastoIndirectoResult.status === 'fulfilled' ? gastoIndirectoResult.value : { categorias: [], total: 0 } as GastoIndirectoData;
 
     const registrosDiarios       = ccData?.registrosDiarios          ?? [];
     const registrosDiariosGastos = ventasData?.registrosDiariosGastos ?? [];
@@ -507,6 +509,7 @@ export async function GET(req: NextRequest) {
       produccionData: produccionCurr,
       deudaPendienteProduccion: produccionCurr.deudaPendiente,
       gastoFijoData,
+      gastoIndirectoData,
       proyeccion,
     });
   } catch (error: unknown) {

@@ -91,6 +91,11 @@ interface GastoFijoData {
   totalGeneral: number;
 }
 
+interface GastoIndirectoData {
+  categorias: GastoFijoCategoria[];
+  total: number;
+}
+
 interface ProyeccionSucursal {
   nombre: string;
   ventasActuales: number;
@@ -126,6 +131,7 @@ interface ReportData {
   produccionData?: ProduccionReportData;
   deudaPendienteProduccion?: number;
   gastoFijoData?: GastoFijoData;
+  gastoIndirectoData?: GastoIndirectoData;
   aiAnalysis?: AIAnalysis | null;
   proyeccion?: Proyeccion | null;
 }
@@ -531,7 +537,7 @@ function pctChange(curr: number, prev: number) {
 }
 
 function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData; canAccessGastoFijo?: boolean }) {
-  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, deudaPendienteProduccion, gastoFijoData, proyeccion } = data;
+  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, deudaPendienteProduccion, gastoFijoData, gastoIndirectoData, proyeccion } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -851,7 +857,7 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
         {canAccessGastoFijo && gastoFijoData && gastoFijoData.totalGeneral > 0 && (
           <section>
             <SectionHeader title="Gasto fijo del período" accent="#0891b2" />
-            {/* Por local */}
+            {/* Cards: por local + gasto indirecto en el mismo grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 16 }}>
               {gastoFijoData.porLocal.map(l => (
                 <div key={l.local} style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '12px 14px' }}>
@@ -865,8 +871,20 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
                   ))}
                 </div>
               ))}
+              {gastoIndirectoData && gastoIndirectoData.total > 0 && (
+                <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', padding: '12px 14px' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', color: '#7c3aed', textTransform: 'uppercase' as const, marginBottom: 6 }}>Gasto indirecto</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>{fmt(gastoIndirectoData.total)}</div>
+                  {gastoIndirectoData.categorias.map((c, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#475569', marginBottom: 3 }}>
+                      <span>{c.categoria}</span>
+                      <span style={{ fontWeight: 600 }}>{fmt(c.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {/* Tabla rentabilidad */}
+            {/* Tabla rentabilidad integrada */}
             <SectionHeader title="Rentabilidad por sucursal" accent="#0f172a" />
             <table style={{ ...tblStyle, fontSize: 13 }}>
               <thead>
@@ -897,18 +915,39 @@ function ReportDocument({ data, canAccessGastoFijo = true }: { data: ReportData;
                       </tr>
                     );
                   });
-                  const totalRent = totV - totGV - totGF;
-                  const totalRentColor = totalRent >= 0 ? '#059669' : '#dc2626';
+                  const totalRentOp = totV - totGV - totGF;
+                  const totalRentOpColor = totalRentOp >= 0 ? '#059669' : '#dc2626';
+                  const hasIndirecto = gastoIndirectoData && gastoIndirectoData.total > 0;
+                  const totalRentNeta = hasIndirecto ? totalRentOp - gastoIndirectoData!.total : null;
+                  const totalRentNetaColor = totalRentNeta !== null ? (totalRentNeta >= 0 ? '#059669' : '#dc2626') : '#059669';
                   return (
                     <>
                       {rows}
                       <tr style={{ background: '#f1f5f9', borderTop: `2px solid #334155` }}>
-                        <td style={{ ...tdBase, fontWeight: 800, fontSize: 14 }}>TOTAL</td>
+                        <td style={{ ...tdBase, fontWeight: 800, fontSize: 14 }}>TOTAL OPERACIONAL</td>
                         <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{fmt(totV)}</td>
                         <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#d97706' }}>{fmt(totGV)}</td>
                         <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#0891b2' }}>{fmt(totGF)}</td>
-                        <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: totalRentColor }}>{fmt(totalRent)}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: totalRentOpColor }}>{fmt(totalRentOp)}</td>
                       </tr>
+                      {hasIndirecto && (
+                        <>
+                          <tr style={{ background: '#faf5ff', borderTop: `1px solid #e9d5ff` }}>
+                            <td style={{ ...tdBase, color: '#7c3aed', fontStyle: 'italic' }}>Gasto indirecto (externo)</td>
+                            <td style={{ ...tdBase, textAlign: 'right' }}>—</td>
+                            <td style={{ ...tdBase, textAlign: 'right' }}>—</td>
+                            <td style={{ ...tdBase, textAlign: 'right', color: '#7c3aed', fontWeight: 600 }}>{fmt(gastoIndirectoData!.total)}</td>
+                            <td style={{ ...tdBase, textAlign: 'right', color: '#7c3aed', fontWeight: 600 }}>− {fmt(gastoIndirectoData!.total)}</td>
+                          </tr>
+                          <tr style={{ background: '#ede9fe', borderTop: `2px solid #7c3aed` }}>
+                            <td style={{ ...tdBase, fontWeight: 800, fontSize: 14, color: '#5b21b6' }}>RENTABILIDAD NETA</td>
+                            <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14 }}>{fmt(totV)}</td>
+                            <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#d97706' }}>{fmt(totGV)}</td>
+                            <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: '#5b21b6' }}>{fmt(totGF + gastoIndirectoData!.total)}</td>
+                            <td style={{ ...tdBase, textAlign: 'right', fontWeight: 800, fontSize: 14, color: totalRentNetaColor }}>{fmt(totalRentNeta!)}</td>
+                          </tr>
+                        </>
+                      )}
                     </>
                   );
                 })()}
@@ -1011,7 +1050,7 @@ function fdHTML(iso: string) {
 }
 
 function buildReportHTML(data: ReportData): string {
-  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData, proyeccion } = data;
+  const { current, previous, deltaVentas, deltaGastos, deltaMargen, insights, aiAnalysis, mermaData, produccionData, gastoFijoData, gastoIndirectoData, proyeccion } = data;
   const indice50Curr  = current.ventas  > 0 ? (current.gastos  / current.ventas)  * 100 : 0;
   const indice50Prev  = previous.ventas > 0 ? (previous.gastos / previous.ventas) * 100 : 0;
   const deltaIndice50 = indice50Curr - indice50Prev;
@@ -1186,6 +1225,20 @@ function buildReportHTML(data: ReportData): string {
         </div>`;
     }).join('');
 
+    // Card gasto indirecto (se une al mismo grid)
+    const indirectoCard = (gastoIndirectoData && gastoIndirectoData.total > 0) ? (() => {
+      const indCats = gastoIndirectoData.categorias.map(c =>
+        `<div style="display:flex;justify-content:space-between;font-size:11px;color:#475569;margin-bottom:3px">
+          <span>${esc(c.categoria)}</span><span style="font-weight:600">${esc(fmtHTML(c.monto))}</span>
+        </div>`).join('');
+      return `
+        <div style="background:#f5f3ff;border:1px solid #c4b5fd;padding:12px 14px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#7c3aed;text-transform:uppercase;margin-bottom:6px">Gasto indirecto</div>
+          <div style="font-size:20px;font-weight:800;color:#0f172a;margin-bottom:8px">${esc(fmtHTML(gastoIndirectoData.total))}</div>
+          ${indCats}
+        </div>`;
+    })() : '';
+
     const gfMap: Record<string, number> = Object.fromEntries(gastoFijoData.porLocal.map(l => [l.local, l.total]));
     const locales = Object.keys(current.porSucursal);
     let totV = 0, totGV = 0, totGF = 0;
@@ -1204,16 +1257,37 @@ function buildReportHTML(data: ReportData): string {
           <td class="right" style="font-weight:700;color:${rentColor}">${esc(fmtHTML(rent))}</td>
         </tr>`;
     }).join('');
-    const totalRent = totV - totGV - totGF;
-    const totalRentColor = totalRent >= 0 ? '#059669' : '#dc2626';
+    const totalRentOp = totV - totGV - totGF;
+    const totalRentOpColor = totalRentOp >= 0 ? '#059669' : '#dc2626';
     const totalRow = `
       <tr style="background:#f1f5f9;border-top:2px solid #334155">
-        <td style="font-weight:800;font-size:14px">TOTAL</td>
+        <td style="font-weight:800;font-size:14px">TOTAL OPERACIONAL</td>
         <td class="right" style="font-weight:800;font-size:14px">${esc(fmtHTML(totV))}</td>
         <td class="right" style="font-weight:800;font-size:14px;color:#d97706">${esc(fmtHTML(totGV))}</td>
         <td class="right" style="font-weight:800;font-size:14px;color:#0891b2">${esc(fmtHTML(totGF))}</td>
-        <td class="right" style="font-weight:800;font-size:14px;color:${totalRentColor}">${esc(fmtHTML(totalRent))}</td>
+        <td class="right" style="font-weight:800;font-size:14px;color:${totalRentOpColor}">${esc(fmtHTML(totalRentOp))}</td>
       </tr>`;
+
+    // Filas de gasto indirecto + rentabilidad neta al final de la misma tabla
+    const indirectoRows = (gastoIndirectoData && gastoIndirectoData.total > 0) ? (() => {
+      const totalRentNeta = totalRentOp - gastoIndirectoData.total;
+      const totalRentNetaColor = totalRentNeta >= 0 ? '#059669' : '#dc2626';
+      return `
+      <tr style="background:#faf5ff;border-top:1px solid #e9d5ff">
+        <td style="color:#7c3aed;font-style:italic">Gasto indirecto (externo)</td>
+        <td class="right">—</td>
+        <td class="right">—</td>
+        <td class="right" style="color:#7c3aed;font-weight:600">${esc(fmtHTML(gastoIndirectoData.total))}</td>
+        <td class="right" style="color:#7c3aed;font-weight:600">− ${esc(fmtHTML(gastoIndirectoData.total))}</td>
+      </tr>
+      <tr style="background:#ede9fe;border-top:2px solid #7c3aed">
+        <td style="font-weight:800;font-size:14px;color:#5b21b6">RENTABILIDAD NETA</td>
+        <td class="right" style="font-weight:800;font-size:14px">${esc(fmtHTML(totV))}</td>
+        <td class="right" style="font-weight:800;font-size:14px;color:#d97706">${esc(fmtHTML(totGV))}</td>
+        <td class="right" style="font-weight:800;font-size:14px;color:#5b21b6">${esc(fmtHTML(totGF + gastoIndirectoData.total))}</td>
+        <td class="right" style="font-weight:800;font-size:14px;color:${totalRentNetaColor}">${esc(fmtHTML(totalRentNeta))}</td>
+      </tr>`;
+    })() : '';
 
     return `
     <div class="section avoid-break">
@@ -1222,7 +1296,7 @@ function buildReportHTML(data: ReportData): string {
         <span class="section-title">Gasto fijo del período</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:16px">
-        ${localCards}
+        ${localCards}${indirectoCard}
       </div>
       <div class="section-header" style="margin-top:16px">
         <div class="section-accent" style="background:#0f172a"></div>
@@ -1236,7 +1310,7 @@ function buildReportHTML(data: ReportData): string {
           <th class="right">Gasto Fijo</th>
           <th class="right">Rentabilidad</th>
         </tr></thead>
-        <tbody>${rentRows}${totalRow}</tbody>
+        <tbody>${rentRows}${totalRow}${indirectoRows}</tbody>
       </table>
     </div>`;
   })() : '';

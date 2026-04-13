@@ -38,6 +38,11 @@ export interface GastoFijoData {
   totalGeneral: number;
 }
 
+export interface GastoIndirectoData {
+  categorias: GastoFijoCategoria[];
+  total: number;
+}
+
 // ── Construir lista de (año, mes) que cubre el rango fechaDesde..fechaHasta ──
 
 function monthsInRange(fechaDesde: string, fechaHasta: string): Set<string> {
@@ -149,4 +154,61 @@ export async function fetchGastoFijoForReport(
   console.log('[GastoFijo] totalGeneral=', totalGeneral, 'locales=', porLocal.map(l => l.local));
 
   return { porLocal, totalGeneral };
+}
+
+// ── Gasto Indirecto (hoja "GASTO_INDIRECTO", sin relación a local) ────────────
+
+export async function fetchGastoIndirectoForReport(
+  fechaDesde: string,
+  fechaHasta: string,
+): Promise<GastoIndirectoData> {
+  if (!SHEET_ID) {
+    console.warn('[GastoIndirecto] SHEET_GASTO_FIJO_ID no configurado');
+    return { categorias: [], total: 0 };
+  }
+
+  const mesesValidos = monthsInRange(fechaDesde, fechaHasta);
+
+  let raw: string[][];
+  try {
+    raw = await readSheet(SHEET_ID, 'GASTO INDIRECTO!A1:ZZ');
+  } catch (err) {
+    console.warn('[GastoIndirecto] Error leyendo hoja "GASTO INDIRECTO":', err);
+    return { categorias: [], total: 0 };
+  }
+
+  if (!raw.length) {
+    console.warn('[GastoIndirecto] Hoja "GASTO INDIRECTO" vacía');
+    return { categorias: [], total: 0 };
+  }
+
+  const headers = raw[0].map(normalizeHeader);
+  const idxCat   = headers.findIndex(h => h === 'categoria');
+  const idxMonto = headers.findIndex(h => h === 'monto');
+  const idxMes   = headers.findIndex(h => h === 'mes');
+  const idxAnio  = headers.findIndex(h => h === 'ano' || h === 'año');
+
+  const dataRows = raw.slice(1);
+  const filtradas = dataRows.filter(row => {
+    const mes  = parseInt(row[idxMes]  ?? '', 10);
+    const anio = parseInt(row[idxAnio] ?? '', 10);
+    if (isNaN(mes) || isNaN(anio)) return false;
+    return mesesValidos.has(`${anio}-${mes}`);
+  });
+
+  const catMap: Record<string, number> = {};
+  for (const row of filtradas) {
+    const cat   = (row[idxCat] ?? '').trim() || 'Sin categoría';
+    const monto = parseMonto(row[idxMonto] ?? '');
+    catMap[cat] = (catMap[cat] ?? 0) + monto;
+  }
+
+  const categorias: GastoFijoCategoria[] = Object.entries(catMap)
+    .map(([categoria, monto]) => ({ categoria, monto }))
+    .sort((a, b) => b.monto - a.monto);
+
+  const total = categorias.reduce((s, c) => s + c.monto, 0);
+  console.log('[GastoIndirecto] total=', total);
+
+  return { categorias, total };
 }
