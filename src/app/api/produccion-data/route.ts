@@ -391,8 +391,15 @@ export async function GET(req: NextRequest) {
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const totalCostos     = gastos.reduce((s, r) => s + r.monto, 0);
     const totalMerma      = mermaData.reduce((s, r) => s + r.monto, 0);
-    // Ventas desde orders.total (fuente confiable del POS)
-    const ventasConectOca = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    // Ventas ConectOca: orders.total como base confiable, menos la parte de bebidas (calculada por ítems)
+    const totalOrdersSum  = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    const bebidasItems    = items.reduce((s, item) => {
+      const productId = String(item.product_id ?? '');
+      const categoria = productCategoryMap[productId] ?? 'Sin área';
+      if (!CATS_EXCLUIDAS.has(categoria)) return s;
+      return s + Number(item.quantity ?? 0) * Number(item.price ?? 0);
+    }, 0);
+    const ventasConectOca = totalOrdersSum - bebidasItems;
     const totalPedidos    = orders.length;
     // Pan externo: se usa deuda total generada (= lo vendido, independiente de cobro)
     const panExternoKpi   = controlPan?.kpi.totalDeudaGenerada ?? 0;

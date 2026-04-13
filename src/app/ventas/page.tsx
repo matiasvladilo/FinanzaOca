@@ -395,11 +395,21 @@ function InteractiveChart({
   return wrap(
     <ResponsiveContainer width="100%" height={260}>
       <BarChart data={sData} barCategoryGap="30%" barGap={2} margin={{ top: 22 }} style={{ background: 'transparent' }}>
+        <defs>
+          <pattern id="hatch_single" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill={colorGastos} fillOpacity={0.15} />
+            <line x1="0" y1="0" x2="0" y2="6" stroke={colorGastos} strokeWidth="2.5" strokeOpacity={0.75} />
+          </pattern>
+          <pattern id="hatch_single_comp" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill={colorGastos} fillOpacity={0.08} />
+            <line x1="0" y1="0" x2="0" y2="6" stroke={colorGastos} strokeWidth="2.5" strokeOpacity={0.4} />
+          </pattern>
+        </defs>
         {commonChildren}
         {showVentas && <Bar dataKey="ventas" name="Ventas" fill={colorVentas} radius={[4, 4, 0, 0]} activeBar={{ fill: colorVentas, opacity: 0.85, filter: 'brightness(1.25)' }}>{barLabel('ventas')}</Bar>}
-        {showGastos && <Bar dataKey="gastos" name="Gastos" fill={colorGastos} radius={[4, 4, 0, 0]} activeBar={{ fill: colorGastos, opacity: 0.85, filter: 'brightness(1.25)' }}>{barLabel('gastos')}</Bar>}
+        {showGastos && <Bar dataKey="gastos" name="Gastos" fill="url(#hatch_single)" radius={[4, 4, 0, 0]} activeBar={{ fill: colorGastos, opacity: 0.85 }}>{barLabel('gastos')}</Bar>}
         {hasComp && showVentas && <Bar dataKey="ventasComp" name="Ventas (comp.)" fill={colorVentas} opacity={0.5} radius={[4, 4, 0, 0]} activeBar={{ fill: colorVentas, opacity: 0.75 }}>{barLabel('ventasComp')}</Bar>}
-        {hasComp && showGastos && <Bar dataKey="gastosComp" name="Gastos (comp.)" fill={colorGastos} opacity={0.5} radius={[4, 4, 0, 0]} activeBar={{ fill: colorGastos, opacity: 0.75 }}>{barLabel('gastosComp')}</Bar>}
+        {hasComp && showGastos && <Bar dataKey="gastosComp" name="Gastos (comp.)" fill="url(#hatch_single_comp)" radius={[4, 4, 0, 0]} activeBar={{ fill: colorGastos, opacity: 0.75 }}>{barLabel('gastosComp')}</Bar>}
         {showPresupuesto && <Bar dataKey="presupuesto" name="Presupuesto" fill="#EF4444" opacity={0.55} radius={[4, 4, 0, 0]} activeBar={{ fill: '#EF4444', opacity: 0.8 }}>{barLabel('presupuesto')}</Bar>}
       </BarChart>
     </ResponsiveContainer>

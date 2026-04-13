@@ -171,14 +171,14 @@ export async function fetchGastoIndirectoForReport(
 
   let raw: string[][];
   try {
-    raw = await readSheet(SHEET_ID, 'GASTO INDIRECTO!A1:ZZ');
+    raw = await readSheet(SHEET_ID, 'GASTOINDIRECTO!A1:F1000');
   } catch (err) {
-    console.warn('[GastoIndirecto] Error leyendo hoja "GASTO INDIRECTO":', err);
+    console.warn('[GastoIndirecto] Error leyendo hoja "GASTOINDIRECTO":', err);
     return { categorias: [], total: 0 };
   }
 
   if (!raw.length) {
-    console.warn('[GastoIndirecto] Hoja "GASTO INDIRECTO" vacía');
+    console.warn('[GastoIndirecto] Hoja "GASTOINDIRECTO" vacía');
     return { categorias: [], total: 0 };
   }
 

@@ -342,9 +342,9 @@ export default function ProduccionPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           label="Ventas totales"
-          value={kpi ? fmt(kpi.totalVentas + (data?.controlPan?.kpi.totalPagado ?? 0)) : '—'}
+          value={kpi ? fmt(kpi.totalVentas) : '—'}
           sub={kpi
-            ? `ConectOca ${fmt(kpi.totalVentas)} + Pan externo ${fmt(data?.controlPan?.kpi.totalPagado ?? 0)}`
+            ? `ConectOca ${fmt(kpi.totalVentas - (data?.controlPan?.kpi.totalDeudaGenerada ?? 0))} + Pan externo ${fmt(data?.controlPan?.kpi.totalDeudaGenerada ?? 0)}`
             : undefined}
           icon={TrendingUp}
           color="bg-blue-500"
