@@ -13,7 +13,7 @@ import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/pars
 import { withCacheSWR } from '@/lib/data/cache';
 import { requireAuth } from '@/lib/auth-api';
 
-const CACHE_KEY = 'ventas-v10';
+const CACHE_KEY = 'ventas-v11';
 
 async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:Z5000`);
@@ -39,7 +39,7 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const idx = {
     tipo:      findHeader(headers, 'Tipo (Ingreso/Gasto)'),
     subtipo:   findHeader(headers, 'Subtipo Doc'),
-    proveedor: findHeader(headers, 'Proveedor/Cliente'),
+    proveedor: findHeader(headers, 'Proveedor/Cliente', 'Proveedores', 'Proveedor', 'proveedor'),
     medioPago: findHeader(headers, 'Medio de Pago'),
     monto:     findHeader(headers, 'Total Factura', 'Monto', 'Columna 8', 'Total'),
   };
