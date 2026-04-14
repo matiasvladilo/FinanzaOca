@@ -16,6 +16,7 @@ const USERS: User[] = [
   { username: 'fernando',     password: '3455',    role: 'admin',   email: 'fernando.vladilo@gmail.com'   },
   { username: 'marcela',      password: 'elorria', role: 'usuario', email: ''                             },
   { username: 'matiaslagos',  password: 'elorria', role: 'usuario', email: ''                             },
+  { username: 'jose',         password: '3455',    role: 'usuario', email: ''                             },
 ];
 
 // ── Roles y permisos ──────────────────────────────────────────────────────────
