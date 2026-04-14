@@ -557,8 +557,7 @@ function ProveedorModal({
   );
 }
 
-// ─── Tipo presupuesto ─────────────────────────────────────
-interface PresupuestoRow { local: string; mes: number; año: number; presupuesto: number; }
+// ─── Tipo presupuesto (eliminado — ahora se calcula como 50% de ventas) ───────
 
 // ─── Página principal ─────────────────────────────────────
 export default function VentasPage() {
@@ -588,9 +587,8 @@ export default function VentasPage() {
   const [loadingSheet, setLoadingSheet] = useState(true);
   // Modal de proveedor
   const [proveedorModal, setProveedorModal] = useState<{ nombre: string; localFilter: string | null } | null>(null);
-  // Presupuesto
+  // Presupuesto (50% de ventas dinámico)
   const [presupuestoOn, setPresupuestoOn] = useState(false);
-  const [presupuestoData, setPresupuestoData] = useState<PresupuestoRow[]>([]);
 
   // Cierra dropdowns al hacer click fuera
   useEffect(() => {
@@ -610,12 +608,6 @@ export default function VentasPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [dateOpen]);
-
-  useEffect(() => {
-    fetch('/api/presupuesto').then(r => r.json()).then(res => {
-      if (res.ok) setPresupuestoData(res.data ?? []);
-    }).catch(() => {});
-  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -1010,48 +1002,25 @@ export default function VentasPage() {
   const isMultiLocal = localSel.length >= 2;
   const localDefs = (filteredData as any).localDefs as LocalDef[] | undefined;
 
-  // ── Reverse map: label → YYYY-MM (para cruzar chartData con presupuesto) ──
-  const labelToKey = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const m of mesesDisponibles) map[keyToLabel(m)] = m;
-    return map;
-  }, [mesesDisponibles]);
-
-  // ── Chart data enriquecido con presupuesto ────────────────
+  // ── Chart data enriquecido con presupuesto (50% de ventas) ──
   const chartDataWithPres = useMemo(() => {
     const base = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
-    if (!presupuestoOn || !presupuestoData.length) return base;
-    const getP = (mesKey: string, local: string | null): number => {
-      if (!mesKey) return 0;
-      const [añoStr, mesStr] = mesKey.split('-');
-      const año = parseInt(añoStr), mes = parseInt(mesStr);
-      const byMonth = presupuestoData.filter(r => r.año === año && r.mes === mes);
-      if (!byMonth.length) return 0;
-      if (local) {
-        // Match flexible: exact, substring o partial (maneja "La Reina" vs "LA OCA LA REINA")
-        const ll = local.toLowerCase();
-        const match = byMonth.find(r => {
-          const rl = r.local.toLowerCase();
-          return rl === ll || rl.includes(ll) || ll.includes(rl);
-        });
-        return match?.presupuesto ?? 0;
-      }
-      // Sin filtro de local: suma todos los locales del mes
-      return byMonth.reduce((s, r) => s + r.presupuesto, 0);
-    };
+    if (!presupuestoOn) return base;
     if (isMultiLocal && localDefs) {
       return (base as MultiChartRow[]).map(row => {
-        const mesKey = labelToKey[row.fecha as string] ?? '';
         const extra: Record<string, number> = {};
-        for (const def of localDefs) extra[`presupuesto_${def.idx}`] = getP(mesKey, def.local);
+        for (const def of localDefs) {
+          const ventas = (row[`ventas_${def.idx}`] as number) ?? 0;
+          extra[`presupuesto_${def.idx}`] = ventas * 0.5;
+        }
         return { ...row, ...extra };
       });
     }
     return (base as ChartRow[]).map(row => ({
       ...row,
-      presupuesto: getP(labelToKey[row.fecha] ?? '', localSel.length === 1 ? localSel[0] : null),
+      presupuesto: (row.ventas ?? 0) * 0.5,
     }));
-  }, [filteredData.chartData, presupuestoOn, presupuestoData, labelToKey, localSel, isMultiLocal, localDefs, localesDisponibles]);
+  }, [filteredData.chartData, presupuestoOn, isMultiLocal, localDefs]);
 
   // ── Proyección de ventas ───────────────────────────────────
   const proyeccionData = useMemo(() => {
