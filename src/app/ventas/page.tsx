@@ -996,6 +996,30 @@ export default function VentasPage() {
   const hasComp    = filteredData.hasComp ?? false;
   const margen = ventasReal > 0 ? (((ventasReal - gastosReal) / ventasReal) * 100).toFixed(1) : '0.0';
   const margenComp = ventasComp > 0 ? (((ventasComp - gastosComp) / ventasComp) * 100).toFixed(1) : null;
+
+  // ── Índice P: igual a Índice 60 pero excluyendo proveedor panadería/pastelería ──
+  const PANADERIA_RE = /panaderi|pasteler/i;
+  const gastosSinPanaderia = useMemo(() => {
+    const locFilt = localSel.length === 1 ? localSel[0] : null;
+    let sum = 0;
+    for (const r of rawDiasGastos) {
+      if (!r.fecha) continue;
+      if (locFilt !== null && r.sucursal !== locFilt) continue;
+      if (localSel.length >= 2 && !localSel.includes(r.sucursal)) continue;
+      if (PANADERIA_RE.test(r.proveedor ?? '')) continue;
+      if (modoFiltro === 'dia') {
+        if (fechaDesde && r.fecha < fechaDesde) continue;
+        if (fechaHasta && r.fecha > fechaHasta) continue;
+      } else {
+        const mes = r.fecha.slice(0, 7);
+        if (mesDesde && mes < mesDesde) continue;
+        if (mesHasta && mes > mesHasta) continue;
+      }
+      sum += r.monto;
+    }
+    return sum;
+  }, [rawDiasGastos, localSel, modoFiltro, fechaDesde, fechaHasta, mesDesde, mesHasta]);
+  const indiceP = ventasReal > 0 ? ((gastosSinPanaderia / ventasReal) * 100).toFixed(1) : '0.0';
   const chartData = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
   const localesDisponibles = Object.keys(rawLocalMes);
   const isLocalComp = localSel.length === 2;
@@ -1283,7 +1307,7 @@ export default function VentasPage() {
       <main className="flex-1 px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 pb-8">
 
         {/* ── KPIs ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
           {[
             {
               label: 'Ventas Total', value: loadingSheet ? '...' : fmtFull(ventasReal),
@@ -1307,6 +1331,12 @@ export default function VentasPage() {
               label: 'Índice 60', value: loadingSheet ? '...' : ventasReal > 0 ? `${((gastosReal / ventasReal) * 100).toFixed(1)}%` : '—', comp: null, deltaPct: null,
               icon: <Activity className="w-4 h-4 text-purple-600" />, bg: 'bg-purple-50',
             },
+            {
+              label: 'Índice P', value: loadingSheet ? '...' : ventasReal > 0 ? `${indiceP}%` : '—',
+              comp: null, deltaPct: null,
+              sub: loadingSheet ? null : fmtFull(gastosSinPanaderia),
+              icon: <Wallet className="w-4 h-4 text-orange-500" />, bg: 'bg-orange-50',
+            },
           ].map(k => {
             const delta = k.deltaPct !== null ? parseFloat(k.deltaPct) : null;
             const pos = delta === null ? true : delta >= 0;
@@ -1327,7 +1357,9 @@ export default function VentasPage() {
               </div>
               {k.comp
                 ? <p className="text-[10px] text-blue-500 font-medium">comp: {k.comp}</p>
-                : <p className="text-[10px] text-gray-400">{hasComp ? 'sin datos comparativos' : 'Período seleccionado'}</p>
+                : (k as any).sub
+                  ? <p className="text-[10px] font-medium" style={{ color: 'var(--text-3)' }}>Gasto: {(k as any).sub}</p>
+                  : <p className="text-[10px] text-gray-400">{hasComp ? 'sin datos comparativos' : 'Período seleccionado'}</p>
               }
             </div>
             );
