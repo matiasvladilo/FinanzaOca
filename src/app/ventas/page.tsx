@@ -1002,25 +1002,48 @@ export default function VentasPage() {
   const isMultiLocal = localSel.length >= 2;
   const localDefs = (filteredData as any).localDefs as LocalDef[] | undefined;
 
-  // ── Chart data enriquecido con presupuesto (50% de ventas) ──
+  // ── Chart data enriquecido con presupuesto (50% de ventas proyectadas) ──
   const chartDataWithPres = useMemo(() => {
     const base = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
     if (!presupuestoOn) return base;
+
+    // Mapeo label → YYYY-MM para encontrar la clave del mes
+    const lToK: Record<string, string> = {};
+    for (const m of mesesDisponibles) lToK[keyToLabel(m)] = m;
+
+    // Proyección = (ventas reales / días con registro) × días totales del mes
+    // Para meses pasados completos ≈ ventas reales. Para mes en curso > ventas reales.
+    const getProjected = (mesKey: string, local: string | null): number => {
+      if (!mesKey) return 0;
+      const [year, month] = mesKey.split('-').map(Number);
+      const totalDias = new Date(year, month, 0).getDate();
+      const locals = local ? [local] : localesDisponibles;
+      let projected = 0;
+      for (const loc of locals) {
+        const ventas = rawLocalMes[loc]?.[mesKey]?.ventas ?? 0;
+        const dias = new Set(
+          rawDiasCaja
+            .filter(r => r.local === loc && r.fecha?.startsWith(mesKey) && r.ventas > 0)
+            .map(r => r.fecha)
+        ).size;
+        projected += dias > 0 ? (ventas / dias) * totalDias : ventas;
+      }
+      return projected * 0.5;
+    };
+
     if (isMultiLocal && localDefs) {
       return (base as MultiChartRow[]).map(row => {
+        const mesKey = lToK[row.fecha as string] ?? '';
         const extra: Record<string, number> = {};
-        for (const def of localDefs) {
-          const ventas = (row[`ventas_${def.idx}`] as number) ?? 0;
-          extra[`presupuesto_${def.idx}`] = ventas * 0.5;
-        }
+        for (const def of localDefs) extra[`presupuesto_${def.idx}`] = getProjected(mesKey, def.local);
         return { ...row, ...extra };
       });
     }
     return (base as ChartRow[]).map(row => ({
       ...row,
-      presupuesto: (row.ventas ?? 0) * 0.5,
+      presupuesto: getProjected(lToK[row.fecha] ?? '', localSel.length === 1 ? localSel[0] : null),
     }));
-  }, [filteredData.chartData, presupuestoOn, isMultiLocal, localDefs]);
+  }, [filteredData.chartData, presupuestoOn, isMultiLocal, localDefs, rawDiasCaja, rawLocalMes, mesesDisponibles, localSel, localesDisponibles]);
 
   // ── Proyección de ventas ───────────────────────────────────
   const proyeccionData = useMemo(() => {
