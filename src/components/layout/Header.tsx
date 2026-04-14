@@ -38,8 +38,9 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
     <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b sticky top-0 z-30 transition-colors"
       style={{ background: 'var(--header-bg)', borderColor: 'var(--border)' }}>
 
-      <h1 className="text-[15px] sm:text-[18px] font-bold tracking-tight shrink-0" style={{ color: 'var(--text)' }}>
-        Data Analytics Desk
+      <h1 className="text-[14px] sm:text-[18px] font-bold tracking-tight shrink-0" style={{ color: 'var(--text)' }}>
+        <span className="sm:hidden">Analytics</span>
+        <span className="hidden sm:inline">Data Analytics Desk</span>
       </h1>
 
       <div className="flex items-center gap-1 sm:gap-3">

@@ -103,20 +103,34 @@ export default function Sidebar() {
 
       {/* ── Mobile bottom navigation (< md) ──────────────────────────────── */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-40 flex md:hidden border-t"
-        style={{ background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border)' }}
+        className="fixed bottom-0 left-0 right-0 z-40 flex md:hidden border-t overflow-hidden"
+        style={{
+          background: 'var(--sidebar-bg)',
+          borderColor: 'var(--sidebar-border)',
+          WebkitTransform: 'translateZ(0)',
+          transform: 'translateZ(0)',
+          willChange: 'transform',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
       >
         {navItems.map(({ label, href, icon: Icon }) => {
           const active = isActive(href);
+          const shortLabel: Record<string, string> = {
+            'Factor Índice': 'Factor',
+            'Dashboard': 'Inicio',
+            'Producción': 'Produc.',
+          };
           return (
             <Link
               key={href}
               href={href}
-              className="flex-1 flex flex-col items-center justify-center py-2.5 gap-1 transition-colors"
+              className="flex-1 min-w-0 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors"
               style={{ color: active ? 'var(--active-text)' : 'var(--text-3)' }}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-[9px] font-semibold tracking-wide">{label}</span>
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              <span className="text-[8px] font-semibold tracking-wide truncate w-full text-center px-0.5">
+                {shortLabel[label] ?? label}
+              </span>
             </Link>
           );
         })}

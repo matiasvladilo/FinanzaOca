@@ -48,7 +48,7 @@ export default function KPICard({
         </div>
       </div>
 
-      <p className="text-[24px] lg:text-[28px] font-bold leading-tight text-gray-900 dark:text-white truncate">
+      <p className="text-[16px] sm:text-[22px] lg:text-[28px] font-bold leading-tight text-gray-900 dark:text-white break-words">
         {value}
       </p>
 

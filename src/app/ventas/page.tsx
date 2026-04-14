@@ -1193,7 +1193,7 @@ export default function VentasPage() {
               <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
             {localOpen && (
-              <div className="absolute right-0 top-full mt-1.5 z-50 min-w-[220px] rounded-2xl shadow-xl overflow-hidden"
+              <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 z-50 w-[240px] rounded-2xl shadow-xl overflow-hidden max-h-[60vh] overflow-y-auto"
                 style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
                 <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
                   <p className="text-[11px] font-bold" style={{ color: 'var(--text)' }}>
@@ -1325,7 +1325,7 @@ export default function VentasPage() {
                 <div className={clsx('w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center', k.bg)}>{k.icon}</div>
               </div>
               <div className="flex items-end gap-1.5 mb-1">
-                <p className="text-[17px] sm:text-[22px] font-black text-gray-900 leading-none truncate">{k.value}</p>
+                <p className="text-[14px] sm:text-[20px] font-black leading-none break-words" style={{ color: 'var(--text)' }}>{k.value}</p>
                 {delta !== null && (
                   <span className={clsx('text-[11px] font-bold pb-0.5', pos ? 'text-green-600' : 'text-red-500')}>
                     {pos ? <TrendingUp className="w-3 h-3 inline mr-0.5" /> : <TrendingDown className="w-3 h-3 inline mr-0.5" />}
