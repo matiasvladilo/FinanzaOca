@@ -28,7 +28,7 @@ export function middleware(req: NextRequest) {
         pathname.startsWith('/ventas') ||
         pathname.startsWith('/api/ventas') ||
         pathname.startsWith('/api/cierre-caja') ||
-        pathname === '/';
+        pathname.startsWith('/api/presupuesto');
       if (!isAllowed) {
         return NextResponse.redirect(new URL('/ventas', req.url));
       }

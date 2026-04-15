@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MapPin, Download, ChevronDown, Sun, Moon, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import type { DashboardFilters } from '@/types';
 import { useTheme } from '@/providers/ThemeProvider';
+import { getClientSession } from '@/lib/session-client';
 
 interface HeaderProps {
   filters: DashboardFilters;
@@ -21,7 +22,13 @@ const THEME_META = {
 
 export default function Header({ filters, onFiltersChange, onExport, sucursalesDisponibles }: HeaderProps) {
   const [sucursalOpen, setSucursalOpen] = useState(false);
+  const [isLocalRole, setIsLocalRole] = useState(false);
   const { theme, cycle } = useTheme();
+
+  useEffect(() => {
+    const s = getClientSession();
+    setIsLocalRole(s?.role === 'local');
+  }, []);
 
   const SUCURSALES = sucursalesDisponibles ?? ['Todas'];
   const meta = THEME_META[theme];
@@ -60,36 +67,44 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
         </div>
 
         {/* Sucursal Selector */}
-        <div className="relative">
-          <button onClick={() => setSucursalOpen(!sucursalOpen)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-full text-[12px] border transition-colors hover:border-[var(--active-text)]"
+        {isLocalRole ? (
+          <div className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-full text-[12px] border"
             style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}>
             <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--text-3)' }} />
-            <span className="hidden sm:inline">{filters.sucursal === 'Todas' ? 'Todas las sucursales' : filters.sucursal}</span>
-            <span className="sm:hidden">{filters.sucursal === 'Todas' ? 'Todas' : filters.sucursal}</span>
-            <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
-          </button>
+            <span>{filters.sucursal}</span>
+          </div>
+        ) : (
+          <div className="relative">
+            <button onClick={() => setSucursalOpen(!sucursalOpen)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-full text-[12px] border transition-colors hover:border-[var(--active-text)]"
+              style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}>
+              <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--text-3)' }} />
+              <span className="hidden sm:inline">{filters.sucursal === 'Todas' ? 'Todas las sucursales' : filters.sucursal}</span>
+              <span className="sm:hidden">{filters.sucursal === 'Todas' ? 'Todas' : filters.sucursal}</span>
+              <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
+            </button>
 
-          {sucursalOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setSucursalOpen(false)} />
-              <div className="absolute right-0 top-full mt-1 rounded-xl shadow-lg overflow-hidden z-50 min-w-[180px] border"
-                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-                {SUCURSALES.map((s) => (
-                  <button key={s} onClick={() => setSucursal(s)}
-                    className="w-full text-left px-4 py-2.5 text-[12px] transition-colors"
-                    style={filters.sucursal === s
-                      ? { color: 'var(--active-text)', background: 'var(--active-bg)', fontWeight: 600 }
-                      : { color: 'var(--text-2)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = filters.sucursal === s ? 'var(--active-bg)' : '')}>
-                    {s === 'Todas' ? 'Todas las sucursales' : s}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+            {sucursalOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setSucursalOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 rounded-xl shadow-lg overflow-hidden z-50 min-w-[180px] border"
+                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
+                  {SUCURSALES.map((s) => (
+                    <button key={s} onClick={() => setSucursal(s)}
+                      className="w-full text-left px-4 py-2.5 text-[12px] transition-colors"
+                      style={filters.sucursal === s
+                        ? { color: 'var(--active-text)', background: 'var(--active-bg)', fontWeight: 600 }
+                        : { color: 'var(--text-2)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = filters.sucursal === s ? 'var(--active-bg)' : '')}>
+                      {s === 'Todas' ? 'Todas las sucursales' : s}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Theme toggle — cycles light → dark → dracula */}
         <button onClick={cycle}
