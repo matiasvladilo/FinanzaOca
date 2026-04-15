@@ -7,6 +7,7 @@ export interface User {
   password: string;
   role: Role;
   email?: string;
+  sucursal?: string; // solo para rol 'local' — el local que puede ver
 }
 
 const USERS: User[] = [
@@ -22,7 +23,7 @@ const USERS: User[] = [
 // ── Roles y permisos ──────────────────────────────────────────────────────────
 // Para agregar un rol nuevo: agregar una clave al objeto ROLES con sus permisos.
 
-export type Role = 'admin' | 'usuario';
+export type Role = 'admin' | 'usuario' | 'local';
 
 export interface RolePermissions {
   canViewAll: boolean;
@@ -41,6 +42,11 @@ export const ROLES: Record<Role, RolePermissions> = {
     allowedLocations: ['pv', 'lareina', 'pt', 'bilbao'],
     canAccessGastoFijo: false,
   },
+  local: {
+    canViewAll: false,           // solo ve su propio local
+    allowedLocations: [],        // se determina por user.sucursal
+    canAccessGastoFijo: false,
+  },
 };
 
 // ── Sesión ────────────────────────────────────────────────────────────────────
@@ -49,6 +55,7 @@ export interface SessionUser {
   username: string;
   role: Role;
   email?: string;
+  sucursal?: string; // presente solo cuando role === 'local'
 }
 
 export const SESSION_COOKIE = 'session';

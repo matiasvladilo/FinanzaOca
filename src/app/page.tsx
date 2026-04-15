@@ -13,6 +13,7 @@ import KPICard from '@/components/kpis/KPICard';
 import Skeleton from '@/components/ui/Skeleton';
 import InsightsPanel from '@/components/insights/InsightsPanel';
 import type { DashboardFilters } from '@/types';
+import { getLocalRestriction } from '@/lib/session-client';
 import type { CierreCajaResponse, VentasResponse } from '@/types/api';
 import { toast } from '@/components/ui/Toast';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
@@ -69,8 +70,18 @@ export default function DashboardPage() {
   const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
 
+  // Aplicar restricción de local si el rol es 'local'
+  useEffect(() => {
+    const localRestriccion = getLocalRestriction();
+    if (localRestriccion) {
+      setFilters(f => ({ ...f, sucursal: localRestriccion }));
+    }
+  }, []);
+
   // Restaurar estado desde sessionStorage tras el primer render (evita hydration mismatch)
   useEffect(() => {
+    const localRestriccion = getLocalRestriction();
+    if (localRestriccion) return; // no restaurar sessionStorage si hay restricción de local
     setFilters(ssGetJSON('dash_filters', defaultFilters));
     setMesFiltro(ssGet('dash_mesFiltro', ''));
     setFechaDesde(ssGet('dash_fechaDesde', ''));

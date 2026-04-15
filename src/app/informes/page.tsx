@@ -8,8 +8,8 @@ function getSessionPermissions() {
   if (!match) return { canAccessGastoFijo: false };
   try {
     const s = JSON.parse(decodeURIComponent(match.split('=').slice(1).join('=')));
-    const roleMap: Record<string, boolean> = { admin: true, usuario: false };
-    return { canAccessGastoFijo: roleMap[s.role] ?? false };
+    const roleMap: Record<string, boolean> = { admin: true, usuario: false, local: false };
+    return { canAccessGastoFijo: roleMap[s.role] ?? false, sucursal: s.sucursal as string | undefined };
   } catch { return { canAccessGastoFijo: false }; }
 }
 import {

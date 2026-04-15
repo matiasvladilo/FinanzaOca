@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { getLocalRestriction } from '@/lib/session-client';
 import {
   AreaChart, Area,
   LineChart, Line,
@@ -640,6 +641,9 @@ export default function VentasPage() {
           setMesHasta(seleccionado);
           setMesPill(seleccionado);
         }
+        // Si el usuario tiene restricción de local, pre-seleccionarlo
+        const lr = getLocalRestriction();
+        if (lr) setLocalSel([lr]);
       })
       .catch(() => {})
       .finally(() => setLoadingSheet(false));
@@ -1021,7 +1025,10 @@ export default function VentasPage() {
   }, [rawDiasGastos, localSel, modoFiltro, fechaDesde, fechaHasta, mesDesde, mesHasta]);
   const indiceP = ventasReal > 0 ? ((gastosSinPanaderia / ventasReal) * 100).toFixed(1) : '0.0';
   const chartData = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
-  const localesDisponibles = Object.keys(rawLocalMes);
+  const localRestriccion = getLocalRestriction(); // null si puede ver todos
+  const localesDisponibles = localRestriccion
+    ? Object.keys(rawLocalMes).filter(l => l === localRestriccion)
+    : Object.keys(rawLocalMes);
   const isLocalComp = localSel.length === 2;
   const isMultiLocal = localSel.length >= 2;
   const localDefs = (filteredData as any).localDefs as LocalDef[] | undefined;

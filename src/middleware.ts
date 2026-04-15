@@ -21,6 +21,19 @@ export function middleware(req: NextRequest) {
   try {
     const parsed = JSON.parse(session);
     if (!parsed.username || !parsed.role) throw new Error('invalid');
+
+    // Rol 'local': solo puede acceder a /ventas y sus APIs
+    if (parsed.role === 'local') {
+      const isAllowed =
+        pathname.startsWith('/ventas') ||
+        pathname.startsWith('/api/ventas') ||
+        pathname.startsWith('/api/cierre-caja') ||
+        pathname === '/';
+      if (!isAllowed) {
+        return NextResponse.redirect(new URL('/ventas', req.url));
+      }
+    }
+
     return NextResponse.next();
   } catch {
     // Cookie inválida → limpiar y redirigir

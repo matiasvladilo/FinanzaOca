@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { getClientSession } from '@/lib/session-client';
 import {
   LayoutDashboard, TrendingUp, ShoppingBag,
   Trash2, LogOut, Gauge, BarChart3, Factory, FileText,
@@ -37,8 +38,17 @@ export default function Sidebar() {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href;
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [isLocalRole, setIsLocalRole] = useState(false);
 
-  useEffect(() => { setUser(getSession()); }, []);
+  useEffect(() => {
+    setUser(getSession());
+    const s = getClientSession();
+    setIsLocalRole(s?.role === 'local');
+  }, []);
+
+  const visibleNavItems = isLocalRole
+    ? navItems.filter(i => i.href === '/ventas')
+    : navItems;
 
   if (pathname === '/login') return null;
 
@@ -64,7 +74,7 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(({ label, href, icon: Icon }) => {
+          {visibleNavItems.map(({ label, href, icon: Icon }) => {
             const active = isActive(href);
             return (
               <Link
@@ -113,7 +123,7 @@ export default function Sidebar() {
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        {navItems.map(({ label, href, icon: Icon }) => {
+        {visibleNavItems.map(({ label, href, icon: Icon }) => {
           const active = isActive(href);
           const shortLabel: Record<string, string> = {
             'Factor Índice': 'Factor',
