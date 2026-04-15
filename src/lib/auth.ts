@@ -18,6 +18,10 @@ const USERS: User[] = [
   { username: 'marcela',      password: 'elorria', role: 'usuario', email: ''                             },
   { username: 'matiaslagos',  password: 'elorria', role: 'usuario', email: ''                             },
   { username: 'jose',         password: '3455',    role: 'usuario', email: ''                             },
+  { username: 'lareina',     password: 'elorria3455', role: 'local', sucursal: 'La Reina' },
+  { username: 'pv',          password: 'elorria3455', role: 'local', sucursal: 'PV'       },
+  { username: 'pt',          password: 'elorria3455', role: 'local', sucursal: 'PT'       },
+  { username: 'bilbao',      password: 'elorria3455', role: 'local', sucursal: 'Bilbao'   },
 ];
 
 // ── Roles y permisos ──────────────────────────────────────────────────────────
