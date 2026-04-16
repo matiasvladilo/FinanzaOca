@@ -151,7 +151,14 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orders: Record<string, unknown>[] = (ordersRes.data ?? []) as any[];
-  const items:  Record<string, unknown>[] = allItemsRaw;
+
+  // Filtro JS adicional: el filtro de Supabase en tablas relacionadas no siempre
+  // funciona en todos los entornos. Usamos el created_at embebido para asegurar
+  // que solo se incluyen items dentro del rango seleccionado.
+  const items: Record<string, unknown>[] = allItemsRaw.filter(item => {
+    const d = String((item.orders as Record<string, unknown>)?.created_at ?? '').slice(0, 10);
+    return d >= fechaDesde && d <= fechaHasta;
+  });
 
   // ── Agregación: pedidos por mes ─────────────────────────────────────────
   const porMesMap: Record<string, { ventas: number; pedidos: number }> = {};

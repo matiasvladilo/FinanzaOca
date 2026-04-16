@@ -197,7 +197,14 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   ]);
 
   if (ordersRes.error) console.error('[produccion-data] orders error:', ordersRes.error.message);
-  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length}`);
+
+  // Filtro JS: asegurar que los items sean del rango correcto (el filtro de Supabase
+  // en tablas relacionadas no siempre respeta el rango en todos los entornos).
+  const filteredItems = allItems.filter(item => {
+    const d = String((item.orders as Record<string, unknown>)?.created_at ?? '').slice(0, 10);
+    return d >= desdeStr && d <= hastaStr;
+  });
+  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length} | filteredItems: ${filteredItems.length}`);
 
   // product_id → nombre de categoría normalizado
   const categoryNameMap: Record<string, string> = {};
@@ -216,7 +223,7 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
 
   return {
     orders: (ordersRes.data ?? []) as Record<string, unknown>[],
-    items:  allItems,
+    items:  filteredItems,
     productCategoryMap,
   };
 }
