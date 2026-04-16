@@ -432,11 +432,15 @@ export default function ProductosPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {usingReal && (
+          {usingReal ? (
             <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 border border-blue-100 rounded-full px-3 py-1.5 whitespace-nowrap">
               ConectOca · en vivo
             </span>
-          )}
+          ) : sbData && !sbData.ok && sbData.error ? (
+            <span className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-full px-3 py-1.5 whitespace-nowrap max-w-[280px] truncate" title={sbData.error}>
+              Error: {sbData.error}
+            </span>
+          ) : null}
           <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
             <Bell className="w-4 h-4" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
