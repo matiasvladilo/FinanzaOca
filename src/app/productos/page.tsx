@@ -224,6 +224,17 @@ export default function ProductosPage() {
   const [mesHasta,   setMesHasta]   = useState(_defHasta);
   const [fechaDesde, setFechaDesde] = useState(_hoy.toISOString().slice(0, 10));
   const [fechaHasta, setFechaHasta] = useState(_hoy.toISOString().slice(0, 10));
+  const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
+
+  // ── Meses disponibles (fetch único al montar) ─────────────
+  useEffect(() => {
+    fetch('/api/supabase-analytics?soloMeses=1')
+      .then(r => r.json())
+      .then((d: { ok: boolean; meses?: string[] }) => {
+        if (d.ok && d.meses?.length) setMesesDisponibles(d.meses);
+      })
+      .catch(() => {});
+  }, []);
 
   // ── Datos Supabase ────────────────────────────────────────
   const [sbData, setSbData] = useState<SupabaseAnalytics | null>(null);
@@ -391,6 +402,7 @@ export default function ProductosPage() {
               desde={mesDesde}
               hasta={mesHasta}
               onChange={(d, h) => { setMesDesde(d); setMesHasta(h); setPage(1); }}
+              mesesDisponibles={mesesDisponibles}
             />
           ) : (
             <div className="flex items-center gap-1.5">

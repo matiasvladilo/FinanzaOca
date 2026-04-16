@@ -11,10 +11,9 @@ export function mesKeyToLabel(key: string) {
   return `${MESES_ES[parseInt(m) - 1]} ${y}`;
 }
 
-export function generarMeses(n = 18, futuro = 3): { key: string; label: string }[] {
+export function generarMeses(n = 18): { key: string; label: string }[] {
   const now = new Date();
-  const total = n + futuro;
-  return Array.from({ length: total }, (_, i) => {
+  return Array.from({ length: n }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (n - 1 - i), 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     return { key, label: mesKeyToLabel(key) };
@@ -34,15 +33,23 @@ export function MesPicker({
   desde,
   hasta,
   onChange,
+  mesesDisponibles,
 }: {
   desde: string;
   hasta: string;
   onChange: (desde: string, hasta: string) => void;
+  mesesDisponibles?: string[]; // si se pasa, solo muestra esos meses
 }) {
   const [open, setOpen]       = useState(false);
   const [picking, setPicking] = useState<'desde' | 'hasta'>('desde');
   const ref   = useRef<HTMLDivElement>(null);
-  const meses = useMemo(() => generarMeses(18), []);
+  const mesesFallback = useMemo(() => generarMeses(18), []);
+  const meses = useMemo(() => {
+    if (mesesDisponibles && mesesDisponibles.length > 0) {
+      return mesesDisponibles.map(key => ({ key, label: mesKeyToLabel(key) }));
+    }
+    return mesesFallback;
+  }, [mesesDisponibles, mesesFallback]);
 
   useEffect(() => {
     if (!open) return;

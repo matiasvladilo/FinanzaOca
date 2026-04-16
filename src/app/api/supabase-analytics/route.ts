@@ -236,6 +236,29 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+
+  // Modo ligero: solo devuelve los meses con datos en Supabase (sin filtro de rango)
+  if (searchParams.get('soloMeses') === '1') {
+    try {
+      const db = getSupabaseClient();
+      const { data, error } = await db
+        .from(SCHEMA.orders.table)
+        .select(SCHEMA.orders.fecha)
+        .eq('business_id', OCA_BUSINESS_ID)
+        .order(SCHEMA.orders.fecha, { ascending: true })
+        .limit(50000);
+      if (error) throw error;
+      const mesesSet = new Set<string>();
+      for (const o of (data ?? [])) {
+        const mes = String((o as Record<string, unknown>)[SCHEMA.orders.fecha] ?? '').slice(0, 7);
+        if (mes.length === 7) mesesSet.add(mes);
+      }
+      return NextResponse.json({ ok: true, meses: [...mesesSet].sort() });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error';
+      return NextResponse.json({ ok: false, meses: [], error: msg }, { status: 500 });
+    }
+  }
   const mesesParam = parseInt(searchParams.get('meses') ?? '12', 10);
   const meses = isNaN(mesesParam) || mesesParam < 1 ? 12 : Math.min(mesesParam, 24);
 

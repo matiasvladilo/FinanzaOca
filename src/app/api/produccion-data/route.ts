@@ -357,6 +357,58 @@ export async function GET(req: NextRequest) {
   const auth = requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
+  // Modo ligero: solo devuelve los meses con datos en Facturas + Supabase
+  if (req.nextUrl.searchParams.get('soloMeses') === '1') {
+    try {
+      const mesesSet = new Set<string>();
+
+      // Meses desde Facturas (Google Sheets)
+      const config = getProduccionConfig();
+      if (config) {
+        const allRows = await readSheet(config.id, 'Facturas!A1:N5000');
+        const knownHeaders = ['local', 'fecha', 'proveedor', 'gasto', 'tipo'];
+        const headerIdx = allRows.findIndex(r =>
+          r.some(c => knownHeaders.includes((c ?? '').toLowerCase().trim()))
+        );
+        if (headerIdx !== -1) {
+          const headers = allRows[headerIdx];
+          const iFecha = findHeader(headers, 'Fecha vencimiento', 'Fecha Vencimiento', 'Fecha', 'FECHA', 'fecha');
+          const iMes   = findHeader(headers, 'Mes', 'MES', 'mes');
+          for (const row of allRows.slice(headerIdx + 1)) {
+            const fp = parseFecha(row[iFecha] ?? '');
+            if (fp.anio && fp.mes) {
+              mesesSet.add(`${fp.anio}-${String(fp.mes).padStart(2, '0')}`);
+            } else {
+              const mesNum = parseInt(row[iMes] ?? '', 10);
+              // fallback: no podemos conocer el año solo del número de mes
+              if (!isNaN(mesNum)) { /* skip — sin año no podemos construir la key */ }
+            }
+          }
+        }
+      }
+
+      // Meses desde Supabase (ventas ConnectOca)
+      try {
+        const db = getSupabaseClient();
+        const { data } = await db
+          .from('orders')
+          .select('created_at')
+          .eq('business_id', OCA_BUSINESS_ID)
+          .order('created_at', { ascending: true })
+          .limit(50000);
+        for (const o of (data ?? [])) {
+          const mes = String((o as Record<string, unknown>).created_at ?? '').slice(0, 7);
+          if (mes.length === 7) mesesSet.add(mes);
+        }
+      } catch { /* Si Supabase falla, devolvemos los de la planilla */ }
+
+      return NextResponse.json({ ok: true, meses: [...mesesSet].sort() });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Error';
+      return NextResponse.json({ ok: false, meses: [], error: msg }, { status: 500 });
+    }
+  }
+
   try {
     const { searchParams } = req.nextUrl;
     const local = searchParams.get('local') ?? 'todos';

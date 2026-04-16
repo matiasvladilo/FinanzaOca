@@ -151,6 +151,7 @@ export default function ProduccionPage() {
   const [mesHasta,   setMesHasta]   = useState(_defHasta);
   const [fechaDesde, setFechaDesde] = useState(_hoy.toISOString().slice(0, 10));
   const [fechaHasta, setFechaHasta] = useState(_hoy.toISOString().slice(0, 10));
+  const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
 
   // Cierra dropdown local al hacer click fuera
   useEffect(() => {
@@ -179,6 +180,16 @@ export default function ProduccionPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [dateOpen]);
+
+  // ── Fetch meses disponibles (una sola vez al montar) ──────────────────────
+  useEffect(() => {
+    fetch('/api/produccion-data?soloMeses=1')
+      .then(r => r.json())
+      .then((d: { ok: boolean; meses?: string[] }) => {
+        if (d.ok && d.meses?.length) setMesesDisponibles(d.meses);
+      })
+      .catch(() => {});
+  }, []);
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -252,6 +263,7 @@ export default function ProduccionPage() {
               desde={mesDesde}
               hasta={mesHasta}
               onChange={(d, h) => { setMesDesde(d); setMesHasta(h); }}
+              mesesDisponibles={mesesDisponibles}
             />
           ) : (
             <div className="flex items-center gap-1.5">
