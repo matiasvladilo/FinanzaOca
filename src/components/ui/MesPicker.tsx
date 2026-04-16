@@ -11,9 +11,10 @@ export function mesKeyToLabel(key: string) {
   return `${MESES_ES[parseInt(m) - 1]} ${y}`;
 }
 
-export function generarMeses(n = 18): { key: string; label: string }[] {
+export function generarMeses(n = 18, futuro = 3): { key: string; label: string }[] {
   const now = new Date();
-  return Array.from({ length: n }, (_, i) => {
+  const total = n + futuro;
+  return Array.from({ length: total }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (n - 1 - i), 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     return { key, label: mesKeyToLabel(key) };
