@@ -39,15 +39,19 @@ export default function Sidebar() {
   const isActive = (href: string) => pathname === href;
   const [user, setUser] = useState<SessionUser | null>(null);
   const [isLocalRole, setIsLocalRole] = useState(false);
+  const [isProduccionRole, setIsProduccionRole] = useState(false);
 
   useEffect(() => {
     setUser(getSession());
     const s = getClientSession();
     setIsLocalRole(s?.role === 'local');
+    setIsProduccionRole(s?.role === 'produccion');
   }, []);
 
   const visibleNavItems = isLocalRole
     ? navItems.filter(i => i.href === '/ventas')
+    : isProduccionRole
+    ? navItems.filter(i => i.href === '/productos' || i.href === '/produccion')
     : navItems;
 
   if (pathname === '/login') return null;

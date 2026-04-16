@@ -34,6 +34,18 @@ export function middleware(req: NextRequest) {
       }
     }
 
+    // Rol 'produccion': solo puede acceder a /productos y /produccion
+    if (parsed.role === 'produccion') {
+      const isAllowed =
+        pathname.startsWith('/productos') ||
+        pathname.startsWith('/produccion') ||
+        pathname.startsWith('/api/productos') ||
+        pathname.startsWith('/api/produccion');
+      if (!isAllowed) {
+        return NextResponse.redirect(new URL('/productos', req.url));
+      }
+    }
+
     return NextResponse.next();
   } catch {
     // Cookie inválida → limpiar y redirigir

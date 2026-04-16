@@ -21,13 +21,14 @@ const USERS: User[] = [
   { username: 'lareina',     password: 'elorria3455', role: 'local', sucursal: 'La Reina' },
   { username: 'pv',          password: 'elorria3455', role: 'local', sucursal: 'PV'       },
   { username: 'pt',          password: 'elorria3455', role: 'local', sucursal: 'PT'       },
-  { username: 'bilbao',      password: 'elorria3455', role: 'local', sucursal: 'Bilbao'   },
+  { username: 'bilbao',      password: 'elorria3455', role: 'local',      sucursal: 'Bilbao'   },
+  { username: 'produccion',  password: 'elorria3455', role: 'produccion'                    },
 ];
 
 // ── Roles y permisos ──────────────────────────────────────────────────────────
 // Para agregar un rol nuevo: agregar una clave al objeto ROLES con sus permisos.
 
-export type Role = 'admin' | 'usuario' | 'local';
+export type Role = 'admin' | 'usuario' | 'local' | 'produccion';
 
 export interface RolePermissions {
   canViewAll: boolean;
@@ -49,6 +50,11 @@ export const ROLES: Record<Role, RolePermissions> = {
   local: {
     canViewAll: false,           // solo ve su propio local
     allowedLocations: [],        // se determina por user.sucursal
+    canAccessGastoFijo: false,
+  },
+  produccion: {
+    canViewAll: false,
+    allowedLocations: [],
     canAccessGastoFijo: false,
   },
 };

@@ -6,7 +6,7 @@
 
 export interface ClientSession {
   username: string;
-  role: 'admin' | 'usuario' | 'local';
+  role: 'admin' | 'usuario' | 'local' | 'produccion';
   email?: string;
   sucursal?: string; // definido cuando role === 'local'
 }
