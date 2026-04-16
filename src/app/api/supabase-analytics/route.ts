@@ -98,7 +98,7 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   const [ordersRes, categoriesRes, productsRes] = await Promise.all([
     db
       .from(SCHEMA.orders.table)
-      .select(['id', SCHEMA.orders.fecha, SCHEMA.orders.total, SCHEMA.orders.estado].join(', '))
+      .select([SCHEMA.orders.fecha, SCHEMA.orders.total, SCHEMA.orders.estado].join(', '))
       .eq('business_id', OCA_BUSINESS_ID)
       .gte(SCHEMA.orders.fecha, fechaDesde)
       .lte(SCHEMA.orders.fecha, fechaHasta)
@@ -129,19 +129,28 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orders: Record<string, unknown>[] = (ordersRes.data ?? []) as any[];
 
-  // Obtener order_items directamente por order_id (sin join) para evitar
-  // problemas con filtros en tablas relacionadas en PostgREST.
-  const orderIds = orders.map(o => String(o['id'] ?? '')).filter(Boolean);
+  // Obtener items embebidos desde orders (parent→children).
+  // Este approach evita problemas de FK en PostgREST ya que el filtro
+  // de fecha/business_id se aplica a orders (que sabemos funciona).
   const allItemsRaw: Record<string, unknown>[] = [];
-  const BATCH = 200;
-  for (let i = 0; i < orderIds.length; i += BATCH) {
-    const batch = orderIds.slice(i, i + BATCH);
+  const PAGE = 1000;
+  let from = 0;
+  while (true) {
     const { data, error } = await db
-      .from(SCHEMA.items.table)
-      .select(`order_id, product_id, ${SCHEMA.items.productoNombre}, ${SCHEMA.items.cantidad}, ${SCHEMA.items.precioUnitario}`)
-      .in('order_id', batch);
-    if (error) throw new Error(`[items] ${error.message}`);
-    if (data?.length) allItemsRaw.push(...(data as Record<string, unknown>[]));
+      .from(SCHEMA.orders.table)
+      .select(`${SCHEMA.orders.fecha}, ${SCHEMA.items.table}(product_id, ${SCHEMA.items.productoNombre}, ${SCHEMA.items.cantidad}, ${SCHEMA.items.precioUnitario})`)
+      .eq('business_id', OCA_BUSINESS_ID)
+      .gte(SCHEMA.orders.fecha, fechaDesde)
+      .lte(SCHEMA.orders.fecha, fechaHasta)
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`[items-embed] ${error.message}`);
+    if (!data?.length) break;
+    for (const order of data as Record<string, unknown>[]) {
+      const nested = order[SCHEMA.items.table];
+      if (Array.isArray(nested)) allItemsRaw.push(...nested);
+    }
+    if (data.length < PAGE) break;
+    from += PAGE;
   }
   const items = allItemsRaw;
 
