@@ -98,7 +98,7 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
   const [ordersRes, categoriesRes, productsRes] = await Promise.all([
     db
       .from(SCHEMA.orders.table)
-      .select([SCHEMA.orders.fecha, SCHEMA.orders.total, SCHEMA.orders.estado].join(', '))
+      .select(['id', SCHEMA.orders.fecha, SCHEMA.orders.total, SCHEMA.orders.estado].join(', '))
       .eq('business_id', OCA_BUSINESS_ID)
       .gte(SCHEMA.orders.fecha, fechaDesde)
       .lte(SCHEMA.orders.fecha, fechaHasta)
@@ -126,39 +126,24 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
     if (id && ci) productCategoryMap[id] = categoryNameMap[ci] ?? 'Sin área';
   }
 
-  // Paginar order_items filtrando por business_id via join con orders
-  const PAGE = 1000;
-  const allItemsRaw: Record<string, unknown>[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await db
-      .from(SCHEMA.items.table)
-      .select(`product_id, ${SCHEMA.items.productoNombre}, ${SCHEMA.items.cantidad}, ${SCHEMA.items.precioUnitario}, orders!inner(created_at)`)
-      .eq('orders.business_id', OCA_BUSINESS_ID)
-      .gte('orders.created_at', fechaDesde)
-      .lte('orders.created_at', fechaHasta)
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`[items] ${error.message}`);
-    if (!data?.length) break;
-    const normalized = (data as Record<string, unknown>[]).map(item => ({
-      ...item,
-      [SCHEMA.items.fecha]: (item.orders as Record<string, unknown>)?.created_at ?? '',
-    }));
-    allItemsRaw.push(...normalized);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const orders: Record<string, unknown>[] = (ordersRes.data ?? []) as any[];
 
-  // Filtro JS adicional: el filtro de Supabase en tablas relacionadas no siempre
-  // funciona en todos los entornos. Usamos el created_at embebido para asegurar
-  // que solo se incluyen items dentro del rango seleccionado.
-  const items: Record<string, unknown>[] = allItemsRaw.filter(item => {
-    const d = String((item.orders as Record<string, unknown>)?.created_at ?? '').slice(0, 10);
-    return d >= fechaDesde && d <= fechaHasta;
-  });
+  // Obtener order_items directamente por order_id (sin join) para evitar
+  // problemas con filtros en tablas relacionadas en PostgREST.
+  const orderIds = orders.map(o => String(o['id'] ?? '')).filter(Boolean);
+  const allItemsRaw: Record<string, unknown>[] = [];
+  const BATCH = 200;
+  for (let i = 0; i < orderIds.length; i += BATCH) {
+    const batch = orderIds.slice(i, i + BATCH);
+    const { data, error } = await db
+      .from(SCHEMA.items.table)
+      .select(`order_id, product_id, ${SCHEMA.items.productoNombre}, ${SCHEMA.items.cantidad}, ${SCHEMA.items.precioUnitario}`)
+      .in('order_id', batch);
+    if (error) throw new Error(`[items] ${error.message}`);
+    if (data?.length) allItemsRaw.push(...(data as Record<string, unknown>[]));
+  }
+  const items = allItemsRaw;
 
   // ── Agregación: pedidos por mes ─────────────────────────────────────────
   const porMesMap: Record<string, { ventas: number; pedidos: number }> = {};

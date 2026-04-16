@@ -166,28 +166,9 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   }
   const db = getSupabaseClient();
 
-  // Paginar order_items — Supabase devuelve máx 1000 filas por request
-  const PAGE = 1000;
-  const allItems: Record<string, unknown>[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await db
-      .from('order_items')
-      .select('product_id, product_name, quantity, price, orders!inner(created_at)')
-      .eq('orders.business_id', OCA_BUSINESS_ID)
-      .gte('orders.created_at', desdeStr)
-      .lte('orders.created_at', hastaStr)
-      .range(from, from + PAGE - 1);
-    if (error) { console.error('[produccion-data] order_items page error:', error.message); break; }
-    if (!data?.length) break;
-    allItems.push(...(data as Record<string, unknown>[]));
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-
   const [ordersRes, categoriesRes, productsRes] = await Promise.all([
     db.from('orders')
-      .select('created_at, total, status')
+      .select('id, created_at, total, status')
       .eq('business_id', OCA_BUSINESS_ID)
       .gte('created_at', desdeStr)
       .lte('created_at', hastaStr)
@@ -198,13 +179,21 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
 
   if (ordersRes.error) console.error('[produccion-data] orders error:', ordersRes.error.message);
 
-  // Filtro JS: asegurar que los items sean del rango correcto (el filtro de Supabase
-  // en tablas relacionadas no siempre respeta el rango en todos los entornos).
-  const filteredItems = allItems.filter(item => {
-    const d = String((item.orders as Record<string, unknown>)?.created_at ?? '').slice(0, 10);
-    return d >= desdeStr && d <= hastaStr;
-  });
-  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length} | filteredItems: ${filteredItems.length}`);
+  // Obtener order_items directamente por order_id (sin join) para evitar
+  // problemas con filtros en tablas relacionadas en PostgREST.
+  const orderIds = (ordersRes.data ?? []).map(o => String((o as Record<string, unknown>)['id'] ?? '')).filter(Boolean);
+  const allItems: Record<string, unknown>[] = [];
+  const BATCH = 200;
+  for (let i = 0; i < orderIds.length; i += BATCH) {
+    const batch = orderIds.slice(i, i + BATCH);
+    const { data, error } = await db
+      .from('order_items')
+      .select('order_id, product_id, product_name, quantity, price')
+      .in('order_id', batch);
+    if (error) { console.error('[produccion-data] order_items batch error:', error.message); continue; }
+    if (data?.length) allItems.push(...(data as Record<string, unknown>[]));
+  }
+  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length}`);
 
   // product_id → nombre de categoría normalizado
   const categoryNameMap: Record<string, string> = {};
@@ -223,7 +212,7 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
 
   return {
     orders: (ordersRes.data ?? []) as Record<string, unknown>[],
-    items:  filteredItems,
+    items:  allItems,
     productCategoryMap,
   };
 }
