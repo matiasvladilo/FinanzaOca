@@ -231,7 +231,15 @@ export default function ProductosPage() {
     fetch('/api/supabase-analytics?soloMeses=1')
       .then(r => r.json())
       .then((d: { ok: boolean; meses?: string[] }) => {
-        if (d.ok && d.meses?.length) setMesesDisponibles(d.meses);
+        if (d.ok && d.meses?.length) {
+          const meses = d.meses;
+          setMesesDisponibles(meses);
+          // Si el rango actual no tiene datos reales, ajustar al último mes disponible
+          const ultimo = meses[meses.length - 1];
+          const primero = meses[0];
+          setMesDesde(prev => prev < primero ? primero : prev > ultimo ? ultimo : prev);
+          setMesHasta(prev => prev < primero ? ultimo : prev > ultimo ? ultimo : prev);
+        }
       })
       .catch(() => {});
   }, []);
