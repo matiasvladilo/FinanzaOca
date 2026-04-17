@@ -40,7 +40,9 @@ export function middleware(req: NextRequest) {
         pathname.startsWith('/productos') ||
         pathname.startsWith('/produccion') ||
         pathname.startsWith('/api/productos') ||
-        pathname.startsWith('/api/produccion');
+        pathname.startsWith('/api/produccion') ||
+        pathname.startsWith('/api/supabase-analytics') ||
+        pathname.startsWith('/api/produccion-data');
       if (!isAllowed) {
         return NextResponse.redirect(new URL('/productos', req.url));
       }
