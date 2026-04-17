@@ -228,12 +228,17 @@ async function fetchSupabaseAnalytics(fechaDesde: string, fechaHasta: string) {
 
 // ─── Route handler ────────────────────────────────────────────────────────
 export async function GET(request: Request) {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  const hasUrl  = !!process.env.SUPABASE_URL;
+  const hasKey  = !!(process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY);
+  if (!hasUrl || !hasKey) {
     return NextResponse.json({
       ok: false,
       configured: false,
-      error: 'Supabase no configurado — agregar SUPABASE_URL y SUPABASE_ANON_KEY en .env.local',
+      error: 'Supabase no configurado — agregar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en variables de entorno',
     });
+  }
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('[supabase-analytics] SUPABASE_SERVICE_ROLE_KEY no está configurado — usando anon key, RLS puede bloquear el acceso a los datos');
   }
 
   const { searchParams } = new URL(request.url);
