@@ -13,7 +13,7 @@ import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/pars
 import { withCacheSWR } from '@/lib/data/cache';
 import { requireAuth } from '@/lib/auth-api';
 
-const CACHE_KEY = 'ventas-v11';
+const CACHE_KEY = 'ventas-v12';
 
 async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:Z5000`);
