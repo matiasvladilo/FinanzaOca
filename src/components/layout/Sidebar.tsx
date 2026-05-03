@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { getClientSession } from '@/lib/session-client';
 import {
   LayoutDashboard, TrendingUp, ShoppingBag,
-  Trash2, LogOut, Gauge, BarChart3, Factory, FileText,
+  Trash2, LogOut, Gauge, BarChart3, Factory, FileText, CalendarDays,
 } from 'lucide-react';
 
 interface SessionUser { username: string; role: string; }
@@ -31,6 +31,7 @@ const navItems = [
   { label: 'Productos',     href: '/productos',      icon: ShoppingBag },
   { label: 'Merma',         href: '/merma',          icon: Trash2 },
   { label: 'Producción',    href: '/produccion',     icon: Factory },
+  { label: 'Eventos',       href: '/eventos',        icon: CalendarDays },
   { label: 'Informes',      href: '/informes',       icon: FileText },
 ];
 
