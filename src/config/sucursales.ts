@@ -8,6 +8,8 @@ export interface SucursalConfig {
   color: string;       // color principal (hex)
   colorLight: string;  // color claro para fondos
   label?: string;      // nombre largo opcional
+  lat?: number;        // latitud (para cálculo de eventos cercanos)
+  lon?: number;        // longitud
 }
 
 /**
@@ -17,10 +19,10 @@ export interface SucursalConfig {
  */
 export const SUCURSAL_CONFIG: Record<string, SucursalConfig> = {
   // Colores visualmente distintos para identificación rápida en gráficos multi-local
-  'La Reina': { color: '#2563EB', colorLight: '#DBEAFE', label: 'La Reina' },      // azul
-  'PV':       { color: '#10B981', colorLight: '#D1FAE5', label: 'Providencia' },   // verde
-  'PT':       { color: '#D97706', colorLight: '#FEF3C7', label: 'Puente' },        // naranjo
-  'Bilbao':   { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Bilbao' },        // morado
+  'La Reina': { color: '#2563EB', colorLight: '#DBEAFE', label: 'La Reina',   lat: -33.4521, lon: -70.5718 },
+  'PV':       { color: '#10B981', colorLight: '#D1FAE5', label: 'Providencia', lat: -33.4289, lon: -70.6393 },
+  'PT':       { color: '#D97706', colorLight: '#FEF3C7', label: 'Puente',      lat: -33.6105, lon: -70.5765 },
+  'Bilbao':   { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Bilbao',      lat: -33.4123, lon: -70.5947 },
   // ─── Agregar nuevos locales aquí ───────────────────────────────────────────
   // 'Nueva Sucursal': { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Nueva Sucursal' },
 };
