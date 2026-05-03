@@ -13,7 +13,7 @@ function getSessionPermissions() {
   } catch { return { canAccessGastoFijo: false }; }
 }
 import {
-  FileText, Download, Mail, RefreshCw, Brain,
+  FileText, Download, Mail, RefreshCw, Brain, Printer,
   TrendingUp, TrendingDown, Minus, AlertTriangle, CheckCircle, Info,
   ChevronDown, ChevronUp, Calendar, Building2, Settings,
 } from 'lucide-react';
@@ -1635,6 +1635,17 @@ export default function InformesPage() {
   }, [reportData]);
 
   const exportPDF = useCallback(() => {
+    if (!reportHTML) return;
+    const blob = new Blob([reportHTML], { type: 'text/html;charset=utf-8' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `informe-${fechaDesde}-${fechaHasta}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [reportHTML, fechaDesde, fechaHasta]);
+
+  const printReport = useCallback(() => {
     iframeRef.current?.contentWindow?.print();
   }, []);
 
@@ -1722,13 +1733,12 @@ export default function InformesPage() {
       {reportData && (
         <div className="flex flex-wrap gap-3 mb-6">
           <button
-            onClick={generateAI}
-            disabled={loadingAI || !!reportData.aiAnalysis}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border disabled:opacity-60 hover:opacity-80 transition-opacity"
+            onClick={printReport}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border hover:opacity-80 transition-opacity"
             style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text)' }}
           >
-            {loadingAI ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4 text-purple-500" />}
-            {loadingAI ? 'Analizando con IA...' : reportData.aiAnalysis ? '✓ Análisis IA generado' : 'Generar análisis IA'}
+            <Printer className="w-4 h-4 text-purple-500" />
+            Imprimir
           </button>
 
           <button
@@ -1737,7 +1747,7 @@ export default function InformesPage() {
             style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text)' }}
           >
             <Download className="w-4 h-4 text-green-500" />
-            Descargar PDF
+            Descargar informe
           </button>
 
           <button
