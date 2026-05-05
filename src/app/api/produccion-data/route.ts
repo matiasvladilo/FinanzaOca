@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, readSheetBatch, getProduccionConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { getSupabaseClient } from '@/lib/supabase';
+import { getControlPanClient } from '@/lib/supabase-controlpan';
 import { requireAuth } from '@/lib/auth-api';
 
 const COLORES = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444', '#06B6D4', '#D1D5DB'];
@@ -252,89 +253,52 @@ export interface ControlPanData {
 }
 
 async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData | null> {
-  const sheetId = process.env.SHEET_CONTROL_PAN_ID ?? '';
-  if (!sheetId) return null;
+  const db = getControlPanClient();
+  if (!db) return null;
 
-  const parseKg = (raw: string) => parseFloat((raw ?? '').replace(',', '.')) || 0;
+  const desdeStr = desde.toISOString().slice(0, 10);
+  const hastaStr = hasta.toISOString().slice(0, 10);
 
-  // ── Leer SALIDAS + PAGOS en una sola llamada API ─────────────────────────
-  const [salidasRaw, pagosRaw] = await readSheetBatch(sheetId, [
-    'SALIDAS!A1:G500',
-    'PAGOS!A1:D500',
+  const [salidasRes, pagosRes, localesRes] = await Promise.all([
+    db.from('salidas').select('local, kg, deuda').gte('fecha', desdeStr).lte('fecha', hastaStr),
+    db.from('pagos').select('local, monto').gte('fecha', desdeStr).lte('fecha', hastaStr),
+    db.from('locales').select('nombre, precio').eq('estado', 'ACTIVO'),
   ]);
 
-  // ── SALIDAS: filtrar por fecha del período ────────────────────────────────
-  const salidasHeaderIdx = salidasRaw.findIndex(r =>
-    r.some(c => normH(c).includes('kg entregados') || normH(c) === 'local')
-  );
-  const salidasPorCliente: ControlPanSalidaCliente[] = [];
-  if (salidasHeaderIdx !== -1 && salidasHeaderIdx < salidasRaw.length - 1) {
-    const headers = salidasRaw[salidasHeaderIdx];
-    const iLocal  = findHeaderNorm(headers, 'LOCAL', 'Local');
-    const iFecha  = findHeaderNorm(headers, 'FECHA', 'Fecha');
-    const iKg     = findHeaderNorm(headers, 'KG ENTREGADOS');
-    const iDeuda  = findHeaderNorm(headers, 'DEUDA GENERADA ($)', 'DEUDA GENERADA');
-    const clienteMap: Record<string, ControlPanSalidaCliente> = {};
-    for (const row of salidasRaw.slice(salidasHeaderIdx + 1)) {
-      const localName = (row[iLocal] ?? '').trim();
-      if (!localName) continue;
-      const fp = parseFecha(row[iFecha] ?? '');
-      if (!fp.date || fp.date < desde || fp.date > hasta) continue;
-      const kg    = parseKg(row[iKg] ?? '');
-      const deuda = parseMonto(row[iDeuda] ?? '');
-      if (!clienteMap[localName]) clienteMap[localName] = { local: localName, kg: 0, deudaGenerada: 0 };
-      clienteMap[localName].kg            += kg;
-      clienteMap[localName].deudaGenerada += deuda;
-    }
-    Object.values(clienteMap)
-      .filter(c => c.kg > 0)
-      .sort((a, b) => b.kg - a.kg)
-      .forEach(c => salidasPorCliente.push(c));
+  // ── SALIDAS: agrupar por local ────────────────────────────────────────────
+  const clienteMap: Record<string, ControlPanSalidaCliente> = {};
+  for (const row of salidasRes.data ?? []) {
+    const localName = (row.local ?? '').trim();
+    if (!localName) continue;
+    if (!clienteMap[localName]) clienteMap[localName] = { local: localName, kg: 0, deudaGenerada: 0 };
+    clienteMap[localName].kg            += Number(row.kg)    || 0;
+    clienteMap[localName].deudaGenerada += Number(row.deuda) || 0;
   }
+  const salidasPorCliente = Object.values(clienteMap)
+    .filter(c => c.kg > 0)
+    .sort((a, b) => b.kg - a.kg);
 
-  // ── PAGOS: filtrar por fecha del período → totales por cliente ───────────
-  const pagosHeaderIdx = pagosRaw.findIndex(r =>
-    r.some(c => normH(c).includes('pagado') || normH(c).includes('fecha'))
-  );
+  // ── PAGOS: agrupar por local ──────────────────────────────────────────────
   let totalPagado = 0;
   const pagosClienteMap: Record<string, number> = {};
-  if (pagosHeaderIdx !== -1 && pagosHeaderIdx < pagosRaw.length - 1) {
-    const headers    = pagosRaw[pagosHeaderIdx];
-    const iFechaPago = findHeaderNorm(headers, 'FECHA PAGO', 'FECHA\nPAGO', 'Fecha Pago', 'Fecha');
-    const iLocalP    = findHeaderNorm(headers, 'LOCAL', 'Local');
-    const iPagado    = findHeaderNorm(headers, 'PAGADO ($)MONTO', 'PAGADO ($)', 'PAGADO', 'Monto', 'MONTO');
-    for (const row of pagosRaw.slice(pagosHeaderIdx + 1)) {
-      const fp = parseFecha(row[iFechaPago] ?? '');
-      if (!fp.date || fp.date < desde || fp.date > hasta) continue;
-      const monto     = parseMonto(row[iPagado] ?? '');
-      const localName = (row[iLocalP] ?? '').trim();
-      totalPagado += monto;
-      if (localName) pagosClienteMap[localName] = (pagosClienteMap[localName] ?? 0) + monto;
-    }
+  for (const row of pagosRes.data ?? []) {
+    const monto = Number(row.monto) || 0;
+    totalPagado += monto;
+    if (row.local) pagosClienteMap[row.local] = (pagosClienteMap[row.local] ?? 0) + monto;
   }
 
-  // ── CUENTA CORRIENTE: calculada desde SALIDAS + PAGOS del período ─────────
-  // Obtener precioKg por cliente desde SALIDAS
+  // ── PRECIO KG: desde tabla locales ───────────────────────────────────────
   const precioKgMap: Record<string, number> = {};
-  if (salidasHeaderIdx !== -1) {
-    const headers  = salidasRaw[salidasHeaderIdx];
-    const iLocalS  = findHeaderNorm(headers, 'LOCAL', 'Local');
-    const iPrecio  = findHeaderNorm(headers, 'PRECIO x KG ($)\n(desde Config.)', 'PRECIO x KG ($)', 'PRECIO x KG');
-    for (const row of salidasRaw.slice(salidasHeaderIdx + 1)) {
-      const localName = (row[iLocalS] ?? '').trim();
-      if (!localName || precioKgMap[localName]) continue;
-      const precio = parseMonto(row[iPrecio] ?? '');
-      if (precio > 0) precioKgMap[localName] = precio;
-    }
+  for (const l of localesRes.data ?? []) {
+    precioKgMap[l.nombre] = Number(l.precio) || 0;
   }
 
+  // ── CUENTA CORRIENTE ──────────────────────────────────────────────────────
   const cuentaCorriente: ControlPanCliente[] = salidasPorCliente.map(c => {
-    const pagado    = pagosClienteMap[c.local] ?? 0;
-    const saldo     = Math.max(0, c.deudaGenerada - pagado);
-    const pct       = c.deudaGenerada > 0 ? Math.round((pagado / c.deudaGenerada) * 100) : 0;
-    const estado    = saldo === 0       ? '✅ Pagado'
-                    : pct >= 50         ? '🟡 Pago parcial'
-                    :                     '🔴 Pendiente';
+    const pagado = pagosClienteMap[c.local] ?? 0;
+    const saldo  = Math.max(0, c.deudaGenerada - pagado);
+    const pct    = c.deudaGenerada > 0 ? Math.round((pagado / c.deudaGenerada) * 100) : 0;
+    const estado = saldo === 0 ? '✅ Pagado' : pct >= 50 ? '🟡 Pago parcial' : '🔴 Pendiente';
     return {
       nombre:           c.local,
       precioKg:         precioKgMap[c.local] ?? 0,
@@ -349,7 +313,6 @@ async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData
 
   const totalKg            = salidasPorCliente.reduce((s, c) => s + c.kg, 0);
   const totalDeudaGenerada = salidasPorCliente.reduce((s, c) => s + c.deudaGenerada, 0);
-  // Saldo = deuda generada en el período menos lo cobrado en el período
   const saldoPendiente     = Math.max(0, totalDeudaGenerada - totalPagado);
 
   return { kpi: { totalKg, totalDeudaGenerada, totalPagado, saldoPendiente }, salidasPorCliente, cuentaCorriente };
