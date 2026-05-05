@@ -55,7 +55,7 @@ export async function readSheet(
  * Útil para evitar quota exceeded cuando se necesitan varias pestañas.
  *
  * Ejemplo:
- *   const [salidas, pagos, cc] = await readSheetBatch(id, ['SALIDAS!A1:G500', 'PAGOS!A1:D500', 'CUENTA_CORRIENTE!A1:H60'])
+ *   const [facturas, merma] = await readSheetBatch(id, ['Facturas!A1:N5000', 'Merma!A1:H5000'])
  */
 export async function readSheetBatch(
   sheetId: string,
