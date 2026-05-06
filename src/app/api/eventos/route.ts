@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchEventosSantiago } from '@/lib/predicthq';
-import { withCacheSWR } from '@/lib/data/cache';
+import { setCached, withCacheSWR } from '@/lib/data/cache';
 
 const TTL_24H = 24 * 60 * 60 * 1000;
 
@@ -15,9 +15,15 @@ export async function GET(req: NextRequest) {
   }
 
   const cacheKey = `eventos-${year}-${String(month).padStart(2, '0')}`;
+  const refresh = searchParams.get('refresh') === '1';
 
   try {
-    const eventos = await withCacheSWR(cacheKey, () => fetchEventosSantiago(year, month), TTL_24H);
+    const eventos = refresh
+      ? await fetchEventosSantiago(year, month).then(fresh => {
+          setCached(cacheKey, fresh, TTL_24H);
+          return fresh;
+        })
+      : await withCacheSWR(cacheKey, () => fetchEventosSantiago(year, month), TTL_24H);
     return NextResponse.json({ ok: true, eventos });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error desconocido';

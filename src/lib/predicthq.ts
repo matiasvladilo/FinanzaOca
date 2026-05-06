@@ -71,8 +71,8 @@ async function fetchParaLocal(
   });
 
   if (!res.ok) {
-    console.error(`[predicthq] Error para ${sucursal}:`, res.status, await res.text());
-    return { sucursal, results: [] };
+    const detail = await res.text();
+    throw new Error(`PredictHQ error ${res.status} para ${sucursal}: ${detail.slice(0, 180)}`);
   }
 
   const data = await res.json() as { results?: PHQResult[] };
@@ -124,7 +124,9 @@ export async function fetchEventosSantiago(year: number, month: number): Promise
   });
   const feriadosData = feriadosRes.ok
     ? ((await feriadosRes.json()) as { results?: PHQResult[] }).results ?? []
-    : [];
+    : (() => {
+        throw new Error(`PredictHQ error ${feriadosRes.status} para feriados nacionales`);
+      })();
 
   // Combinar: mapear evento_id → localesCercanos acumulados
   const eventoMap = new Map<string, { result: PHQResult; locales: Set<string> }>();
