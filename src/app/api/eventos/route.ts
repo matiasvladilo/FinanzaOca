@@ -4,6 +4,9 @@ import { setCached, withCacheSWR } from '@/lib/data/cache';
 
 const TTL_24H = 24 * 60 * 60 * 1000;
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const now = new Date();

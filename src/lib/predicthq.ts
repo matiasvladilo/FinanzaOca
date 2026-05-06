@@ -20,6 +20,7 @@ const RADIO_KM = 3;
 
 // Rank mínimo — solo eventos de alto impacto (70+)
 const MIN_RANK = 70;
+const PHQ_TIMEOUT_MS = 6000;
 
 // Venues específicos que siempre se consultan (no caen dentro del radio de ningún local)
 const VENUES_ESPECIALES = [
@@ -45,6 +46,24 @@ interface PHQResult {
   url?: string;
 }
 
+function isAuthError(status: number) {
+  return status === 401 || status === 403;
+}
+
+async function fetchPredictHQ(url: string, apiKey: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PHQ_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      signal: controller.signal,
+      next: { revalidate: 0 },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchParaLocal(
   sucursal: string,
   lat: number,
@@ -65,14 +84,14 @@ async function fetchParaLocal(
     'rank.gte': String(minRank),
   });
 
-  const res = await fetch(`https://api.predicthq.com/v1/events/?${params}`, {
-    headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-    next: { revalidate: 0 },
-  });
+  const res = await fetchPredictHQ(`https://api.predicthq.com/v1/events/?${params}`, apiKey);
 
   if (!res.ok) {
     const detail = await res.text();
-    throw new Error(`PredictHQ error ${res.status} para ${sucursal}: ${detail.slice(0, 180)}`);
+    const message = `PredictHQ error ${res.status} para ${sucursal}: ${detail.slice(0, 180)}`;
+    if (isAuthError(res.status)) throw new Error(message);
+    console.warn(`[predicthq] ${message}`);
+    return { sucursal, results: [] };
   }
 
   const data = await res.json() as { results?: PHQResult[] };
@@ -96,7 +115,7 @@ export async function fetchEventosSantiago(year: number, month: number): Promise
   );
 
   // Consultar PredictHQ en paralelo: una query por local + venues especiales
-  const responses = await Promise.all([
+  const responseSettled = await Promise.allSettled([
     ...sucursalesConCoords.map(([nombre, cfg]) =>
       fetchParaLocal(nombre, cfg.lat!, cfg.lon!, desde, hasta, apiKey),
     ),
@@ -108,6 +127,13 @@ export async function fetchEventosSantiago(year: number, month: number): Promise
       })),
     ),
   ]);
+  const responses = responseSettled.flatMap(r => {
+    if (r.status === 'fulfilled') return [r.value];
+    const message = r.reason instanceof Error ? r.reason.message : String(r.reason);
+    if (message.includes('PredictHQ error 401') || message.includes('PredictHQ error 403')) throw r.reason;
+    console.warn('[predicthq] Consulta omitida:', message);
+    return [];
+  });
 
   // Agregar feriados nacionales (sin geo, aplican a todos los locales)
   const feriadosParams = new URLSearchParams({
@@ -118,14 +144,15 @@ export async function fetchEventosSantiago(year: number, month: number): Promise
     limit: '20',
     country: 'CL',
   });
-  const feriadosRes = await fetch(`https://api.predicthq.com/v1/events/?${feriadosParams}`, {
-    headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
-    next: { revalidate: 0 },
-  });
+  const feriadosRes = await fetchPredictHQ(`https://api.predicthq.com/v1/events/?${feriadosParams}`, apiKey);
   const feriadosData = feriadosRes.ok
     ? ((await feriadosRes.json()) as { results?: PHQResult[] }).results ?? []
     : (() => {
-        throw new Error(`PredictHQ error ${feriadosRes.status} para feriados nacionales`);
+        if (isAuthError(feriadosRes.status)) {
+          throw new Error(`PredictHQ error ${feriadosRes.status} para feriados nacionales`);
+        }
+        console.warn(`[predicthq] Feriados omitidos: ${feriadosRes.status}`);
+        return [];
       })();
 
   // Combinar: mapear evento_id → localesCercanos acumulados
