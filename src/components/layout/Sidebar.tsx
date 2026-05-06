@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getClientSession } from '@/lib/session-client';
 import {
@@ -19,11 +19,6 @@ function getSession(): SessionUser | null {
   catch { return null; }
 }
 
-async function logout() {
-  await fetch('/api/auth/logout', { method: 'POST' });
-  window.location.href = '/login';
-}
-
 const navItems = [
   { label: 'Dashboard',     href: '/',              icon: LayoutDashboard },
   { label: 'Factor Índice', href: '/factor-indice', icon: Gauge },
@@ -37,6 +32,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const isActive = (href: string) => pathname === href;
   const [user, setUser] = useState<SessionUser | null>(null);
   const [isLocalRole, setIsLocalRole] = useState(false);
@@ -54,6 +50,15 @@ export default function Sidebar() {
     : isProduccionRole
     ? navItems.filter(i => i.href === '/productos' || i.href === '/produccion')
     : navItems;
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      router.replace('/login');
+      router.refresh();
+    }
+  };
 
   if (pathname === '/login') return null;
 
@@ -109,7 +114,14 @@ export default function Sidebar() {
               <p className="text-[12px] font-semibold truncate" style={{ color: 'var(--text)' }}>{user?.username ?? '–'}</p>
               <p className="text-[10px] truncate" style={{ color: 'var(--text-3)' }}>{user?.role ?? ''}</p>
             </div>
-            <button onClick={logout} title="Cerrar sesión" className="flex-shrink-0 transition-colors hover:text-red-500" style={{ color: 'var(--text-3)' }}>
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Cerrar sesión y volver al login"
+              title="Cerrar sesión"
+              className="flex-shrink-0 rounded-lg p-1.5 transition-colors hover:text-red-500"
+              style={{ color: 'var(--text-3)' }}
+            >
               <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>

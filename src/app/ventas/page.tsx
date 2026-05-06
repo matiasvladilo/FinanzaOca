@@ -80,6 +80,7 @@ type ChartRow = {
 };
 type MultiChartRow = Record<string, string | number>;
 type LocalDef = { local: string; color: string; idx: number };
+type ProductionMonth = { ventas: number; gastos: number };
 const LOCAL_COLORS = ['#2563EB', '#10B981', '#D97706', '#7C3AED']; // La Reina azul, PV verde, PT naranjo, Bilbao morado
 
 // ─── Tooltip custom ──────────────────────────────────────
@@ -574,6 +575,7 @@ export default function VentasPage() {
   const [rawGastosMesSucursal, setRawGastosMesSucursal] = useState<Record<string, Record<string, number>>>({});
   const [rawDiasCaja, setRawDiasCaja] = useState<DiaCaja[]>([]);
   const [rawDiasGastos, setRawDiasGastos] = useState<DiaGasto[]>([]);
+  const [produccionMes, setProduccionMes] = useState<Record<string, ProductionMonth>>({});
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
   const [mesDesde, setMesDesde] = useState('');
   const [mesHasta, setMesHasta] = useState('');
@@ -648,6 +650,40 @@ export default function VentasPage() {
       .catch(() => {})
       .finally(() => setLoadingSheet(false));
   }, []);
+
+  useEffect(() => {
+    if (!mesDesde) return;
+    const params = new URLSearchParams({ local: 'todos' });
+    params.set('mesDesde', mesDesde);
+    params.set('mesHasta', mesHasta || mesDesde);
+
+    let cancelled = false;
+    fetch(`/api/produccion-data?${params}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (!d?.ok) {
+          setProduccionMes({});
+          return;
+        }
+        const next: Record<string, ProductionMonth> = {};
+        for (const item of d.ventasPorMes ?? []) {
+          next[item.key] = { ...(next[item.key] ?? { ventas: 0, gastos: 0 }), ventas: item.ventas ?? 0 };
+        }
+        for (const item of d.gastosPorMes ?? []) {
+          next[item.key] = { ...(next[item.key] ?? { ventas: 0, gastos: 0 }), gastos: item.monto ?? 0 };
+        }
+        if (Object.keys(next).length === 0 && d.kpi) {
+          next[mesDesde] = { ventas: d.kpi.totalVentas ?? 0, gastos: d.kpi.totalCostos ?? 0 };
+        }
+        setProduccionMes(next);
+      })
+      .catch(() => {
+        if (!cancelled) setProduccionMes({});
+      });
+
+    return () => { cancelled = true; };
+  }, [mesDesde, mesHasta]);
 
   // ── Datos filtrados ──────────────────────────────────────
   const filteredData = useMemo(() => {
@@ -1010,7 +1046,8 @@ export default function VentasPage() {
       if (!r.fecha) continue;
       if (locFilt !== null && r.sucursal !== locFilt) continue;
       if (localSel.length >= 2 && !localSel.includes(r.sucursal)) continue;
-      if (PANADERIA_RE.test(r.proveedor ?? '')) continue;
+      const provNorm = (r.proveedor ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (PANADERIA_RE.test(provNorm)) continue;
       if (modoFiltro === 'dia') {
         if (fechaDesde && r.fecha < fechaDesde) continue;
         if (fechaHasta && r.fecha > fechaHasta) continue;
@@ -1082,16 +1119,23 @@ export default function VentasPage() {
     const mes = mesDesde; // YYYY-MM (usa el mes inicial del filtro)
     const [year, month] = mes.split('-').map(Number);
     const totalDias = new Date(year, month, 0).getDate();
-    const lista = localSel.length > 0 ? localSel : localesDisponibles;
+    const lista = localSel.length > 0 ? localSel : [...localesDisponibles, 'Producción'];
+    const today = new Date();
+    const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
 
     return lista.map(local => {
-      const ventasActual = rawLocalMes[local]?.[mes]?.ventas ?? 0;
+      const isProduccion = local === 'Producción';
+      const ventasActual = isProduccion
+        ? (produccionMes[mes]?.ventas ?? 0)
+        : (rawLocalMes[local]?.[mes]?.ventas ?? 0);
       // Días únicos con registros de venta para este local y mes
-      const diasConRegistros = new Set(
-        rawDiasCaja
-          .filter(r => r.local === local && r.fecha?.startsWith(mes) && r.ventas > 0)
-          .map(r => r.fecha)
-      ).size;
+      const diasConRegistros = isProduccion
+        ? (ventasActual > 0 ? Math.min(totalDias, isCurrentMonth ? today.getDate() : totalDias) : 0)
+        : new Set(
+            rawDiasCaja
+              .filter(r => r.local === local && r.fecha?.startsWith(mes) && r.ventas > 0)
+              .map(r => r.fecha)
+          ).size;
       const proyeccion = diasConRegistros > 0
         ? Math.round((ventasActual / diasConRegistros) * totalDias)
         : 0;
@@ -1106,7 +1150,11 @@ export default function VentasPage() {
         color: getSucursalColor(local),
       };
     }).filter(d => d.proyeccion > 0 || d.real > 0);
-  }, [rawDiasCaja, rawLocalMes, mesDesde, localSel, localesDisponibles]);
+  }, [rawDiasCaja, rawLocalMes, produccionMes, mesDesde, localSel, localesDisponibles]);
+
+  const proyeccionTotal = useMemo(() => {
+    return proyeccionData.reduce((sum, item) => sum + item.proyeccion, 0);
+  }, [proyeccionData]);
 
   const handleExportChart = () => {
     exportToCSV(chartData.map(d => ({ Fecha: d.fecha, Ventas: d.ventas, Gastos: d.gastos })), 'ventas_gastos');
@@ -1551,6 +1599,10 @@ export default function VentasPage() {
                       <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span>
                     </div>
                   ))}
+                  <div className="flex items-center justify-between border-t pt-2 text-[11px]" style={{ borderColor: 'var(--border)' }}>
+                    <span className="font-bold uppercase tracking-wide" style={{ color: 'var(--text)' }}>Total</span>
+                    <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(proyeccionTotal)}</span>
+                  </div>
                 </div>
               </>
             )}

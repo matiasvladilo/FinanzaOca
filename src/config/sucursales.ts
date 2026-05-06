@@ -23,6 +23,7 @@ export const SUCURSAL_CONFIG: Record<string, SucursalConfig> = {
   'PV':       { color: '#10B981', colorLight: '#D1FAE5', label: 'Providencia', lat: -33.4289, lon: -70.6393 },
   'PT':       { color: '#D97706', colorLight: '#FEF3C7', label: 'Puente',      lat: -33.6105, lon: -70.5765 },
   'Bilbao':   { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Bilbao',      lat: -33.4123, lon: -70.5947 },
+  'Producción': { color: '#0891B2', colorLight: '#CFFAFE', label: 'Producción' },
   // ─── Agregar nuevos locales aquí ───────────────────────────────────────────
   // 'Nueva Sucursal': { color: '#7C3AED', colorLight: '#EDE9FE', label: 'Nueva Sucursal' },
 };
@@ -47,7 +48,7 @@ export function getSucursalColor(nombre: string, index: number = 0): string {
 }
 
 /** Orden preferido para mostrar sucursales (las no listadas van al final) */
-const ORDEN: Record<string, number> = { 'PV': 0, 'La Reina': 1, 'PT': 2, 'Bilbao': 3 };
+const ORDEN: Record<string, number> = { 'PV': 0, 'La Reina': 1, 'PT': 2, 'Bilbao': 3, 'Producción': 4 };
 
 export function sortSucursales(nombres: string[]): string[] {
   return [...nombres].sort((a, b) => {

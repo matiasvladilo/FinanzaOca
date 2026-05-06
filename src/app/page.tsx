@@ -44,6 +44,7 @@ function getPreviousMonthKey(key: string): string {
 }
 
 const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucursal: 'Todas', vista: 'overview' };
+type ProductionSummary = { ventas: number; gastos: number };
 
 function ssGet(key: string, fallback: string): string {
   try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -69,6 +70,7 @@ export default function DashboardPage() {
   const [ccData, setCcData]     = useState<CierreCajaResponse | null>(null);
   const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
+  const [produccionSummary, setProduccionSummary] = useState<ProductionSummary | null>(null);
 
   // Aplicar restricción de local si el rol es 'local'
   useEffect(() => {
@@ -127,6 +129,47 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (filters.sucursal !== 'Todas') {
+      return;
+    }
+
+    const params = new URLSearchParams({ local: 'todos' });
+    if (modoFiltro === 'dia') {
+      if (!fechaDesde || !fechaHasta) {
+        return;
+      }
+      params.set('fechaDesde', fechaDesde);
+      params.set('fechaHasta', fechaHasta);
+    } else {
+      if (!mesFiltro) {
+        return;
+      }
+      params.set('mesDesde', mesFiltro);
+      params.set('mesHasta', mesFiltro);
+    }
+
+    let cancelled = false;
+    fetch(`/api/produccion-data?${params}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        if (!d?.ok) {
+          setProduccionSummary(null);
+          return;
+        }
+        setProduccionSummary({
+          ventas: d.kpi?.totalVentas ?? 0,
+          gastos: d.kpi?.totalCostos ?? 0,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setProduccionSummary(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [filters.sucursal, modoFiltro, mesFiltro, fechaDesde, fechaHasta]);
+
   // Cierra el date picker al hacer click fuera
   useEffect(() => {
     if (!dateOpen) return;
@@ -168,6 +211,9 @@ export default function DashboardPage() {
     }
     if (sucursal !== 'Todas') {
       ventasPorLocal = { [sucursal]: ventasPorLocal[sucursal] ?? 0 };
+    } else if (produccionSummary && (produccionSummary.ventas > 0 || produccionSummary.gastos > 0)) {
+      ventasPorLocal['Producción'] = produccionSummary.ventas;
+      gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
     }
 
     const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
@@ -182,6 +228,7 @@ export default function DashboardPage() {
     } else {
       totalGastos = vData?.porSucursal?.[sucursal]?.gastos ?? 0;
     }
+    if (sucursal === 'Todas') totalGastos += produccionSummary?.gastos ?? 0;
 
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
 
@@ -230,7 +277,7 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursal, mesFiltro]);
+  }, [ccData, vData, filters.sucursal, mesFiltro, produccionSummary]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
@@ -250,8 +297,6 @@ export default function DashboardPage() {
       ventasPorLocal[r.local] = (ventasPorLocal[r.local] ?? 0) + r.ventas;
       ef += r.efectivo ?? 0; tar += r.tarjeta ?? 0; tr += r.transf ?? 0;
     }
-    const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
-
     const gastosPorSucursal: Record<string, { gastos: number }> = {};
     let totalGastos = 0;
     for (const r of gastosDias) {
@@ -265,6 +310,12 @@ export default function DashboardPage() {
         gastosPorSucursal[r.sucursal].gastos += r.monto;
       }
     }
+    if (sucursal === 'Todas' && produccionSummary && (produccionSummary.ventas > 0 || produccionSummary.gastos > 0)) {
+      ventasPorLocal['Producción'] = produccionSummary.ventas;
+      gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
+      totalGastos += produccionSummary.gastos;
+    }
+    const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
     const distribucion = Object.entries(ventasPorLocal)
       .filter(([, v]) => v > 0).sort(([, a], [, b]) => b - a)
@@ -279,7 +330,7 @@ export default function DashboardPage() {
       topSucursal: distribucion[0] ?? null,
       medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
     };
-  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursal, computed]);
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursal, computed, produccionSummary]);
 
   // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
   const activeData = computedDateRange ?? computed;
