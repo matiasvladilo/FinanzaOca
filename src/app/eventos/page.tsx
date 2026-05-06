@@ -69,16 +69,28 @@ export default function EventosPage() {
   const [localSel, setLocalSel]       = useState<string>('');
   const [eventos, setEventos]         = useState<EventoClient[]>([]);
   const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState<string | null>(null);
   const [modalEvento, setModalEvento] = useState<EventoClient | null>(null);
   const [modalDia, setModalDia]       = useState<{ day: number; lista: EventoClient[] } | null>(null);
   const [vista, setVista]             = useState<'calendario' | 'agenda'>('agenda');
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     fetch(`/api/eventos?year=${anio}&month=${mes}`)
       .then(r => r.json())
-      .then(d => { if (d.ok) setEventos(d.eventos ?? []); })
-      .catch(() => {})
+      .then(d => {
+        if (d.ok) {
+          setEventos(d.eventos ?? []);
+          return;
+        }
+        setEventos([]);
+        setError(d.error ?? 'No se pudieron cargar eventos reales');
+      })
+      .catch(() => {
+        setEventos([]);
+        setError('No se pudieron cargar eventos reales');
+      })
       .finally(() => setLoading(false));
   }, [anio, mes]);
 
@@ -214,7 +226,14 @@ export default function EventosPage() {
           VISTA AGENDA — móvil por defecto, también disponible en desktop
       ══════════════════════════════════════════════════════════════════════ */}
       <div className={clsx(vista === 'agenda' ? 'block' : 'hidden', 'sm:hidden')}>
-        {!loading && diasConEventos.length === 0 && (
+        {!loading && error && (
+          <div className="text-center py-12" style={{ color: 'var(--text-3)' }}>
+            <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>No se pudieron cargar eventos reales</p>
+            <p className="text-[11px] mt-1">{error}</p>
+          </div>
+        )}
+        {!loading && !error && diasConEventos.length === 0 && (
           <div className="text-center py-12" style={{ color: 'var(--text-3)' }}>
             <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30" />
             <p className="text-[13px]">Sin eventos de alto impacto este mes</p>
@@ -222,7 +241,7 @@ export default function EventosPage() {
         )}
 
         <div className="space-y-3">
-          {diasConEventos.map(iso => {
+          {!error && diasConEventos.map(iso => {
             const [y, m, d] = iso.split('-').map(Number);
             const evs      = porDia[iso] ?? [];
             const isToday  = iso === todayIso;
@@ -327,7 +346,14 @@ export default function EventosPage() {
           VISTA CALENDARIO — siempre visible en desktop, opcional en móvil
       ══════════════════════════════════════════════════════════════════════ */}
       <div className={clsx(vista === 'calendario' ? 'block' : 'hidden', 'sm:block')}>
-        <div className="rounded-2xl shadow-sm overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+        {!loading && error && (
+          <div className="text-center py-12 rounded-2xl" style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--text-3)' }}>
+            <CalendarDays className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>No se pudieron cargar eventos reales</p>
+            <p className="text-[11px] mt-1">{error}</p>
+          </div>
+        )}
+        {!error && <div className="rounded-2xl shadow-sm overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
 
           {/* Encabezados de días */}
           <div className="grid grid-cols-7 border-b" style={{ borderColor: 'var(--border)' }}>
@@ -404,7 +430,7 @@ export default function EventosPage() {
               );
             })}
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* ── Leyenda ─────────────────────────────────────────────────────────── */}

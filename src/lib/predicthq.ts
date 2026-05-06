@@ -83,8 +83,7 @@ export async function fetchEventosSantiago(year: number, month: number): Promise
   const apiKey = process.env.PREDICTHQ_API_KEY;
 
   if (!apiKey) {
-    console.warn('[predicthq] PREDICTHQ_API_KEY no configurado — usando mock data');
-    return mockEventos(year, month);
+    throw new Error('PREDICTHQ_API_KEY no configurado');
   }
 
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -176,78 +175,4 @@ export async function fetchEventosSantiago(year: number, month: number): Promise
       url: r.url,
     };
   });
-}
-
-function mockEventos(year: number, month: number): Evento[] {
-  const d = (day: number) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const daysInMonth = new Date(year, month, 0).getDate();
-  if (daysInMonth < 20) return [];
-
-  return [
-    {
-      id: 'mock-1',
-      titulo: 'Maratón de Santiago',
-      fecha: d(4),
-      categoria: 'sports',
-      etiquetas: ['marathon', 'running', 'road-closed'],
-      impacto: 85,
-      lat: -33.4374,
-      lon: -70.6483,
-      localesCercanos: ['PV', 'La Reina', 'Bilbao'],
-    },
-    {
-      id: 'mock-2',
-      titulo: 'U. de Chile vs Colo-Colo',
-      fecha: d(10),
-      categoria: 'sports',
-      etiquetas: ['football', 'soccer'],
-      impacto: 79,
-      lat: -33.4654,
-      lon: -70.6099,
-      localesCercanos: ['La Reina'],
-    },
-    {
-      id: 'mock-3',
-      titulo: 'Concierto Movistar Arena',
-      fecha: d(15),
-      categoria: 'concerts',
-      etiquetas: ['concert', 'music'],
-      impacto: 62,
-      lat: -33.4567,
-      lon: -70.6231,
-      localesCercanos: ['La Reina', 'PV'],
-    },
-    {
-      id: 'mock-4',
-      titulo: 'Cierre Av. Providencia',
-      fecha: d(18),
-      categoria: 'community',
-      etiquetas: ['road-closed'],
-      impacto: 45,
-      lat: -33.4289,
-      lon: -70.6393,
-      localesCercanos: ['PV'],
-    },
-    {
-      id: 'mock-5',
-      titulo: 'Festival Lollapalooza',
-      fecha: d(22),
-      fechaFin: d(24),
-      categoria: 'festivals',
-      etiquetas: ['festival', 'music', 'outdoor'],
-      impacto: 92,
-      lat: -33.4006,
-      lon: -70.5768,
-      localesCercanos: ['Bilbao', 'La Reina'],
-    },
-    {
-      id: 'mock-6',
-      titulo: 'Feriado Nacional',
-      fecha: d(21),
-      categoria: 'public-holidays',
-      etiquetas: ['public-holiday'],
-      impacto: 70,
-      localesCercanos: Object.keys(SUCURSAL_CONFIG),
-    },
-  ];
 }
