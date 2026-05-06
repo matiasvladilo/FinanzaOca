@@ -1,10 +1,9 @@
 /**
  * supabase-profiles.ts
  * Cliente Supabase para la tabla user_profiles (FinanzasOca user emails).
- * Proyecto: https://zwbizinovubfpkwkljdv.supabase.co
  *
  * Variables requeridas en .env.local:
- *   USER_PROFILES_SUPABASE_URL=https://zwbizinovubfpkwkljdv.supabase.co
+ *   USER_PROFILES_SUPABASE_URL=https://your-profiles-project.supabase.co
  *   USER_PROFILES_SUPABASE_KEY=<secret key>
  *
  * ⚠️  NUNCA importar este módulo desde archivos 'use client'.

@@ -2,11 +2,10 @@
  * supabase-controlpan.ts
  * Cliente Supabase para el sistema de Control de Pan (proyecto separado).
  *
- * Proyecto: https://hofhgqkitfmjobqqhacp.supabase.co
  * Sistema:  https://controlpanoca.netlify.app
  *
  * Variables requeridas en .env.local:
- *   CONTROLPAN_SUPABASE_URL=https://hofhgqkitfmjobqqhacp.supabase.co
+ *   CONTROLPAN_SUPABASE_URL=https://your-controlpan-project.supabase.co
  *   CONTROLPAN_SUPABASE_KEY=<anon-key>
  */
 
