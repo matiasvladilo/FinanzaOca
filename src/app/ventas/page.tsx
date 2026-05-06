@@ -82,6 +82,7 @@ type MultiChartRow = Record<string, string | number>;
 type LocalDef = { local: string; color: string; idx: number };
 type ProductionMonth = { ventas: number; gastos: number };
 const LOCAL_COLORS = ['#2563EB', '#10B981', '#D97706', '#7C3AED']; // La Reina azul, PV verde, PT naranjo, Bilbao morado
+const PRODUCCION_LOCAL = 'Producción';
 
 // ─── Tooltip custom ──────────────────────────────────────
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -652,10 +653,16 @@ export default function VentasPage() {
   }, []);
 
   useEffect(() => {
-    if (!mesDesde) return;
+    if (modoFiltro === 'dia' && (!fechaDesde || !fechaHasta)) return;
+    if (modoFiltro === 'mes' && !mesDesde) return;
     const params = new URLSearchParams({ local: 'todos' });
-    params.set('mesDesde', mesDesde);
-    params.set('mesHasta', mesHasta || mesDesde);
+    if (modoFiltro === 'dia') {
+      params.set('fechaDesde', fechaDesde);
+      params.set('fechaHasta', fechaHasta);
+    } else {
+      params.set('mesDesde', mesDesde);
+      params.set('mesHasta', mesHasta || mesDesde);
+    }
 
     let cancelled = false;
     fetch(`/api/produccion-data?${params}`)
@@ -674,7 +681,8 @@ export default function VentasPage() {
           next[item.key] = { ...(next[item.key] ?? { ventas: 0, gastos: 0 }), gastos: item.monto ?? 0 };
         }
         if (Object.keys(next).length === 0 && d.kpi) {
-          next[mesDesde] = { ventas: d.kpi.totalVentas ?? 0, gastos: d.kpi.totalCostos ?? 0 };
+          const fallbackKey = modoFiltro === 'dia' ? fechaDesde.slice(0, 7) : mesDesde;
+          next[fallbackKey] = { ventas: d.kpi.totalVentas ?? 0, gastos: d.kpi.totalCostos ?? 0 };
         }
         setProduccionMes(next);
       })
@@ -683,7 +691,7 @@ export default function VentasPage() {
       });
 
     return () => { cancelled = true; };
-  }, [mesDesde, mesHasta]);
+  }, [modoFiltro, mesDesde, mesHasta, fechaDesde, fechaHasta]);
 
   // ── Datos filtrados ──────────────────────────────────────
   const filteredData = useMemo(() => {
@@ -734,7 +742,10 @@ export default function VentasPage() {
 
     // ── Helper: chart data para un rango de meses ────────────────────────────
     function buildMonthChart(mDesde: string, mHasta: string, localFilter: string | null = null) {
-      const locals = localFilter !== null ? [localFilter] : Object.keys(rawLocalMes);
+      const includeProduccion = localFilter === null || localFilter === PRODUCCION_LOCAL;
+      const locals = localFilter !== null
+        ? (localFilter === PRODUCCION_LOCAL ? [] : [localFilter])
+        : Object.keys(rawLocalMes);
       const meses = mesesDisponibles.filter(m => (!mDesde || m >= mDesde) && (!mHasta || m <= mHasta));
       const byMes: Record<string, { ventas: number; gastos: number }> = {};
       for (const local of locals) {
@@ -745,10 +756,23 @@ export default function VentasPage() {
           byMes[mes].ventas += d.ventas;
         }
       }
+      if (includeProduccion) {
+        for (const mes of meses) {
+          const prod = produccionMes[mes];
+          if (!prod) continue;
+          if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
+          byMes[mes].ventas += prod.ventas;
+        }
+      }
       if (localFilter === null) {
         for (const mes of meses) {
           if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
-          byMes[mes].gastos = rawGastosMes[mes] ?? 0;
+          byMes[mes].gastos = (rawGastosMes[mes] ?? 0) + (produccionMes[mes]?.gastos ?? 0);
+        }
+      } else if (localFilter === PRODUCCION_LOCAL) {
+        for (const mes of meses) {
+          if (!byMes[mes]) byMes[mes] = { ventas: 0, gastos: 0 };
+          byMes[mes].gastos = produccionMes[mes]?.gastos ?? 0;
         }
       } else {
         for (const mes of meses) {
@@ -823,8 +847,13 @@ export default function VentasPage() {
       return meses.map(m => {
         const row: MultiChartRow = { fecha: keyToLabel(m) };
         for (let i = 0; i < locals.length; i++) {
-          row[`ventas_${i}`] = rawLocalMes[locals[i]]?.[m]?.ventas ?? 0;
-          row[`gastos_${i}`] = rawGastosMesSucursal[locals[i]]?.[m] ?? 0;
+          const isProduccion = locals[i] === PRODUCCION_LOCAL;
+          row[`ventas_${i}`] = isProduccion
+            ? (produccionMes[m]?.ventas ?? 0)
+            : (rawLocalMes[locals[i]]?.[m]?.ventas ?? 0);
+          row[`gastos_${i}`] = isProduccion
+            ? (produccionMes[m]?.gastos ?? 0)
+            : (rawGastosMesSucursal[locals[i]]?.[m] ?? 0);
         }
         return row;
       });
@@ -973,13 +1002,30 @@ export default function VentasPage() {
 
     const mesesFiltrados = mesesDisponibles.filter(m => (!mesDesde || m >= mesDesde) && (!mesHasta || m <= mesHasta));
     const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
-    const localsToShow = localSel.length > 0 ? localSel : Object.keys(rawLocalMes);
+    const localsToShow = localSel.length > 0 ? localSel : [...Object.keys(rawLocalMes), PRODUCCION_LOCAL];
     for (const local of localsToShow) {
+      if (local === PRODUCCION_LOCAL) {
+        for (const mes of mesesFiltrados) {
+          const prod = produccionMes[mes];
+          if (!prod) continue;
+          if (!porLocalFiltrado[local]) porLocalFiltrado[local] = { ventas: 0, gastos: 0 };
+          porLocalFiltrado[local].ventas += prod.ventas;
+        }
+        continue;
+      }
       for (const mes of mesesFiltrados) {
         const d = rawLocalMes[local]?.[mes];
         if (!d) continue;
         if (!porLocalFiltrado[local]) porLocalFiltrado[local] = { ventas: 0, gastos: 0 };
         porLocalFiltrado[local].ventas += d.ventas;
+      }
+    }
+    if (localSel.length === 0 || localSel.includes(PRODUCCION_LOCAL)) {
+      for (const mes of mesesFiltrados) {
+        const g = produccionMes[mes]?.gastos ?? 0;
+        if (!g) continue;
+        if (!porLocalFiltrado[PRODUCCION_LOCAL]) porLocalFiltrado[PRODUCCION_LOCAL] = { ventas: 0, gastos: 0 };
+        porLocalFiltrado[PRODUCCION_LOCAL].gastos += g;
       }
     }
     for (const local of Object.keys(rawGastosMesSucursal)) {
@@ -997,7 +1043,7 @@ export default function VentasPage() {
     const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]) : [];
     const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
     return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores, topProveedoresComp };
-  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, localSel,
+  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, produccionMes, localSel,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compOn, compMes]);
 
@@ -1065,7 +1111,7 @@ export default function VentasPage() {
   const localRestriccion = getLocalRestriction(); // null si puede ver todos
   const localesDisponibles = localRestriccion
     ? Object.keys(rawLocalMes).filter(l => l === localRestriccion)
-    : Object.keys(rawLocalMes);
+    : [...new Set([...Object.keys(rawLocalMes), PRODUCCION_LOCAL])];
   const isLocalComp = localSel.length === 2;
   const isMultiLocal = localSel.length >= 2;
   const localDefs = (filteredData as any).localDefs as LocalDef[] | undefined;
@@ -1119,12 +1165,12 @@ export default function VentasPage() {
     const mes = mesDesde; // YYYY-MM (usa el mes inicial del filtro)
     const [year, month] = mes.split('-').map(Number);
     const totalDias = new Date(year, month, 0).getDate();
-    const lista = localSel.length > 0 ? localSel : [...localesDisponibles, 'Producción'];
+    const lista = localSel.length > 0 ? localSel : localesDisponibles;
     const today = new Date();
     const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
 
     return lista.map(local => {
-      const isProduccion = local === 'Producción';
+      const isProduccion = local === PRODUCCION_LOCAL;
       const ventasActual = isProduccion
         ? (produccionMes[mes]?.ventas ?? 0)
         : (rawLocalMes[local]?.[mes]?.ventas ?? 0);
