@@ -280,6 +280,7 @@ export interface ControlPanData {
   };
   salidasPorCliente: ControlPanSalidaCliente[];
   cuentaCorriente: ControlPanCliente[];
+  deudaPorMes: Record<string, number>;
 }
 
 async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData | null> {
@@ -290,19 +291,22 @@ async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData
   const hastaStr = hasta.toISOString().slice(0, 10);
 
   const [salidasRes, pagosRes, localesRes] = await Promise.all([
-    db.from('salidas').select('local, kg, deuda').gte('fecha', desdeStr).lte('fecha', hastaStr),
+    db.from('salidas').select('local, kg, deuda, fecha').gte('fecha', desdeStr).lte('fecha', hastaStr),
     db.from('pagos').select('local, monto').gte('fecha', desdeStr).lte('fecha', hastaStr),
     db.from('locales').select('nombre, precio').eq('estado', 'ACTIVO'),
   ]);
 
-  // ── SALIDAS: agrupar por local ────────────────────────────────────────────
+  // ── SALIDAS: agrupar por local y por mes ──────────────────────────────────
   const clienteMap: Record<string, ControlPanSalidaCliente> = {};
+  const deudaPorMes: Record<string, number> = {};
   for (const row of salidasRes.data ?? []) {
     const localName = (row.local ?? '').trim();
     if (!localName) continue;
     if (!clienteMap[localName]) clienteMap[localName] = { local: localName, kg: 0, deudaGenerada: 0 };
     clienteMap[localName].kg            += Number(row.kg)    || 0;
     clienteMap[localName].deudaGenerada += Number(row.deuda) || 0;
+    const mesKey = String(row.fecha ?? '').slice(0, 7);
+    if (mesKey.length === 7) deudaPorMes[mesKey] = (deudaPorMes[mesKey] ?? 0) + (Number(row.deuda) || 0);
   }
   const salidasPorCliente = Object.values(clienteMap)
     .filter(c => c.kg > 0)
@@ -345,7 +349,7 @@ async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData
   const totalDeudaGenerada = salidasPorCliente.reduce((s, c) => s + c.deudaGenerada, 0);
   const saldoPendiente     = Math.max(0, totalDeudaGenerada - totalPagado);
 
-  return { kpi: { totalKg, totalDeudaGenerada, totalPagado, saldoPendiente }, salidasPorCliente, cuentaCorriente };
+  return { kpi: { totalKg, totalDeudaGenerada, totalPagado, saldoPendiente }, salidasPorCliente, cuentaCorriente, deudaPorMes };
 }
 
 // ── Route handler ────────────────────────────────────────────────────────────
@@ -456,20 +460,33 @@ export async function GET(req: NextRequest) {
       ? Math.round(((totalVentas - totalCostos - totalMerma) / totalVentas) * 100)
       : 0;
 
-    // ── Ventas por mes (desde orders.total) ──────────────────────────────────
-    const ventasMesMap: Record<string, { ventas: number; pedidos: number }> = {};
+    // ── Ventas por mes: (orders.total - bebidas del mes) + pan externo del mes ──
+    // Los items no tienen created_at propio, así que distribuimos bebidasItems
+    // de forma proporcional al peso de cada mes sobre el total de orders.
+    const ventasMesMap: Record<string, { ventas: number; bebidasRaw: number; pedidos: number }> = {};
     for (const o of orders) {
       const mes = String(o.created_at ?? '').slice(0, 7);
       if (!mes || mes.length !== 7) continue;
-      if (!ventasMesMap[mes]) ventasMesMap[mes] = { ventas: 0, pedidos: 0 };
+      if (!ventasMesMap[mes]) ventasMesMap[mes] = { ventas: 0, bebidasRaw: 0, pedidos: 0 };
       ventasMesMap[mes].ventas  += Number(o.total ?? 0);
       ventasMesMap[mes].pedidos += 1;
     }
+    // Acumular bebidas por mes usando el created_at del orden padre
+    // Para eso necesitamos un mapa order_id → mes. Lo hacemos con los orders que ya tenemos.
+    // Como items no tienen created_at, usamos una distribución proporcional al total de bebidas:
+    // distribuimos bebidasItems en los meses según el peso de orders.total de cada mes.
+    const totalOrdersSumLocal = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    for (const [mes, v] of Object.entries(ventasMesMap)) {
+      const peso = totalOrdersSumLocal > 0 ? v.ventas / totalOrdersSumLocal : 0;
+      ventasMesMap[mes].bebidasRaw = bebidasItems * peso;
+    }
+    const panExternoPorMes = controlPan?.deudaPorMes ?? {};
     const ventasPorMes = Object.entries(ventasMesMap)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, v]) => {
         const [anio, mes] = key.split('-');
-        return { key, mes: getMesLabel(parseInt(mes), parseInt(anio)), ...v };
+        const ventasCorregidas = v.ventas - v.bebidasRaw + (panExternoPorMes[key] ?? 0);
+        return { key, mes: getMesLabel(parseInt(mes), parseInt(anio)), ventas: ventasCorregidas, pedidos: v.pedidos };
       });
 
     // ── Gastos por mes (Facturas) ─────────────────────────────────────────────
