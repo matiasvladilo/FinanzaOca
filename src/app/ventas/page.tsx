@@ -702,6 +702,30 @@ export default function VentasPage() {
   const filteredData = useMemo(() => {
     // ── Helper: chart data para un rango de días ─────────────────────────────
     function buildDayChart(fDesde: string, fHasta: string, localFilter: string | null = null) {
+      // Producción no tiene registros diarios en rawDiasCaja — usar produccionMes (granularidad mensual)
+      if (localFilter === PRODUCCION_LOCAL) {
+        const mesesEnRango = Object.keys(produccionMes)
+          .filter(m => {
+            const lastDay = new Date(parseInt(m.slice(0, 4)), parseInt(m.slice(5, 7)), 0);
+            const mesStart = m + '-01';
+            const mesEnd   = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+            return (!fDesde || mesEnd >= fDesde) && (!fHasta || mesStart <= fHasta);
+          })
+          .sort();
+        const data = mesesEnRango.map(m => ({
+          fecha:   keyToLabel(m),
+          ventas:  produccionMes[m]?.ventas  ?? 0,
+          gastos:  produccionMes[m]?.gastos  ?? 0,
+        }));
+        const totVentas = data.reduce((s, r) => s + r.ventas, 0);
+        const totGastos = data.reduce((s, r) => s + r.gastos, 0);
+        const porLocal: Record<string, { ventas: number; gastos: number }> =
+          totVentas > 0 || totGastos > 0
+            ? { [PRODUCCION_LOCAL]: { ventas: totVentas, gastos: totGastos } }
+            : {};
+        return { data, porLocal };
+      }
+
       const diasVentas: Record<string, number> = {};
       const diasGastos: Record<string, number> = {};
       const porLocal: Record<string, { ventas: number; gastos: number }> = {};
