@@ -577,6 +577,7 @@ export default function VentasPage() {
   const [rawDiasCaja, setRawDiasCaja] = useState<DiaCaja[]>([]);
   const [rawDiasGastos, setRawDiasGastos] = useState<DiaGasto[]>([]);
   const [produccionMes, setProduccionMes] = useState<Record<string, ProductionMonth>>({});
+  const [produccionTopProveedores, setProduccionTopProveedores] = useState<{ nombre: string; monto: number }[]>([]);
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
   const [mesDesde, setMesDesde] = useState('');
   const [mesHasta, setMesHasta] = useState('');
@@ -685,9 +686,13 @@ export default function VentasPage() {
           next[fallbackKey] = { ventas: d.kpi.totalVentas ?? 0, gastos: d.kpi.totalCostos ?? 0 };
         }
         setProduccionMes(next);
+        setProduccionTopProveedores(d.topProveedoresProd ?? []);
       })
       .catch(() => {
-        if (!cancelled) setProduccionMes({});
+        if (!cancelled) {
+          setProduccionMes({});
+          setProduccionTopProveedores([]);
+        }
       });
 
     return () => { cancelled = true; };
@@ -801,6 +806,7 @@ export default function VentasPage() {
 
     // ── Helper: top proveedores filtrado ─────────────────────────────────────
     function buildTopProveedores(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
+      if (localFilter === PRODUCCION_LOCAL) return produccionTopProveedores;
       const provMap: Record<string, number> = {};
       const provNombre: Record<string, string> = {};
       for (const r of rawDiasGastos) {
@@ -1043,7 +1049,7 @@ export default function VentasPage() {
     const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]) : [];
     const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
     return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores, topProveedoresComp };
-  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, produccionMes, localSel,
+  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, produccionMes, produccionTopProveedores, localSel,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compOn, compMes]);
 

@@ -69,41 +69,71 @@ async function fetchGastos(local: string, desde: Date, hasta: Date) {
   const config = getProduccionConfig();
   if (!config) return [];
 
-  const allRows = await readSheet(config.id, 'Facturas!A1:N5000');
+  // Leer hasta columna Z (igual que los otros locales) para no cortar columnas
+  const allRows = await readSheet(config.id, 'Facturas!A1:Z5000');
   if (allRows.length < 2) return [];
-  // Buscar la fila que tenga headers reales (contiene "Local" o "Fecha" o "Proveedor")
-  const knownHeaders = ['local', 'fecha', 'proveedor', 'gasto', 'tipo'];
+
+  // Buscar la fila de headers dinámicamente (la planilla puede tener filas de título al inicio)
+  const knownHeaders = ['local', 'fecha', 'proveedor', 'gasto', 'tipo', 'monto', 'total'];
   const headerIdx = allRows.findIndex(r =>
     r.some(c => knownHeaders.includes((c ?? '').toLowerCase().trim()))
   );
   if (headerIdx === -1 || headerIdx >= allRows.length - 1) return [];
   const headers = allRows[headerIdx];
   const data = allRows.slice(headerIdx + 1);
+
+  // Misma lógica de fecha que los otros locales: FECHA EMITIDA primero, fallback a Fecha
+  const idxFechaEmitida = findHeader(
+    headers,
+    'FECHA EMITIDA', 'Fecha emitida', 'Fecha Emitida', 'fecha emitida',
+    'FECHA_EMITIDA', 'FechaEmitida', 'Fecha de emisión', 'Fecha de Emisión',
+    'FECHA DE EMISION', 'Fecha Emision', 'Emision', 'Emisión',
+  );
+  const idxFechaFallback = findHeader(
+    headers,
+    'Fecha vencimiento', 'Fecha Vencimiento', 'FECHA VENCIMIENTO',
+    'Fecha', 'FECHA', 'fecha',
+  );
+
   const idx = {
-    local:         findHeader(headers, 'Local', 'LOCAL', 'local'),
-    fechaVenc:     findHeader(headers, 'Fecha vencimiento', 'Fecha Vencimiento', 'FECHA VENCIMIENTO', 'Fecha', 'FECHA', 'fecha'),
-    tipo:          findHeader(headers, 'Gasto', 'Tipo (Ingreso/Gasto)', 'TIPO', 'tipo', 'Tipo'),
-    monto:         findHeader(headers, 'Total factura', 'Total Factura', 'Monto', 'MONTO', 'monto'),
-    mes:           findHeader(headers, 'Mes', 'MES', 'mes'),
-    proveedor:     findHeader(headers, 'Proveedor', 'Proveedor/Cliente', 'proveedor'),
+    local:     findHeader(headers, 'Local', 'LOCAL', 'local'),
+    monto:     findHeader(headers, 'Total factura', 'Total Factura', 'Total', 'Monto', 'MONTO', 'monto'),
+    mes:       findHeader(headers, 'Mes', 'MES', 'mes'),
+    proveedor: findHeader(headers, 'Proveedor', 'Proveedor/Cliente', 'Proveedores', 'proveedor'),
   };
+
   const filterLocal = local && local !== 'todos' && local !== 'Todos' ? local.toLowerCase() : null;
-  return data
-    .filter(r => r[idx.monto] && (idx.tipo === -1 || (r[idx.tipo] ?? '').toLowerCase().includes('gasto')))
-    .map(r => {
-      const fp = parseFecha(r[idx.fechaVenc] ?? '');
-      return {
-        local:     r[idx.local] ?? '',
-        fecha:     r[idx.fechaVenc] ?? '',
-        monto:     parseMonto(r[idx.monto] ?? ''),
-        mes:       fp.mes || parseInt(r[idx.mes] ?? '0', 10),
-        anio:      fp.anio,
-        date:      fp.date,
-        proveedor: r[idx.proveedor] ?? '',
-      };
-    })
-    .filter(r => r.date && r.date >= desde && r.date <= hasta)
-    .filter(r => !filterLocal || r.local.toLowerCase() === filterLocal);
+
+  const result = [];
+  for (const r of data) {
+    if (!r[idx.monto]) continue;
+
+    // Misma lógica de fecha que ventas: FECHA EMITIDA → fallback Fecha
+    let fp;
+    if (idxFechaEmitida >= 0) {
+      fp = parseFecha(r[idxFechaEmitida] ?? '');
+    } else {
+      fp = idxFechaFallback >= 0 ? parseFecha(r[idxFechaFallback] ?? '') : { anio: 0, mes: 0, dia: 0, iso: '', date: null };
+    }
+
+    // Descartar filas sin fecha válida (igual que ventas)
+    if (fp.anio < 2020) continue;
+    if (!fp.date || fp.date < desde || fp.date > hasta) continue;
+
+    const localVal = r[idx.local] ?? '';
+    if (filterLocal && localVal.toLowerCase() !== filterLocal) continue;
+
+    result.push({
+      local:     localVal,
+      fecha:     fp.iso,
+      monto:     parseMonto(r[idx.monto] ?? ''),
+      mes:       fp.mes || parseInt(r[idx.mes] ?? '0', 10),
+      anio:      fp.anio,
+      date:      fp.date,
+      proveedor: r[idx.proveedor] ?? '',
+    });
+  }
+  return result;
 }
 
 // ── Fetch merma (planilla de producción) ─────────────────────────────────────
@@ -516,6 +546,19 @@ export async function GET(req: NextRequest) {
     for (const r of mermaData) if (r.local) localesSet.add(r.local);
     const locales = ['Todos', ...[...localesSet].sort()];
 
+    // ── Top proveedores (Facturas de producción) ──────────────────────────────
+    const provMapProd: Record<string, number> = {};
+    const provNombreProd: Record<string, string> = {};
+    for (const r of gastos) {
+      if (!r.proveedor) continue;
+      const key = r.proveedor.toLowerCase();
+      if (!provNombreProd[key]) provNombreProd[key] = r.proveedor;
+      provMapProd[key] = (provMapProd[key] ?? 0) + r.monto;
+    }
+    const topProveedoresProd = Object.entries(provMapProd)
+      .sort(([, a], [, b]) => b - a).slice(0, 8)
+      .map(([key, monto]) => ({ nombre: provNombreProd[key], monto }));
+
     return NextResponse.json({
       ok: true,
       kpi: { totalVentas, totalCostos, totalMerma, rentabilidad, totalPedidos },
@@ -525,6 +568,7 @@ export async function GET(req: NextRequest) {
       topProductos,
       porArea,
       porTipoMerma,
+      topProveedoresProd,
       controlPan,
       locales,
       mesDesde,
