@@ -389,6 +389,7 @@ export default function LoginPage() {
 
   const robotCls = [
     'robot-wrap',
+    'login-col',
     isShaking ? 'robot-error' : isPoked ? 'robot-poke' : 'robot-float',
   ].join(' ');
 
@@ -468,6 +469,35 @@ export default function LoginPage() {
         .robot-wrap  { cursor: pointer; }
         @media (max-width:767px) { .robot-wrap { display:none !important; } }
 
+        /* Zona central scrolleable: si la ventana es baja, la tarjeta no se corta */
+        .login-main {
+          flex:1; min-height:0; display:flex; align-items:flex-start; justify-content:center;
+          gap:5vw; padding:32px 6vw 92px; position:relative; z-index:5;
+          overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain;
+        }
+        /* Centrado vertical que NO recorta cuando el contenido no entra */
+        .login-col { margin-top:auto; margin-bottom:auto; }
+
+        .login-main::-webkit-scrollbar       { width:8px; }
+        .login-main::-webkit-scrollbar-track { background:transparent; }
+        .login-main::-webkit-scrollbar-thumb { background:rgba(185,199,228,.14); border-radius:4px; }
+
+        /* Ventanas bajas: compactar para que entre sin scroll */
+        @media (max-height:700px) {
+          .login-main  { padding-top:20px; padding-bottom:84px; }
+          .login-head  { margin-bottom:22px !important; }
+          .login-title { font-size:30px !important; }
+          .login-box   { padding:24px !important; }
+          .robot-wrap svg { width:290px !important; height:auto !important; }
+        }
+        @media (max-height:600px) {
+          .login-main  { padding-top:14px; }
+          .login-head  { margin-bottom:14px !important; }
+          .login-title { font-size:26px !important; }
+          .login-box   { padding:20px !important; }
+          .robot-wrap svg { width:240px !important; }
+        }
+
         .login-input {
           width:100%; background:rgba(15,20,35,.8);
           border:1px solid rgba(185,199,228,.1); border-radius:8px;
@@ -511,16 +541,16 @@ export default function LoginPage() {
           </div>
         </header>
 
-        <main style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'32px 6vw 80px', position:'relative', zIndex:5, gap:'5vw' }}>
+        <main className="login-main">
 
           {/* Login card */}
-          <div style={{ width:'100%', maxWidth:420, flexShrink:0 }} className="card-in">
-            <div style={{ textAlign:'center', marginBottom:36 }}>
-              <h1 style={{ fontFamily:'Manrope', fontWeight:800, fontSize:36, letterSpacing:'-.02em', color:'#e5e2e1', margin:'0 0 6px' }}>FINOCA</h1>
+          <div style={{ width:'100%', maxWidth:420, flexShrink:0 }} className="card-in login-col">
+            <div className="login-head" style={{ textAlign:'center', marginBottom:36 }}>
+              <h1 className="login-title" style={{ fontFamily:'Manrope', fontWeight:800, fontSize:36, letterSpacing:'-.02em', color:'#e5e2e1', margin:'0 0 6px' }}>FINOCA</h1>
               <p style={{ color:'#74829d', fontWeight:600, letterSpacing:'.22em', fontSize:11, textTransform:'uppercase', margin:0 }}>CENTRO FINANCIERO</p>
             </div>
 
-            <div style={{ background:'rgba(8,12,24,.78)', backdropFilter:'blur(28px)', border:'1px solid rgba(185,199,228,.1)', borderRadius:12, padding:32, boxShadow:'0 12px 50px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.04)' }}>
+            <div className="login-box" style={{ background:'rgba(8,12,24,.78)', backdropFilter:'blur(28px)', border:'1px solid rgba(185,199,228,.1)', borderRadius:12, padding:32, boxShadow:'0 12px 50px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.04)' }}>
               {errorMsg && (
                 <div style={{ background:'rgba(255,50,50,.08)', border:'1px solid rgba(255,80,80,.25)', borderRadius:8, padding:'10px 14px', marginBottom:20, fontSize:13, color:'#ff8080', textAlign:'center', letterSpacing:'.02em' }}>
                   {errorMsg}
