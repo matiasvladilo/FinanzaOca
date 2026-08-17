@@ -19,6 +19,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getProduccionConfig } from '@/lib/google-sheets';
+import { fetchGastosFacturas, topProveedores } from '@/lib/data/gastos';
 import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
 import { getSupabaseClient } from '@/lib/supabase';
 import { getControlPanClient } from '@/lib/supabase-controlpan';
@@ -28,16 +29,6 @@ const COLORES = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444', '#06B6D4
 
 // Categorías excluidas de todos los análisis
 const CATS_EXCLUIDAS = new Set(['Bebidas', 'bebidas', 'BEBIDAS']);
-
-// ── Helper: normaliza headers con saltos de línea ──────────────────────────────
-function normH(s: string) { return (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase(); }
-function findHeaderNorm(headers: string[], ...candidates: string[]): number {
-  for (const c of candidates) {
-    const idx = headers.findIndex(h => normH(h) === normH(c));
-    if (idx !== -1) return idx;
-  }
-  return -1;
-}
 
 // ── Rango de fechas ──────────────────────────────────────────────────────────
 function getDateRange(params: {
@@ -65,75 +56,12 @@ function getDateRange(params: {
 }
 
 // ── Fetch gastos de Facturas (planilla de producción) ────────────────────────
+// El parseo vive en @/lib/data/gastos porque la planilla de Distribuidora usa
+// el mismo formato y comparte la lógica.
 async function fetchGastos(local: string, desde: Date, hasta: Date) {
   const config = getProduccionConfig();
   if (!config) return [];
-
-  // Leer hasta columna Z (igual que los otros locales) para no cortar columnas
-  const allRows = await readSheet(config.id, 'Facturas!A1:Z5000');
-  if (allRows.length < 2) return [];
-
-  // Buscar la fila de headers dinámicamente (la planilla puede tener filas de título al inicio)
-  const knownHeaders = ['local', 'fecha', 'proveedor', 'gasto', 'tipo', 'monto', 'total'];
-  const headerIdx = allRows.findIndex(r =>
-    r.some(c => knownHeaders.includes((c ?? '').toLowerCase().trim()))
-  );
-  if (headerIdx === -1 || headerIdx >= allRows.length - 1) return [];
-  const headers = allRows[headerIdx];
-  const data = allRows.slice(headerIdx + 1);
-
-  // Misma lógica de fecha que los otros locales: FECHA EMITIDA primero, fallback a Fecha
-  const idxFechaEmitida = findHeader(
-    headers,
-    'FECHA EMITIDA', 'Fecha emitida', 'Fecha Emitida', 'fecha emitida',
-    'FECHA_EMITIDA', 'FechaEmitida', 'Fecha de emisión', 'Fecha de Emisión',
-    'FECHA DE EMISION', 'Fecha Emision', 'Emision', 'Emisión',
-  );
-  const idxFechaFallback = findHeader(
-    headers,
-    'Fecha vencimiento', 'Fecha Vencimiento', 'FECHA VENCIMIENTO',
-    'Fecha', 'FECHA', 'fecha',
-  );
-
-  const idx = {
-    local:     findHeader(headers, 'Local', 'LOCAL', 'local'),
-    monto:     findHeader(headers, 'Total factura', 'Total Factura', 'Total', 'Monto', 'MONTO', 'monto'),
-    mes:       findHeader(headers, 'Mes', 'MES', 'mes'),
-    proveedor: findHeader(headers, 'Proveedor', 'Proveedor/Cliente', 'Proveedores', 'proveedor'),
-  };
-
-  const filterLocal = local && local !== 'todos' && local !== 'Todos' ? local.toLowerCase() : null;
-
-  const result = [];
-  for (const r of data) {
-    if (!r[idx.monto]) continue;
-
-    // Misma lógica de fecha que ventas: FECHA EMITIDA → fallback Fecha
-    let fp;
-    if (idxFechaEmitida >= 0) {
-      fp = parseFecha(r[idxFechaEmitida] ?? '');
-    } else {
-      fp = idxFechaFallback >= 0 ? parseFecha(r[idxFechaFallback] ?? '') : { anio: 0, mes: 0, dia: 0, iso: '', date: null };
-    }
-
-    // Descartar filas sin fecha válida (igual que ventas)
-    if (fp.anio < 2020) continue;
-    if (!fp.date || fp.date < desde || fp.date > hasta) continue;
-
-    const localVal = r[idx.local] ?? '';
-    if (filterLocal && localVal.toLowerCase() !== filterLocal) continue;
-
-    result.push({
-      local:     localVal,
-      fecha:     fp.iso,
-      monto:     parseMonto(r[idx.monto] ?? ''),
-      mes:       fp.mes || parseInt(r[idx.mes] ?? '0', 10),
-      anio:      fp.anio,
-      date:      fp.date,
-      proveedor: r[idx.proveedor] ?? '',
-    });
-  }
-  return result;
+  return fetchGastosFacturas(config.id, local, desde, hasta);
 }
 
 // ── Fetch merma (planilla de producción) ─────────────────────────────────────
@@ -192,46 +120,54 @@ function normalizeCat(name: string): string {
 
 // ── Fetch ventas desde Supabase (ConectOca) ──────────────────────────────────
 async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  // getSupabaseClient() acepta service_role o anon — pedir anon sí o sí hacía
+  // que devolviera vacío en silencio si solo estaba configurada la service_role.
+  if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
     return { orders: [], items: [], productCategoryMap: {} as Record<string, string> };
   }
   const db = getSupabaseClient();
 
-  const [ordersRes, categoriesRes, productsRes] = await Promise.all([
-    db.from('orders')
-      .select('created_at, total, status')
-      .eq('business_id', OCA_BUSINESS_ID)
-      .gte('created_at', desdeStr)
-      .lte('created_at', hastaStr)
-      .limit(50000),
+  const [categoriesRes, productsRes] = await Promise.all([
     db.from('categories').select('id, name'),
     db.from('products').select('id, category_id'),
   ]);
 
-  if (ordersRes.error) console.error('[produccion-data] orders error:', ordersRes.error.message);
-
-  // Obtener items embebidos desde orders (parent→children).
+  // Orders + sus items, en una sola consulta paginada.
+  //
+  // Dos cosas acá son imprescindibles y no se pueden simplificar:
+  //
+  // 1. PAGINAR. PostgREST corta las respuestas en 1000 filas por configuración
+  //    del servidor; un .limit(50000) NO levanta ese techo, solo lo pide. Sin
+  //    paginar, las ventas quedaban subcontadas.
+  //
+  // 2. ORDENAR EXPLÍCITAMENTE. Postgres no garantiza ningún orden sin ORDER BY,
+  //    así que entre páginas de .range() se repetían y se perdían filas — los
+  //    totales cambiaban en cada refresco. created_at solo no alcanza porque
+  //    tiene timestamps repetidos: hace falta el id como desempate para que el
+  //    orden sea total y la paginación reproducible.
+  const orders: Record<string, unknown>[] = [];
   const allItems: Record<string, unknown>[] = [];
   const PAGE = 1000;
-  let from = 0;
-  while (true) {
+  for (let from = 0; ; from += PAGE) {
     const { data, error } = await db
       .from('orders')
-      .select('order_items(product_id, product_name, quantity, price)')
+      .select('created_at, total, status, order_items(product_id, product_name, quantity, price)')
       .eq('business_id', OCA_BUSINESS_ID)
       .gte('created_at', desdeStr)
       .lte('created_at', hastaStr)
+      .order('created_at', { ascending: true })
+      .order('id',         { ascending: true })
       .range(from, from + PAGE - 1);
-    if (error) { console.error('[produccion-data] items-embed error:', error.message); break; }
+    if (error) { console.error('[produccion-data] orders error:', error.message); break; }
     if (!data?.length) break;
-    for (const order of data as Record<string, unknown>[]) {
-      const nested = order['order_items'];
+    for (const row of data as Record<string, unknown>[]) {
+      const { order_items: nested, ...order } = row;
+      orders.push(order);
       if (Array.isArray(nested)) allItems.push(...nested);
     }
     if (data.length < PAGE) break;
-    from += PAGE;
   }
-  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${ordersRes.data?.length ?? 0} | items: ${allItems.length}`);
+  console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${orders.length} | items: ${allItems.length}`);
 
   // product_id → nombre de categoría normalizado
   const categoryNameMap: Record<string, string> = {};
@@ -248,11 +184,7 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
     if (id && ci) productCategoryMap[id] = categoryNameMap[ci] ?? 'Sin área';
   }
 
-  return {
-    orders: (ordersRes.data ?? []) as Record<string, unknown>[],
-    items:  allItems,
-    productCategoryMap,
-  };
+  return { orders, items: allItems, productCategoryMap };
 }
 
 // ── Fetch Control Pan ─────────────────────────────────────────────────────────
@@ -564,17 +496,7 @@ export async function GET(req: NextRequest) {
     const locales = ['Todos', ...[...localesSet].sort()];
 
     // ── Top proveedores (Facturas de producción) ──────────────────────────────
-    const provMapProd: Record<string, number> = {};
-    const provNombreProd: Record<string, string> = {};
-    for (const r of gastos) {
-      if (!r.proveedor) continue;
-      const key = r.proveedor.toLowerCase();
-      if (!provNombreProd[key]) provNombreProd[key] = r.proveedor;
-      provMapProd[key] = (provMapProd[key] ?? 0) + r.monto;
-    }
-    const topProveedoresProd = Object.entries(provMapProd)
-      .sort(([, a], [, b]) => b - a).slice(0, 8)
-      .map(([key, monto]) => ({ nombre: provNombreProd[key], monto }));
+    const topProveedoresProd = topProveedores(gastos);
 
     return NextResponse.json({
       ok: true,

@@ -149,6 +149,22 @@ export function getProduccionConfig(): LocalSheetConfig | null {
   return { nombre: 'Produccion', id, tabs: TABS };
 }
 
+/**
+ * Planilla de la Distribuidora — SOLO gastos.
+ *
+ * Sus ventas no se leen de acá: los pedidos se cargan en ConectOca y ya quedan
+ * contados dentro de Producción, así que traerlas de nuevo las duplicaría.
+ *
+ * A propósito NO se incluye en getLocalesConfig(): esa lista la recorren
+ * /api/cierre-caja y /api/merma-data, que exigen las pestañas "Cierre de Caja"
+ * y "MERMA" — esta planilla no las tiene y esas rutas fallarían.
+ */
+export function getDistribuidoraConfig(): LocalSheetConfig | null {
+  const id = process.env.SHEET_DISTRIBUIDORA_ID ?? '';
+  if (!id) return null;
+  return { nombre: 'Distribuidora', id, tabs: TABS };
+}
+
 // ── Alias de compatibilidad (no romper código existente) ─────────────────────
 export function getSheetsConfig() {
   return { id: process.env.SHEET_VENTAS_ID ?? '', tabs: TABS };
