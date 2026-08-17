@@ -1,24 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, SessionUser, getPermissions } from '@/lib/auth';
+import { verifySession } from '@/lib/session';
 
-// Leer la sesión desde la cookie (server-side, dentro de API routes)
-export function getSessionUser(req: NextRequest): SessionUser | null {
-  const cookie = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!cookie) return null;
-  try {
-    const parsed = JSON.parse(cookie) as SessionUser;
-    if (!parsed.username || !parsed.role) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+// Leer la sesión desde la cookie (server-side, dentro de API routes).
+// Es async porque verificar la firma HMAC lo es.
+export async function getSessionUser(req: NextRequest): Promise<SessionUser | null> {
+  return verifySession(req.cookies.get(SESSION_COOKIE)?.value);
 }
 
 // Usar en API routes: devuelve el usuario o una respuesta 401 lista para retornar
-export function requireAuth(
+export async function requireAuth(
   req: NextRequest,
-): { user: SessionUser } | NextResponse {
-  const user = getSessionUser(req);
+): Promise<{ user: SessionUser } | NextResponse> {
+  const user = await getSessionUser(req);
   if (!user) {
     return NextResponse.json({ message: 'No autorizado' }, { status: 401 });
   }

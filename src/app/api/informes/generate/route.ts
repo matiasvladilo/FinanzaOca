@@ -347,7 +347,7 @@ export async function GET(req: NextRequest) {
     const cronRole = (req.headers.get('x-cron-role') ?? 'usuario') as import('@/lib/auth').Role;
     perms = getPermissions(cronRole);
   } else {
-    const auth = requireAuth(req);
+    const auth = await requireAuth(req);
     if (auth instanceof NextResponse) return auth;
     const { user } = auth;
     const { getPermissions } = await import('@/lib/auth');

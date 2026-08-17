@@ -1,16 +1,15 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { getClientSession } from '@/lib/session-client';
 
+// Solo decide qué mostrar en pantalla; el acceso real lo resuelve el backend.
 function getSessionPermissions() {
   if (typeof document === 'undefined') return { canAccessGastoFijo: true };
-  const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
-  if (!match) return { canAccessGastoFijo: false };
-  try {
-    const s = JSON.parse(decodeURIComponent(match.split('=').slice(1).join('=')));
-    const roleMap: Record<string, boolean> = { admin: true, usuario: false, local: false };
-    return { canAccessGastoFijo: roleMap[s.role] ?? false, sucursal: s.sucursal as string | undefined };
-  } catch { return { canAccessGastoFijo: false }; }
+  const s = getClientSession();
+  if (!s) return { canAccessGastoFijo: false };
+  const roleMap: Record<string, boolean> = { admin: true, usuario: false, local: false };
+  return { canAccessGastoFijo: roleMap[s.role] ?? false, sucursal: s.sucursal };
 }
 import {
   FileText, Download, Mail, RefreshCw, Brain, Printer,

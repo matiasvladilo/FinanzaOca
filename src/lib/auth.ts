@@ -68,7 +68,9 @@ export interface SessionUser {
   sucursal?: string; // presente solo cuando role === 'local'
 }
 
-export const SESSION_COOKIE = 'session';
+// Los nombres viven en session-cookies.ts, que el cliente puede importar sin
+// arrastrar este módulo (y con él, el array de usuarios y sus contraseñas).
+export { SESSION_COOKIE, SESSION_UI_COOKIE } from '@/lib/session-cookies';
 
 // ── Funciones de autenticación ────────────────────────────────────────────────
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateCredentials, SESSION_COOKIE, SessionUser } from '@/lib/auth';
+import { validateCredentials, SESSION_COOKIE, SESSION_UI_COOKIE, SessionUser } from '@/lib/auth';
+import { signSession, SESSION_TTL_SECONDS } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,14 +18,36 @@ export async function POST(req: NextRequest) {
 
     const session: SessionUser = { username: user.username, role: user.role, email: user.email, sucursal: user.sucursal };
 
+    const token = await signSession(session);
+    if (!token) {
+      console.error('[auth/login] SESSION_SECRET no está configurada (mínimo 32 caracteres)');
+      return NextResponse.json(
+        { message: 'El servidor no está configurado para iniciar sesión' },
+        { status: 500 },
+      );
+    }
+
+    const secure = process.env.NODE_ENV === 'production';
     const res = NextResponse.json({ ok: true });
-    res.cookies.set(SESSION_COOKIE, JSON.stringify(session), {
-      httpOnly: false, // debe ser legible por el cliente para mostrar datos del usuario
-      secure: process.env.NODE_ENV === 'production',
+
+    // Credencial real: firmada y fuera del alcance de JavaScript.
+    res.cookies.set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure,
       sameSite: 'lax',
-      maxAge: 60 * 60 * 8, // 8 horas
+      maxAge: SESSION_TTL_SECONDS,
       path: '/',
     });
+
+    // Copia legible solo para la interfaz. El server no la lee nunca.
+    res.cookies.set(SESSION_UI_COOKIE, JSON.stringify(session), {
+      httpOnly: false,
+      secure,
+      sameSite: 'lax',
+      maxAge: SESSION_TTL_SECONDS,
+      path: '/',
+    });
+
     return res;
   } catch {
     return NextResponse.json({ message: 'Error interno del servidor' }, { status: 500 });

@@ -286,7 +286,7 @@ async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData
 
 // ── Route handler ────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
   // Modo ligero: solo devuelve los meses con datos en Facturas + Supabase

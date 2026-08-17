@@ -50,7 +50,7 @@ function getDateRange(params: {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
   const config = getDistribuidoraConfig();

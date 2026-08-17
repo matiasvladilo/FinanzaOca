@@ -3,21 +3,13 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { getClientSession } from '@/lib/session-client';
+import { getClientSession, type ClientSession } from '@/lib/session-client';
 import {
   LayoutDashboard, TrendingUp, ShoppingBag,
   Trash2, LogOut, Gauge, BarChart3, Factory, FileText, CalendarDays,
 } from 'lucide-react';
 
-interface SessionUser { username: string; role: string; }
-
-function getSession(): SessionUser | null {
-  if (typeof document === 'undefined') return null;
-  const match = document.cookie.split(';').find(c => c.trim().startsWith('session='));
-  if (!match) return null;
-  try { return JSON.parse(decodeURIComponent(match.split('=').slice(1).join('='))); }
-  catch { return null; }
-}
+type SessionUser = ClientSession;
 
 const navItems = [
   { label: 'Dashboard',     href: '/',              icon: LayoutDashboard },
@@ -39,8 +31,8 @@ export default function Sidebar() {
   const [isProduccionRole, setIsProduccionRole] = useState(false);
 
   useEffect(() => {
-    setUser(getSession());
     const s = getClientSession();
+    setUser(s);
     setIsLocalRole(s?.role === 'local');
     setIsProduccionRole(s?.role === 'produccion');
   }, []);

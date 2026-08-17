@@ -10,7 +10,7 @@ export interface PresupuestoRow {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
   const sheetId = process.env.SHEET_PRESUPUESTO_ID;
   if (!sheetId) {

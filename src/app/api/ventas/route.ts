@@ -191,7 +191,7 @@ async function fetchVentasRaw() {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
+  const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
   try {
