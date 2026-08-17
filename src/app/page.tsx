@@ -71,6 +71,8 @@ export default function DashboardPage() {
   const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
   const [produccionSummary, setProduccionSummary] = useState<ProductionSummary | null>(null);
+  // Distribuidora aporta solo gastos: sus ventas ya vienen contadas en Producción
+  const [distribuidoraGastos, setDistribuidoraGastos] = useState<number>(0);
 
   // Aplicar restricción de local si el rol es 'local'
   useEffect(() => {
@@ -167,6 +169,18 @@ export default function DashboardPage() {
         if (!cancelled) setProduccionSummary(null);
       });
 
+    // Distribuidora: solo gastos. Si SHEET_DISTRIBUIDORA_ID no está configurada
+    // la ruta responde 503 y queda en 0, sin romper el resto del panel.
+    fetch(`/api/distribuidora-data?${params}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return;
+        setDistribuidoraGastos(d?.ok ? (d.kpi?.totalGastos ?? 0) : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setDistribuidoraGastos(0);
+      });
+
     return () => { cancelled = true; };
   }, [filters.sucursal, modoFiltro, mesFiltro, fechaDesde, fechaHasta]);
 
@@ -216,6 +230,12 @@ export default function DashboardPage() {
       gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
     }
 
+    // Distribuidora entra como línea de gasto propia, sin ventas: las suyas se
+    // cargan en ConectOca y ya están dentro de Producción.
+    if (sucursal === 'Todas' && distribuidoraGastos > 0) {
+      gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastos };
+    }
+
     const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
 
     const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
@@ -228,7 +248,7 @@ export default function DashboardPage() {
     } else {
       totalGastos = vData?.porSucursal?.[sucursal]?.gastos ?? 0;
     }
-    if (sucursal === 'Todas') totalGastos += produccionSummary?.gastos ?? 0;
+    if (sucursal === 'Todas') totalGastos += (produccionSummary?.gastos ?? 0) + distribuidoraGastos;
 
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
 
@@ -277,7 +297,7 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursal, mesFiltro, produccionSummary]);
+  }, [ccData, vData, filters.sucursal, mesFiltro, produccionSummary, distribuidoraGastos]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
@@ -315,6 +335,10 @@ export default function DashboardPage() {
       gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
       totalGastos += produccionSummary.gastos;
     }
+    if (sucursal === 'Todas' && distribuidoraGastos > 0) {
+      gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastos };
+      totalGastos += distribuidoraGastos;
+    }
     const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
     const distribucion = Object.entries(ventasPorLocal)
@@ -330,7 +354,7 @@ export default function DashboardPage() {
       topSucursal: distribucion[0] ?? null,
       medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
     };
-  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursal, computed, produccionSummary]);
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursal, computed, produccionSummary, distribuidoraGastos]);
 
   // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
   const activeData = computedDateRange ?? computed;

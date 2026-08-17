@@ -27,6 +27,17 @@ export default function ResumenSucursales({
 
   const totalGastos = Object.values(gastosPorSucursal).reduce((s, v) => s + v.gastos, 0);
 
+  // Unidades que aportan gastos pero no ventas (hoy: Distribuidora, cuyos
+  // pedidos se cargan en ConectOca y ya se cuentan dentro de Producción).
+  // Sin estas filas el total de gastos del pie no cuadraría con la tabla.
+  const conVentas  = new Set(distribucion.map(d => d.nombre));
+  const soloGastos = Object.entries(gastosPorSucursal)
+    .filter(([nombre, v]) => !conVentas.has(nombre) && v.gastos > 0)
+    .sort(([, a], [, b]) => b.gastos - a.gastos)
+    .map(([nombre, v]) => ({ nombre, gastos: v.gastos }));
+
+  const hayFilas = distribucion.length > 0 || soloGastos.length > 0;
+
   return (
     <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-800 h-full">
       <div className="mb-4">
@@ -85,8 +96,28 @@ export default function ResumenSucursales({
                 </tr>
               );
             })}
+
+            {soloGastos.map(({ nombre, gastos }) => (
+              <tr key={nombre} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                <td className="py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-dashed border-gray-300 dark:border-gray-600" />
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">{nombre}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      solo gastos
+                    </span>
+                  </div>
+                </td>
+                <td className="py-2.5 text-right text-gray-400 dark:text-gray-500">—</td>
+                <td className="py-2.5 text-right text-red-500 dark:text-red-400 font-medium hidden sm:table-cell">
+                  {formatCLPInt(gastos)}
+                </td>
+                <td className="py-2.5 text-right text-gray-400 dark:text-gray-500 hidden md:table-cell">—</td>
+                <td className="py-2.5 text-right text-gray-400 dark:text-gray-500">—</td>
+              </tr>
+            ))}
           </tbody>
-          {distribucion.length > 0 && (
+          {hayFilas && (
             <tfoot className="border-t border-gray-200 dark:border-gray-700">
               <tr>
                 <td className="pt-2.5 font-bold text-gray-900 dark:text-white text-[11px] uppercase tracking-wide">Total</td>
@@ -106,7 +137,7 @@ export default function ResumenSucursales({
         </table>
       </div>
 
-      {distribucion.length === 0 && (
+      {!hayFilas && (
         <p className="text-center text-gray-400 dark:text-gray-500 text-[12px] py-8">
           Sin datos para el período seleccionado
         </p>
