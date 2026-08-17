@@ -73,6 +73,9 @@ export default function DashboardPage() {
   const [produccionSummary, setProduccionSummary] = useState<ProductionSummary | null>(null);
   // Distribuidora aporta solo gastos: sus ventas ya vienen contadas en Producción
   const [distribuidoraGastos, setDistribuidoraGastos] = useState<number>(0);
+  // Serie histórica de ventas de Producción, para cuando se la elige en "comparar por
+  // sucursal". Aparte de produccionSummary porque ese solo cubre el período filtrado.
+  const [produccionPorMes, setProduccionPorMes] = useState<Record<string, number>>({});
 
   // Aplicar restricción de local si el rol es 'local'
   useEffect(() => {
@@ -442,11 +445,44 @@ export default function DashboardPage() {
       const mes = parseInt(key.split('-')[1], 10);
       const row: Record<string, any> = { dia: MESES_SHORT[mes] + ' ' + key.split('-')[0] };
       for (const suc of selectedSucursales) {
-        row[suc] = porLocalMes[suc]?.[key]?.ventas ?? 0;
+        // Producción no sale de Cierre de Caja (viene de ConectOca/Supabase),
+        // así que no tiene fila en porLocalMes: se lee de su propia serie.
+        row[suc] = suc === 'Producción'
+          ? (produccionPorMes[key] ?? 0)
+          : (porLocalMes[suc]?.[key]?.ventas ?? 0);
       }
       return row;
     });
-  }, [ccData, selectedSucursales]);
+  }, [ccData, selectedSucursales, produccionPorMes]);
+
+  // Ventas de Producción por mes, solo cuando se la elige para comparar: al no
+  // salir de Cierre de Caja, "Distribución por Sucursal" no puede alimentar su
+  // línea del gráfico con porLocalMes como al resto de las sucursales.
+  useEffect(() => {
+    if (!selectedSucursales.includes('Producción')) return;
+    if (!ccData?.mesesDisponibles?.length) return;
+    if (Object.keys(produccionPorMes).length > 0) return; // ya se trajo
+
+    const meses = [...ccData.mesesDisponibles].sort();
+    const params = new URLSearchParams({
+      local: 'todos',
+      mesDesde: meses[0],
+      mesHasta: meses[meses.length - 1],
+    });
+
+    let cancelled = false;
+    fetch(`/api/produccion-data?${params}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled || !d?.ok) return;
+        const map: Record<string, number> = {};
+        for (const item of d.ventasPorMes ?? []) map[item.key] = item.ventas ?? 0;
+        setProduccionPorMes(map);
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [selectedSucursales, ccData, produccionPorMes]);
 
   // ── Sucursales para el filtro del Header ─────────────────────────────────
   const sucursalesDisponibles = useMemo(() => {
