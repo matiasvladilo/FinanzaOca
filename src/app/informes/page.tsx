@@ -1433,9 +1433,6 @@ td{padding:11px 16px;border-bottom:1px solid #e2e8f0;color:#0f172a}
 .footer{border-top:1px solid #e2e8f0;padding-top:18px;display:flex;justify-content:space-between;align-items:center}
 .footer-brand{font-size:11px;font-weight:700;color:#0f2147;letter-spacing:.05em}
 .footer-text{font-size:11px;color:#94a3b8}
-/* Print button */
-.print-btn{position:fixed;bottom:24px;right:24px;background:#0f2147;color:#fff;border:none;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
-.print-btn:hover{background:#1e3a6e}
 </style>
 </head>
 <body>
@@ -1536,9 +1533,6 @@ td{padding:11px 16px;border-bottom:1px solid #e2e8f0;color:#0f172a}
   </div>
 </div>
 
-<button class="print-btn no-print" onclick="window.print()">
-  ⬇ Guardar / Imprimir PDF
-</button>
 </body>
 </html>`;
 }
