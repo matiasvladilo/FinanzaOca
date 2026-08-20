@@ -21,6 +21,7 @@ import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { getSucursalColor } from '@/config/sucursales';
+import FacturasSinFecha, { type FacturaSinFecha } from '@/components/dashboard/FacturasSinFecha';
 
 // ─── tipos ───────────────────────────────────────────────
 type Periodo = '7D' | '14D' | '30D';
@@ -594,6 +595,7 @@ export default function VentasPage() {
   const [proveedorModal, setProveedorModal] = useState<{ nombre: string; localFilter: string | null } | null>(null);
   // Presupuesto (50% de ventas dinámico)
   const [presupuestoOn, setPresupuestoOn] = useState(false);
+  const [facturasSinFecha, setFacturasSinFecha] = useState<FacturaSinFecha[]>([]);
 
   // Cierra dropdowns al hacer click fuera
   useEffect(() => {
@@ -629,6 +631,7 @@ export default function VentasPage() {
           setRawGastosMes(gastosPorMes);
           setRawDiasGastos(facturas.registrosDiariosGastos ?? []);
           setRawGastosMesSucursal(facturas.gastosPorMesSucursal ?? {});
+          setFacturasSinFecha(facturas.facturasSinFecha ?? []);
         }
 
         // Unión de meses de ambas fuentes (YYYY-MM), ordenados
@@ -1496,6 +1499,9 @@ export default function VentasPage() {
             );
           })}
         </div>
+
+        {/* ── Facturas que quedaron fuera de los totales por falta de vencimiento ── */}
+        <FacturasSinFecha facturas={facturasSinFecha} />
 
         {/* ── Panel de Comparación ── */}
         {hasComp && (

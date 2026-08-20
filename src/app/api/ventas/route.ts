@@ -13,11 +13,25 @@ import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/pars
 import { withCacheSWR } from '@/lib/data/cache';
 import { requireAuth } from '@/lib/auth-api';
 
-const CACHE_KEY = 'ventas-v12';
+const CACHE_KEY = 'ventas-v13';
+
+/**
+ * Factura que quedó fuera de los totales porque su fecha de vencimiento
+ * (columna "FECHA EMITIDA") está vacía o mal cargada. Se reporta a la UI con el
+ * número de fila para poder corregirla en la planilla.
+ */
+export interface FacturaSinFecha {
+  sucursal: string;
+  fila: number;         // número de fila real en la planilla
+  proveedor: string;
+  monto: number;
+  fechaRecepcion: string;   // columna "Fecha", tal como está en la celda
+  valorCelda: string;       // lo que hay en la celda de vencimiento (puede ser "", " ", "n"…)
+}
 
 async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:Z5000`);
-  if (rows.length < 2) return [];
+  if (rows.length < 2) return { registros: [], sinFecha: [] };
 
   const [headers, ...dataRows] = rows;
 
@@ -49,6 +63,7 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
     proveedor: string; medioPago: string; monto: number;
     fecha: string; mes: number; anio: number;
   }[] = [];
+  const sinFecha: FacturaSinFecha[] = [];
 
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
@@ -63,8 +78,25 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
       fecha = idxFechaFallback >= 0 ? parseFecha(row[idxFechaFallback] ?? '') : { anio: 0, mes: 0, dia: 0, iso: '', date: null };
     }
 
-    // Descartar filas sin fecha válida
-    if (fecha.anio < 2020) continue;
+    // Sin fecha válida no se puede imputar a ningún mes. En vez de perderla en
+    // silencio se reporta con su número de fila para corregirla en la planilla.
+    // dataRows[0] es la fila 2 de la planilla (la 1 son los encabezados).
+    if (fecha.anio < 2020) {
+      const monto = parseMonto(row[idx.monto] ?? '');
+      // Sin monto no hay plata sin contabilizar: es una fila con basura en la
+      // celda del total. Reportarla sería ruido para quien corrige la planilla.
+      if (monto > 0) {
+        sinFecha.push({
+          sucursal:       nombre,
+          fila:           i + 2,
+          proveedor:      row[idx.proveedor] ?? '',
+          monto,
+          fechaRecepcion: (idxFechaFallback >= 0 ? row[idxFechaFallback] : '') ?? '',
+          valorCelda:     (idxFechaEmitida >= 0 ? row[idxFechaEmitida] : '') ?? '',
+        });
+      }
+      continue;
+    }
 
     registros.push({
       id:        i + 1,
@@ -80,7 +112,7 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
     });
   }
 
-  return registros;
+  return { registros, sinFecha };
 }
 
 export async function fetchVentasData() {
@@ -95,10 +127,18 @@ async function fetchVentasRaw() {
   );
 
   const registros = results.flatMap((r, i) => {
-    if (r.status === 'fulfilled') return r.value;
+    if (r.status === 'fulfilled') return r.value.registros;
     console.error(`[ventas] Error leyendo ${locales[i].nombre}:`, r.reason);
     return [];
   });
+
+  const facturasSinFecha = results
+    .flatMap(r => (r.status === 'fulfilled' ? r.value.sinFecha : []))
+    .sort((a, b) => a.sucursal.localeCompare(b.sucursal) || a.fila - b.fila);
+  if (facturasSinFecha.length) {
+    const total = facturasSinFecha.reduce((s, f) => s + f.monto, 0);
+    console.warn(`[ventas] ${facturasSinFecha.length} facturas sin fecha de vencimiento válida (${total}) — excluidas de los totales`);
+  }
 
   if (registros.length === 0) return null;
 
@@ -186,6 +226,7 @@ async function fetchVentasRaw() {
     topProveedores,
     porMedioPago,
     registrosDiariosGastos,
+    facturasSinFecha,
     ultimosRegistros: registros.slice(-10).reverse(),
   };
 }
