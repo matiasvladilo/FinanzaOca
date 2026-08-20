@@ -46,16 +46,6 @@ const registrosMock = [
   { id: 5, timestamp: 'Ayer, 09:00 AM', producto: 'Muffin Arándanos', categoria: 'Pastry', cantidad: 6, motivo: 'Calidad', costo: 18000, local: '' },
 ];
 
-// Periodos disponibles con sus códigos para la API
-const PERIODOS = [
-  { label: 'Todos los períodos', value: '' },
-  { label: 'Últimos 7 días', value: '7d' },
-  { label: 'Últimos 14 días', value: '14d' },
-  { label: 'Este mes', value: 'mes' },
-  { label: 'Mes anterior', value: 'mes_anterior' },
-  { label: 'Este año', value: 'anio' },
-];
-
 const TIPO_BADGE_COLORS = [
   'bg-blue-100 text-blue-700',
   'bg-purple-100 text-purple-700',
@@ -76,15 +66,46 @@ type CierreCajaData = {
   porLocalMes: Record<string, Record<string, CierreCajaLocal>>;
 };
 
-/**
- * Retorna las claves YYYY-MM relevantes para el período/rango activo.
- * Array vacío = sin filtro = usar totales acumulados.
- */
-function getMesesPeriodo(periodo: string, fechaDesde: string, fechaHasta: string): string[] {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const mesKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const pad2 = (n: number) => String(n).padStart(2, '0');
 
+/** "2026-08" del momento actual. */
+function mesActualKey(): string {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${pad2(hoy.getMonth() + 1)}`;
+}
+
+/** "2026-08" → "2026-07". Cruza años sin problema (JS resuelve mes -1 solo). */
+function mesAnteriorKey(mes: string): string {
+  const [y, m] = mes.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+/** "2026-08-15" + 3 → "2026-08-18". Negativos restan. */
+function addDaysISO(iso: string, dias: number): string {
+  const d = toLocalDate(iso);
+  if (!d) return iso;
+  return toLocalISODate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + dias));
+}
+
+/**
+ * Rango de fechas de un mes: 1º al último día — o al día de hoy si es el mes
+ * en curso (no tiene sentido pedir datos del 25 al 31 de un mes que no pasó).
+ */
+function rangoDelMes(mes: string): { desde: string; hasta: string } {
+  const [y, m] = mes.split('-').map(Number);
+  const ultimoDia = new Date(y, m, 0).getDate();
+  const hoy = new Date();
+  const hastaDia = mes === mesActualKey() ? hoy.getDate() : ultimoDia;
+  return { desde: `${mes}-01`, hasta: `${mes}-${pad2(hastaDia)}` };
+}
+
+/**
+ * Retorna las claves YYYY-MM relevantes para el mes/rango activo — para cruzar
+ * contra ccData.porLocalMes (ventas por mes, usado en % Merma vs Ventas).
+ * Array vacío = "todos los meses" = usar los totales acumulados.
+ */
+function getMesesPeriodo(mesFiltro: string, fechaDesde: string, fechaHasta: string): string[] {
   if (fechaDesde || fechaHasta) {
     const desde = fechaDesde ? toLocalDate(fechaDesde) : null;
     const hasta  = fechaHasta  ? toLocalDate(fechaHasta)  : null;
@@ -93,32 +114,12 @@ function getMesesPeriodo(periodo: string, fechaDesde: string, fechaHasta: string
     const cur   = new Date(start.getFullYear(), start.getMonth(), 1);
     const meses: string[] = [];
     while (cur <= end) {
-      meses.push(mesKey(cur));
+      meses.push(`${cur.getFullYear()}-${pad2(cur.getMonth() + 1)}`);
       cur.setMonth(cur.getMonth() + 1);
     }
     return meses;
   }
-
-  switch (periodo) {
-    case 'mes': return [mesKey(now)];
-    case 'mes_anterior': return [mesKey(new Date(now.getFullYear(), now.getMonth() - 1, 1))];
-    case 'anio':  return Array.from({ length: now.getMonth() + 1 }, (_, i) => `${now.getFullYear()}-${pad(i + 1)}`);
-    case '7d':
-    case '14d': {
-      const dias = periodo === '7d' ? 6 : 13;
-      const inicio = new Date(now); inicio.setDate(now.getDate() - dias);
-      const meses = new Set([mesKey(inicio), mesKey(now)]);
-      return [...meses];
-    }
-    default: return []; // sin filtro → totales acumulados
-  }
-}
-
-/** "2026-08-15" + 3 → "2026-08-18". Negativos restan. */
-function addDaysISO(iso: string, dias: number): string {
-  const d = toLocalDate(iso);
-  if (!d) return iso;
-  return toLocalISODate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + dias));
+  return mesFiltro ? [mesFiltro] : [];
 }
 
 /** Suma porDia.monto para fechas en [desde, hasta] inclusive. Compara como strings: YYYY-MM-DD ordena igual que la fecha real. */
@@ -135,17 +136,15 @@ interface RangoComparacion {
 }
 
 /**
- * Dado el filtro de período activo, calcula el rango "anterior" contra el que
- * comparar — y una descripción corta de qué se está comparando.
+ * Dado el mes elegido (o el rango personalizado), calcula el rango "anterior"
+ * contra el que comparar — y una descripción corta de qué se está comparando.
  *
- * Compara período a la fecha vs el mismo tramo de días del período anterior
- * (no el mes anterior completo), para no castigar un mes que todavía no
- * termina contra uno que sí. 'anio' y sin período no tienen un "anterior" que
- * tenga sentido mostrar, así que retornan null — la UI cae a un texto neutro.
+ * Si el mes elegido es el actual, compara a la fecha (mismos días del mes
+ * anterior), para no castigar un mes que todavía no termina contra uno que sí.
+ * Si es un mes ya cerrado, compara mes completo contra mes completo anterior.
+ * "Todos los meses" no tiene un "anterior" que tenga sentido mostrar.
  */
-function rangoComparacion(periodo: string, fechaDesde: string, fechaHasta: string): RangoComparacion | null {
-  const hoyISO = toLocalISODate(new Date());
-
+function rangoComparacion(mesFiltro: string, fechaDesde: string, fechaHasta: string): RangoComparacion | null {
   // Rango personalizado → comparar contra el tramo inmediatamente anterior, de igual duración
   if (fechaDesde && fechaHasta) {
     const d = toLocalDate(fechaDesde), h = toLocalDate(fechaHasta);
@@ -159,42 +158,22 @@ function rangoComparacion(periodo: string, fechaDesde: string, fechaHasta: strin
     };
   }
 
-  const hoy = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
+  if (!mesFiltro) return null; // "todos los meses": no hay un "anterior" claro
 
-  switch (periodo) {
-    case 'mes': {
-      const mesAnt = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
-      const ultimoDiaMesAnt = new Date(hoy.getFullYear(), hoy.getMonth(), 0).getDate();
-      const diaComparable = Math.min(hoy.getDate(), ultimoDiaMesAnt);
-      return {
-        anteriorDesde: `${mesAnt.getFullYear()}-${pad(mesAnt.getMonth() + 1)}-01`,
-        anteriorHasta: `${mesAnt.getFullYear()}-${pad(mesAnt.getMonth() + 1)}-${pad(diaComparable)}`,
-        caption: 'vs mes anterior (mismos días)',
-      };
-    }
-    case 'mes_anterior': {
-      const mesAnt = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
-      const dosAtras = new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1);
-      return {
-        anteriorDesde: `${dosAtras.getFullYear()}-${pad(dosAtras.getMonth() + 1)}-01`,
-        anteriorHasta: toLocalISODate(new Date(mesAnt.getFullYear(), mesAnt.getMonth(), 0)),
-        caption: 'vs 2 meses atrás',
-      };
-    }
-    case '7d':
-    case '14d': {
-      const dias = periodo === '7d' ? 7 : 14;
-      const actualDesde = addDaysISO(hoyISO, -(dias - 1));
-      return {
-        anteriorDesde: addDaysISO(actualDesde, -dias),
-        anteriorHasta: addDaysISO(actualDesde, -1),
-        caption: periodo === '7d' ? 'vs semana anterior' : 'vs quincena anterior',
-      };
-    }
-    default:
-      return null; // '' (todos) y 'anio': no hay un "anterior" claro que comparar
+  const mesAnt = mesAnteriorKey(mesFiltro);
+  if (mesFiltro === mesActualKey()) {
+    const diaHoy = new Date().getDate();
+    const [ay, am] = mesAnt.split('-').map(Number);
+    const ultimoDiaMesAnt = new Date(ay, am, 0).getDate();
+    const diaComparable = Math.min(diaHoy, ultimoDiaMesAnt);
+    return {
+      anteriorDesde: `${mesAnt}-01`,
+      anteriorHasta: `${mesAnt}-${pad2(diaComparable)}`,
+      caption: 'vs mes anterior (mismos días)',
+    };
   }
+  const { hasta: anteriorHasta } = rangoDelMes(mesAnt);
+  return { anteriorDesde: `${mesAnt}-01`, anteriorHasta, caption: 'vs mes anterior' };
 }
 
 // --- Main Page ---
@@ -203,7 +182,9 @@ export default function MermaPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // ── Filtros ──────────────────────────────────────────────────────────────
-  const [periodo, setPeriodo] = useState('');          // '' = todos
+  // El mes cae solo en el mes en curso al abrir la página — nunca hay que
+  // elegirlo a mano para ver "lo de este mes". '' = todos los meses.
+  const [mesFiltro, setMesFiltro] = useState(mesActualKey());
   const [localFiltro, setLocalFiltro] = useState('');  // '' = todos
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
@@ -227,9 +208,15 @@ export default function MermaPage() {
     setLoadingSheet(true);
     const params = new URLSearchParams();
     if (localFiltro) params.set('local', localFiltro);
-    if (periodo)     params.set('periodo', periodo);
-    if (fechaDesde)  params.set('fechaDesde', fechaDesde);
-    if (fechaHasta)  params.set('fechaHasta', fechaHasta);
+    if (fechaDesde || fechaHasta) {
+      // Rango personalizado: tiene prioridad sobre el mes.
+      if (fechaDesde) params.set('fechaDesde', fechaDesde);
+      if (fechaHasta) params.set('fechaHasta', fechaHasta);
+    } else if (mesFiltro) {
+      const { desde, hasta } = rangoDelMes(mesFiltro);
+      params.set('fechaDesde', desde);
+      params.set('fechaHasta', hasta);
+    }
 
     const url = `/api/merma-data${params.size > 0 ? '?' + params.toString() : ''}`;
 
@@ -246,9 +233,19 @@ export default function MermaPage() {
       })
       .catch(() => {})
       .finally(() => setLoadingSheet(false));
-  }, [localFiltro, periodo, fechaDesde, fechaHasta]);
+  }, [localFiltro, mesFiltro, fechaDesde, fechaHasta]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Meses con datos, para el desplegable. sheetPorDia siempre trae el
+  // histórico completo del local filtrado (no respeta el filtro de mes), así
+  // que sirve como fuente única sin pedir un endpoint aparte. Se agrega el mes
+  // en curso a mano por si todavía no tiene ningún registro cargado — si no,
+  // "Mes actual" desaparecería de la lista justo cuando más se necesita.
+  const mesesDisponibles = useMemo(() => {
+    const set = new Set([mesActualKey(), ...sheetPorDia.map(d => d.fecha.slice(0, 7))]);
+    return [...set].sort();
+  }, [sheetPorDia]);
 
   // Cierre-caja: se carga una sola vez (tiene todos los meses y locales)
   useEffect(() => {
@@ -291,11 +288,17 @@ export default function MermaPage() {
       ]
     : [{ label: 'Todos los locales', value: '' }];
 
-  // Número de filtros activos
-  const filtrosActivos = [localFiltro, periodo, fechaDesde, fechaHasta].filter(Boolean).length;
+  // Número de filtros activos — el mes sólo cuenta si NO es el mes en curso:
+  // ese es el default permanente de la página, no algo que el usuario "activó".
+  const filtrosActivos = [
+    localFiltro,
+    mesFiltro !== mesActualKey() ? mesFiltro : '',
+    fechaDesde,
+    fechaHasta,
+  ].filter(Boolean).length;
 
   const clearFiltros = () => {
-    setPeriodo('');
+    setMesFiltro(mesActualKey());
     setLocalFiltro('');
     setFechaDesde('');
     setFechaHasta('');
@@ -312,7 +315,7 @@ export default function MermaPage() {
   const porcentajeMerma = useMemo(() => {
     if (!sheetKPI || !ccData?.porLocal) return null;
     const { porLocal, porLocalMes } = ccData;
-    const meses = getMesesPeriodo(periodo, fechaDesde, fechaHasta);
+    const meses = getMesesPeriodo(mesFiltro, fechaDesde, fechaHasta);
     const locales = localFiltro
       ? [localFiltro]
       : Object.keys(porLocal);
@@ -328,7 +331,7 @@ export default function MermaPage() {
     }
     if (totalVentas === 0) return null;
     return (sheetKPI.totalMerma / totalVentas) * 100;
-  }, [sheetKPI, ccData, periodo, fechaDesde, fechaHasta, localFiltro]);
+  }, [sheetKPI, ccData, mesFiltro, fechaDesde, fechaHasta, localFiltro]);
 
   // % Merma vs Ventas del período de COMPARACIÓN
   const compPctMerma = useMemo(() => {
@@ -350,13 +353,13 @@ export default function MermaPage() {
   // "anterior" sin pedir el endpoint de nuevo).
   const deltaMerma = useMemo(() => {
     if (!sheetKPI || sheetPorDia.length === 0) return null;
-    const r = rangoComparacion(periodo, fechaDesde, fechaHasta);
+    const r = rangoComparacion(mesFiltro, fechaDesde, fechaHasta);
     if (!r) return null;
     const anterior = sumarPorDia(sheetPorDia, r.anteriorDesde, r.anteriorHasta);
     if (anterior === 0) return null; // sin base real para comparar
     const pct = ((sheetKPI.totalMerma - anterior) / anterior) * 100;
     return { pct, caption: r.caption };
-  }, [sheetKPI, sheetPorDia, periodo, fechaDesde, fechaHasta]);
+  }, [sheetKPI, sheetPorDia, mesFiltro, fechaDesde, fechaHasta]);
 
   // ── Tendencia semanal real: semana actual (lunes→hoy) vs la anterior ─────
   // Independiente del filtro de período activo — es un pulso fijo de "cómo
@@ -445,7 +448,7 @@ export default function MermaPage() {
   };
 
   // Label para el filtro de período activo
-  const periodoLabel = PERIODOS.find(p => p.value === periodo)?.label ?? 'Todos los períodos';
+  const periodoLabel = mesFiltro ? mesLabel(mesFiltro) : 'Todos los meses';
 
   return (
     <div className="flex flex-col flex-1 min-h-screen bg-gray-50 relative">
@@ -473,13 +476,13 @@ export default function MermaPage() {
       {/* ── Barra de Filtros ───────────────────────────────────────────────── */}
       <div className="sticky top-[61px] z-20 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 px-3 py-2">
         <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Filtro por período - Lista desplegable */}
+          {/* Filtro por mes - Lista desplegable, siempre cae en el mes en curso */}
           <PeriodSelect
-            label="Período"
-            value={periodo}
-            options={PERIODOS.filter(p => p.value !== '')}
-            onChange={v => { setPeriodo(v); setFechaDesde(''); setFechaHasta(''); setShowDatePicker(false); }}
-            allLabel="Todos los períodos"
+            label="Mes"
+            value={mesFiltro}
+            options={mesesDisponibles.map(m => ({ label: mesLabel(m), value: m }))}
+            onChange={v => { setMesFiltro(v); setFechaDesde(''); setFechaHasta(''); setShowDatePicker(false); }}
+            allLabel="Todos los meses"
             size="sm"
             dark
           />
@@ -528,7 +531,7 @@ export default function MermaPage() {
                       <input
                         type="date"
                         value={fechaDesde}
-                        onChange={e => { setFechaDesde(e.target.value); setPeriodo(''); }}
+                        onChange={e => { setFechaDesde(e.target.value); setMesFiltro(''); }}
                         className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[12px] outline-none focus:border-blue-400 transition-colors"
                       />
                     </div>
@@ -537,7 +540,7 @@ export default function MermaPage() {
                       <input
                         type="date"
                         value={fechaHasta}
-                        onChange={e => { setFechaHasta(e.target.value); setPeriodo(''); }}
+                        onChange={e => { setFechaHasta(e.target.value); setMesFiltro(''); }}
                         className="w-full border border-gray-200 rounded-lg px-2.5 py-2 text-[12px] outline-none focus:border-blue-400 transition-colors"
                       />
                     </div>
@@ -624,11 +627,11 @@ export default function MermaPage() {
         {compOn && compKPI && (
           <ComparisonPanel
             labelA={
-              periodo
-                ? (PERIODOS.find(p => p.value === periodo)?.label ?? 'Período A')
+              mesFiltro
+                ? mesLabel(mesFiltro)
                 : (fechaDesde || fechaHasta)
                   ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
-                  : 'Período actual'
+                  : 'Todos los meses'
             }
             labelB={compMes ? mesLabel(compMes) : '—'}
             colorA="#3B82F6"
@@ -895,7 +898,7 @@ export default function MermaPage() {
                 <p className="text-[11px] text-gray-400 mt-0.5">
                   Mostrando {registrosFiltrados.length} resultado{registrosFiltrados.length !== 1 ? 's' : ''}
                   {localFiltro ? ` · ${localFiltro}` : ''}
-                  {periodo ? ` · ${periodoLabel}` : ''}
+                  {mesFiltro ? ` · ${periodoLabel}` : ''}
                 </p>
               )}
             </div>
