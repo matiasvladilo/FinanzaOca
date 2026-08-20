@@ -126,3 +126,73 @@ export function isoWeekMonday(isoDate: string): string {
   const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diffToMonday, 0, 0, 0, 0);
   return toLocalISODate(monday);
 }
+
+// ── Límites de un rango en la zona del negocio ────────────────────────────────
+
+/**
+ * Las tablas de ConectOca guardan `created_at` como timestamptz, así que para
+ * preguntar "¿qué se vendió en agosto?" hay que consultar por INSTANTES, no por
+ * fechas sueltas. Y el mes que le importa al negocio es el mes chileno: agosto
+ * empieza el 1 a las 00:00 en Santiago, no en UTC.
+ *
+ * Estas funciones traducen un rango de días calendario a los dos instantes que
+ * lo delimitan. NO usarlas para las planillas de Google Sheets: ahí las fechas
+ * no tienen hora y se comparan como calendario.
+ */
+
+const TZ_NEGOCIO = 'America/Santiago';
+
+/**
+ * Minutos que `tz` va adelantada respecto de UTC en ese instante.
+ * Chile alterna entre −240 y −180 con el horario de verano, así que no se puede
+ * hardcodear el offset.
+ */
+function offsetMinutos(instante: Date, tz: string): number {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(instante);
+  const p: Record<string, number> = {};
+  for (const x of partes) if (x.type !== 'literal') p[x.type] = parseInt(x.value, 10);
+  // hour12:false devuelve "24" para la medianoche en algunas versiones de ICU
+  const comoUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second);
+  return (comoUtc - Math.floor(instante.getTime() / 1000) * 1000) / 60000;
+}
+
+/** Instante UTC que corresponde a ese reloj de pared en la zona del negocio. */
+function instanteEnZona(
+  y: number, mes: number, dia: number,
+  h: number, mi: number, s: number, ms: number,
+): Date {
+  const tentativo = Date.UTC(y, mes - 1, dia, h, mi, s, ms);
+  const off1 = offsetMinutos(new Date(tentativo), TZ_NEGOCIO);
+  let real = tentativo - off1 * 60000;
+  // Si el tentativo cayó del otro lado de un cambio de hora, el offset que
+  // corresponde es el del instante corregido.
+  const off2 = offsetMinutos(new Date(real), TZ_NEGOCIO);
+  if (off2 !== off1) real = tentativo - off2 * 60000;
+  return new Date(real);
+}
+
+/** Cuántos días tiene ese mes (mes 1-12). */
+export function ultimoDiaDelMes(anio: number, mes: number): number {
+  return new Date(Date.UTC(anio, mes, 0)).getUTCDate();
+}
+
+/**
+ * Convierte un rango de días calendario (YYYY-MM-DD, inclusive en ambos
+ * extremos) a los instantes UTC que lo delimitan en hora de Chile: desde las
+ * 00:00:00.000 del primer día hasta las 23:59:59.999 del último.
+ */
+export function limitesUtcDelRango(
+  desdeYMD: string,
+  hastaYMD: string,
+): { desdeISO: string; hastaISO: string } {
+  const [dy, dm, dd] = desdeYMD.split('-').map(Number);
+  const [hy, hm, hd] = hastaYMD.split('-').map(Number);
+  return {
+    desdeISO: instanteEnZona(dy, dm, dd, 0, 0, 0, 0).toISOString(),
+    hastaISO: instanteEnZona(hy, hm, hd, 23, 59, 59, 999).toISOString(),
+  };
+}

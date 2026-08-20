@@ -20,12 +20,18 @@ export function generarMeses(n = 18): { key: string; label: string }[] {
   });
 }
 
+/**
+ * Período por defecto: el mes en curso, nada más.
+ *
+ * Se calcula con la fecha del momento, así que avanza solo — en septiembre
+ * arranca en septiembre sin tocar nada. Antes devolvía un rango de 3 meses
+ * (mes actual − 2), que hacía que la pantalla abriera mostrando una mezcla de
+ * meses viejos sin que quedara claro por qué.
+ */
 export function defaultMesRange(): { desde: string; hasta: string } {
   const hoy = new Date();
-  const hasta = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
-  const d2 = new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1);
-  const desde = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, '0')}`;
-  return { desde, hasta };
+  const mes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  return { desde: mes, hasta: mes };
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────

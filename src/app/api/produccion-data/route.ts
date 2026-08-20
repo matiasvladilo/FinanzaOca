@@ -24,6 +24,28 @@ import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/pars
 import { getSupabaseClient } from '@/lib/supabase';
 import { getControlPanClient } from '@/lib/supabase-controlpan';
 import { requireAuth } from '@/lib/auth-api';
+import { limitesUtcDelRango, ultimoDiaDelMes } from '@/lib/date-utils';
+
+/**
+ * Rango para consultar ConectOca.
+ *
+ * `orders.created_at` es timestamptz, así que hay que acotar por instantes y no
+ * por fechas sueltas, y los límites son la medianoche **de Chile**: agosto es
+ * agosto acá, no en UTC.
+ *
+ * OJO: esto NO sirve para las planillas de Google Sheets. Ahí las fechas no
+ * tienen hora y se comparan como calendario — por eso `desde`/`hasta` siguen
+ * viajando aparte a fetchGastos/fetchMerma/fetchControlPan.
+ */
+function rangoSupabase(
+  mesDesde: string, mesHasta: string,
+  fechaDesde: string, fechaHasta: string,
+): { desdeISO: string; hastaISO: string } {
+  if (fechaDesde && fechaHasta) return limitesUtcDelRango(fechaDesde, fechaHasta);
+  const [hy, hm] = mesHasta.split('-').map(Number);
+  const ultimo = String(ultimoDiaDelMes(hy, hm)).padStart(2, '0');
+  return limitesUtcDelRango(`${mesDesde}-01`, `${mesHasta}-${ultimo}`);
+}
 
 const COLORES = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444', '#06B6D4', '#D1D5DB'];
 
@@ -163,7 +185,14 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
     for (const row of data as Record<string, unknown>[]) {
       const { order_items: nested, ...order } = row;
       orders.push(order);
-      if (Array.isArray(nested)) allItems.push(...nested);
+      // Se le cuelga la fecha del pedido a cada ítem: sin eso no se puede
+      // armar la serie de "cuánto se vendió de X día a día", porque
+      // order_items no tiene su propia fecha utilizable.
+      if (Array.isArray(nested)) {
+        for (const item of nested as Record<string, unknown>[]) {
+          allItems.push({ ...item, created_at: order.created_at });
+        }
+      }
     }
     if (data.length < PAGE) break;
   }
@@ -357,16 +386,13 @@ export async function GET(req: NextRequest) {
     const fechaHasta = searchParams.get('fechaHasta') ?? '';
 
     const { desde, hasta } = getDateRange({ mesDesde, mesHasta, fechaDesde, fechaHasta });
-    // Formatear como fecha local (sin conversión UTC) para que "marzo" no incluya abril
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const desdeStr = `${desde.getFullYear()}-${pad(desde.getMonth() + 1)}-${pad(desde.getDate())}`;
-    const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth() + 1)}-${pad(hasta.getDate())}`;
+    const { desdeISO, hastaISO } = rangoSupabase(mesDesde, mesHasta, fechaDesde, fechaHasta);
 
     // Fetch en paralelo
     const [gastos, mermaData, ventasData, controlPan] = await Promise.all([
       fetchGastos(local, desde, hasta),
       fetchMerma(local, desde, hasta),
-      fetchVentasSupabase(desdeStr, hastaStr),
+      fetchVentasSupabase(desdeISO, hastaISO),
       fetchControlPan(desde, hasta),
     ]);
 
@@ -447,6 +473,11 @@ export async function GET(req: NextRequest) {
 
     // ── Top productos (Supabase order_items) ─────────────────────────────────
     const prodMap: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
+    // Serie diaria por producto, para poder responder "cuánto se vendió de X".
+    // Sparse a propósito: sólo los días con venta. Medido sobre el histórico
+    // completo son ~7.800 celdas (~245 KB); acotado a un mes, ~35 KB.
+    const porDia: Record<string, Record<string, { unidades: number; ingresos: number }>> = {};
+    let totalUnidades = 0;
     for (const item of items) {
       const nombre    = String(item.product_name ?? '(sin nombre)');
       const cant      = Number(item.quantity ?? 0);
@@ -457,10 +488,20 @@ export async function GET(req: NextRequest) {
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;
+      totalUnidades += cant;
+
+      const dia = String(item.created_at ?? '').slice(0, 10);
+      if (dia) {
+        if (!porDia[nombre]) porDia[nombre] = {};
+        if (!porDia[nombre][dia]) porDia[nombre][dia] = { unidades: 0, ingresos: 0 };
+        porDia[nombre][dia].unidades += cant;
+        porDia[nombre][dia].ingresos += cant * precio;
+      }
     }
-    const topProductos = Object.values(prodMap)
-      .sort((a, b) => b.unidades - a.unidades)
-      .slice(0, 15);
+    // Lista completa, ordenada por unidades. `topProductos` se mantiene como los
+    // primeros 15 porque el panel de Resumen y los informes ya lo consumen así.
+    const productos = Object.values(prodMap).sort((a, b) => b.unidades - a.unidades);
+    const topProductos = productos.slice(0, 15);
 
     // ── Por área de producción ────────────────────────────────────────────────
     const categoriaVentasMap: Record<string, { unidades: number; ingresos: number }> = {};
@@ -500,11 +541,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      kpi: { totalVentas, totalCostos, totalMerma, rentabilidad, totalPedidos },
+      kpi: { totalVentas, totalCostos, totalMerma, rentabilidad, totalPedidos, totalUnidades },
       ventasPorMes,
       gastosPorMes,
       mermasPorMes,
       topProductos,
+      productos,
+      productosPorDia: porDia,
       porArea,
       porTipoMerma,
       topProveedoresProd,
@@ -575,17 +618,16 @@ export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: s
     ventasConectOca: 0, panExterno: 0, totalVentas: 0, gastos: 0, deudaPendiente: 0,
   };
   try {
-    // Usar fechas locales (YYYY-MM-DD) igual que el route handler principal
+    // Fechas calendario para las planillas (no tienen hora)…
     const [dy, dm, dd] = fechaDesde.split('-').map(Number);
     const [hy, hm, hd] = fechaHasta.split('-').map(Number);
     const desde = new Date(dy, dm - 1, dd, 0, 0, 0, 0);
     const hasta = new Date(hy, hm - 1, hd, 23, 59, 59, 999);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const desdeStr = `${desde.getFullYear()}-${pad(desde.getMonth() + 1)}-${pad(desde.getDate())}`;
-    const hastaStr = `${hasta.getFullYear()}-${pad(hasta.getMonth() + 1)}-${pad(hasta.getDate())}`;
+    // …e instantes en hora de Chile para ConectOca, que guarda timestamptz.
+    const { desdeISO, hastaISO } = limitesUtcDelRango(fechaDesde, fechaHasta);
 
     const [ventasRes, gastosRes, controlPanRes] = await Promise.allSettled([
-      fetchVentasSupabase(desdeStr, hastaStr),
+      fetchVentasSupabase(desdeISO, hastaISO),
       fetchGastos('todos', desde, hasta),
       fetchControlPan(desde, hasta),
     ]);
