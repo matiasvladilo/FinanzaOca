@@ -123,21 +123,63 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-// ── Static alert data ─────────────────────────────────────────────────────────
-const ALERTAS_INIT = [
-  { id: 1, tipo: 'critical', titulo: 'Pico Crítico', tiempo: 'Hoy, 10:45 AM', mensaje: 'Índice alcanzó 62.4% en sucursal PV. Spike causado por mantenimiento no planificado y bajo volumen de transacciones.', acknowledged: false },
-  { id: 2, tipo: 'warning',  titulo: 'Alerta de Merma', tiempo: 'Ayer', mensaje: 'La merma en La Reina subió un 15%. Se proyecta que empuje el índice semanal sobre 60% si no se corrige.', acknowledged: false },
-  { id: 3, tipo: 'info',     titulo: 'Alerta de Eficiencia', tiempo: 'Hace 2 días', mensaje: 'PT está en 48.2%. Mantiene tendencia positiva pero requiere monitoreo durante fin de semana.', acknowledged: true },
-];
-
 type Modo = 'semana' | 'dia';
+
+interface Alerta {
+  key: string;          // "{sucursal}-{periodo}" — estable entre renders para el dismiss/ack
+  tipo: 'critical' | 'warning';
+  titulo: string;
+  tiempo: string;       // etiqueta del período real (semana o día), no una hora inventada
+  mensaje: string;
+}
+
+/**
+ * Genera alertas a partir de indice50Data — antes esta lista era 3 objetos
+ * fijos en el código, con porcentajes y horarios ("Hoy, 10:45 AM") inventados
+ * que nunca cambiaban. Cada fila con índice > 60% en el período/local
+ * visible se vuelve una alerta real, con las ventas y gastos que la explican.
+ *
+ * El corte critical/warning (20 puntos sobre el umbral) es una elección
+ * simple y ajustable, no una regla de negocio definida — no hay un criterio
+ * "oficial" de severidad más allá del umbral de 60% que ya usa el resto de
+ * la página.
+ */
+function calcularAlertas(
+  indice50Data: Record<string, any>[],
+  sucursales: string[],
+  fmt: (v: number) => string,
+): Alerta[] {
+  const crudas: (Alerta & { idx: number })[] = [];
+  for (const row of indice50Data) {
+    for (const suc of sucursales) {
+      const idx = row[suc];
+      if (idx === undefined || idx <= 60) continue;
+      const ventas = row[`__ventas_${suc}`] ?? 0;
+      const gastos = row[`__gastos_${suc}`] ?? 0;
+      crudas.push({
+        idx,
+        key: `${suc}-${row.semana}`,
+        tipo: idx >= 80 ? 'critical' : 'warning',
+        titulo: `${suc} sobre el umbral`,
+        tiempo: row.semana,
+        mensaje: `Índice de ${idx}% en ${row.semana} — gastos ${fmt(gastos)} sobre ventas ${fmt(ventas)}.`,
+      });
+    }
+  }
+  // Peor primero: es lo que hay que mirar antes.
+  return crudas.sort((a, b) => b.idx - a.idx);
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function FactorIndicePage() {
   const { theme, cycle } = useTheme();
   const themeMeta = THEME_META[theme];
 
-  const [alertList, setAlertList]   = useState(ALERTAS_INIT);
+  // Reconocer/descartar una alerta es sólo de esta sesión — no hay backend
+  // para persistirlo, y no correspondería fingir que sí. Se guarda por `key`
+  // (sucursal+período), no por índice de array, para que sobreviva a que la
+  // lista se recalcule con datos nuevos.
+  const [alertStatus, setAlertStatus] = useState<Record<string, 'acknowledged' | 'dismissed'>>({});
   const [showModal, setShowModal]   = useState(false);
   const [mesSeleccionado, setMes]   = useState('');
   const [modo, setModo]             = useState<Modo>('semana');
@@ -149,8 +191,6 @@ export default function FactorIndicePage() {
   // ── Comparación ─────────────────────────────────────────────────────────
   const [compOn, setCompOn]   = useState(false);
   const [compMes2, setCompMes2] = useState('');
-
-  const activeAlerts = alertList.filter(a => !a.acknowledged).length;
 
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -320,6 +360,15 @@ export default function FactorIndicePage() {
   const fmt         = (v: number) => v >= 1_000_000
     ? `$${(v / 1_000_000).toFixed(1)}M`
     : `$${Math.round(v / 1000)}k`;
+
+  // ── Alertas reales, calculadas del mismo indice50Data que dibuja el gráfico ──
+  const alertList = useMemo(() => {
+    const calculadas = calcularAlertas(indice50Data, sucursalesVisibles, fmt);
+    return calculadas
+      .filter(a => alertStatus[a.key] !== 'dismissed')
+      .map(a => ({ ...a, acknowledged: alertStatus[a.key] === 'acknowledged' }));
+  }, [indice50Data, sucursalesVisibles, alertStatus]);
+  const activeAlerts = alertList.filter(a => !a.acknowledged).length;
 
   const handleExport = () => {
     exportToCSV(
@@ -537,7 +586,7 @@ export default function FactorIndicePage() {
                 Índice 60 por {modo === 'semana' ? 'Semana' : 'Día'}
               </h3>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
-                (Gastos / Ventas) × 100 · punto verde ≤60% · rojo &gt;60%
+                (Gastos / Ventas) × 100 · punto verde ≤60% · rojo &gt;60% · sólo los 4 locales, sin Producción
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -679,9 +728,12 @@ export default function FactorIndicePage() {
             )}
             <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
               (Gastos / Ventas) × 100 · objetivo &lt;60%
-              {sucSel.length > 0 && sucSel.length < allSucs.length && (
-                <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
-              )}
+              {sucSel.length > 0 && sucSel.length < allSucs.length
+                ? <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
+                // A diferencia de "Índice 60" en Ventas, éste nunca suma Producción —
+                // por diseño, no es un descuido. Se aclara para que no parezcan el
+                // mismo número medido dos veces distinto.
+                : <span className="ml-1">· sin Producción</span>}
             </p>
             <button onClick={() => setShowModal(true)}
               className="mt-auto py-2 rounded-xl text-[12px] font-semibold transition-all"
@@ -755,11 +807,11 @@ export default function FactorIndicePage() {
 
             <div className="flex-1 space-y-3 overflow-y-auto">
               {alertList.map(a => (
-                <div key={a.id} className={clsx('rounded-xl p-4', a.acknowledged ? 'opacity-60' : '')}
+                <div key={a.key} className={clsx('rounded-xl p-4', a.acknowledged ? 'opacity-60' : '')}
                   style={{ border: '1px solid var(--border-2)', background: a.acknowledged ? 'var(--hover)' : 'var(--card)' }}>
                   <div className="flex items-start justify-between mb-1">
                     <p className={clsx('text-[12px] font-bold',
-                      a.tipo === 'critical' ? 'text-red-500' : a.tipo === 'warning' ? 'text-orange-500' : 'text-blue-500')}>
+                      a.tipo === 'critical' ? 'text-red-500' : 'text-orange-500')}>
                       {a.titulo}
                     </p>
                     <span className="text-[10px] whitespace-nowrap ml-2" style={{ color: 'var(--text-3)' }}>{a.tiempo}</span>
@@ -767,11 +819,11 @@ export default function FactorIndicePage() {
                   <p className="text-[11px] leading-relaxed mb-3" style={{ color: 'var(--text-2)' }}>{a.mensaje}</p>
                   {!a.acknowledged ? (
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setAlertList(prev => prev.map(x => x.id === a.id ? { ...x, acknowledged: true } : x))}
+                      <button onClick={() => setAlertStatus(prev => ({ ...prev, [a.key]: 'acknowledged' }))}
                         className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg transition-colors">
                         Reconocer
                       </button>
-                      <button onClick={() => setAlertList(prev => prev.filter(x => x.id !== a.id))}
+                      <button onClick={() => setAlertStatus(prev => ({ ...prev, [a.key]: 'dismissed' }))}
                         className="flex-1 py-1.5 text-[11px] font-semibold rounded-lg transition-colors"
                         style={{ border: '1px solid var(--border-2)', color: 'var(--text-2)' }}>
                         Descartar
@@ -831,7 +883,10 @@ export default function FactorIndicePage() {
                                 <p className="text-[10px] font-bold" style={{ color: 'var(--text-3)' }}>{s}</p>
                               </div>
                               <p className={clsx('text-[18px] font-black',
-                                idx !== undefined ? (idx <= 50 ? 'text-green-500' : 'text-red-500') : '')}
+                                // Mismo umbral que el gráfico y la tarjeta de arriba (60%) — antes decía
+                                // 50 acá y 60 en todo el resto de la página: un 55% se veía verde en el
+                                // gráfico y rojo en este detalle, mismo número, dos lecturas contradictorias.
+                                idx !== undefined ? (idx <= 60 ? 'text-green-500' : 'text-red-500') : '')}
                                 style={idx === undefined ? { color: 'var(--text-3)' } : undefined}>
                                 {idx !== undefined ? `${idx}%` : '—'}
                               </p>

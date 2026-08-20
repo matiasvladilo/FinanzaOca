@@ -1493,7 +1493,13 @@ export default function VentasPage() {
                 ? <p className="text-[10px] text-blue-500 font-medium">comp: {k.comp}</p>
                 : (k as any).sub
                   ? <p className="text-[10px] font-medium" style={{ color: 'var(--text-3)' }}>Gasto: {(k as any).sub}</p>
-                  : <p className="text-[10px] text-gray-400">{hasComp ? 'sin datos comparativos' : 'Período seleccionado'}</p>
+                  // Índice 60 acá incluye Producción salvo que haya un único local elegido
+                  // (mismo criterio que totalVentas/totalGastos, ver includeProduccion más
+                  // arriba). Factor Índice mide sólo los 4 locales físicos, a propósito — se
+                  // aclara para que la diferencia entre ambos números no parezca un error.
+                  : k.label === 'Índice 60' && localSel.length !== 1
+                    ? <p className="text-[10px] text-gray-400">Incluye Producción</p>
+                    : <p className="text-[10px] text-gray-400">{hasComp ? 'sin datos comparativos' : 'Período seleccionado'}</p>
               }
             </div>
             );
