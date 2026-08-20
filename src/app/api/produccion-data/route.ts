@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getProduccionConfig } from '@/lib/google-sheets';
 import { fetchGastosFacturas, topProveedores } from '@/lib/data/gastos';
-import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
+import { parseMonto, parseFecha, getMesLabel, findHeader, agruparMontosPorTexto } from '@/lib/data/parsers';
 import { getSupabaseClient } from '@/lib/supabase';
 import { getControlPanClient } from '@/lib/supabase-controlpan';
 import { requireAuth } from '@/lib/auth-api';
@@ -520,12 +520,11 @@ export async function GET(req: NextRequest) {
       .map(([area, v], i) => ({ area, ...v, color: COLORES[i % COLORES.length] }));
 
     // ── Merma por tipo ────────────────────────────────────────────────────────
-    const mermaMap: Record<string, number> = {};
-    for (const r of mermaData) mermaMap[r.tipo] = (mermaMap[r.tipo] ?? 0) + r.monto;
-    const porTipoMerma = Object.entries(mermaMap)
-      .sort(([, a], [, b]) => b - a)
-      .map(([tipo, monto], i) => ({
-        tipo, monto,
+    // Mismo motivo tipeado distinto en cada carga ("Corporativo" / "corporativo")
+    // no debe partirse en dos categorías — ver agruparMontosPorTexto.
+    const porTipoMerma = agruparMontosPorTexto(mermaData.map(r => ({ texto: r.tipo, monto: r.monto })))
+      .map(({ nombre, monto }, i) => ({
+        tipo: nombre, monto,
         porcentaje: totalMerma > 0 ? Math.round((monto / totalMerma) * 100) : 0,
         color: COLORES[i % COLORES.length],
       }));

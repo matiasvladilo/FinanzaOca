@@ -113,6 +113,41 @@ export function normalizeLocalName(raw: string): string {
   return raw.trim();
 }
 
+// ── Agrupación de texto libre (tipos, motivos, categorías tipeadas a mano) ────
+
+/**
+ * Clave para AGRUPAR texto tipeado a mano en distintas planillas: minúsculas,
+ * sin tildes, sin espacios de más. "Corporativo", "corporativo " y
+ * "CORPORATIVO" deben caer en el mismo grupo aunque cada local las haya
+ * cargado distinto — no es texto para mostrar, sólo para comparar.
+ */
+export function claveAgrupacion(s: string): string {
+  return s.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Suma montos agrupando por texto normalizado (ver claveAgrupacion), pero
+ * conserva una grafía legible para mostrar: la primera que aparece para esa
+ * clave. Mismo criterio que topProveedores() más abajo — no elige "la más
+ * frecuente" para no complicar la función con una segunda pasada.
+ */
+export function agruparMontosPorTexto(
+  items: { texto: string; monto: number }[],
+): { nombre: string; monto: number }[] {
+  const montos: Record<string, number> = {};
+  const nombres: Record<string, string> = {};
+  for (const { texto, monto } of items) {
+    if (!texto) continue;
+    const key = claveAgrupacion(texto);
+    if (!key) continue;
+    if (!nombres[key]) nombres[key] = texto.trim();
+    montos[key] = (montos[key] ?? 0) + monto;
+  }
+  return Object.entries(montos)
+    .sort(([, a], [, b]) => b - a)
+    .map(([key, monto]) => ({ nombre: nombres[key], monto }));
+}
+
 // ── Header lookup (case-insensitive, trim) ────────────────────────────────────
 
 /**

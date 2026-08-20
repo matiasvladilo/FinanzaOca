@@ -117,6 +117,12 @@ export interface MermaResponse {
   kpi: MermaKPI | null;
   chartData: { fecha: string; monto: number }[];
   porTipo: MermaTipo[];
+  /**
+   * Serie diaria SIN el filtro de período aplicado (sólo respeta el filtro de
+   * local) — así el cliente puede comparar el rango elegido contra el anterior
+   * sin pedir el endpoint una segunda vez.
+   */
+  porDia: { fecha: string; monto: number }[];
   ultimosRegistros: MermaRegistro[];
   locales: string[];
   filtros: { local: string; periodo: string };

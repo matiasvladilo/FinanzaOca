@@ -14,8 +14,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { requireAuth } from '@/lib/auth-api';
-import { parseMonto, parseFecha, getMesLabel, getPeriodoRange, findHeader } from '@/lib/data/parsers';
-import { buildDateRange, filterByDateRange } from '@/lib/date-utils';
+import { parseMonto, parseFecha, getMesLabel, getPeriodoRange, findHeader, agruparMontosPorTexto } from '@/lib/data/parsers';
+import { buildDateRange, filterByDateRange, toLocalISODate } from '@/lib/date-utils';
 
 const COLORES_MERMA = ['#3B82F6', '#8B5CF6', '#06B6D4', '#10B981', '#F97316', '#EF4444', '#D1D5DB'];
 
@@ -81,6 +81,21 @@ export async function GET(req: NextRequest) {
       return [];
     });
 
+    // ── Serie diaria, SIN el filtro de período ────────────────────────────────
+    // Se calcula antes de aplicar el filtro de fecha (que sí respeta el de
+    // local, porque localesALeer ya viene acotado) para que el cliente pueda
+    // comparar el período elegido contra el inmediatamente anterior — o armar
+    // la tendencia semanal — sin pedir el endpoint una segunda vez.
+    const porDiaMap: Record<string, number> = {};
+    for (const r of registros) {
+      if (!r.date) continue;
+      const key = toLocalISODate(r.date);
+      porDiaMap[key] = (porDiaMap[key] ?? 0) + r.monto;
+    }
+    const porDia = Object.entries(porDiaMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([fecha, monto]) => ({ fecha, monto }));
+
     // ── Rango de fechas ──────────────────────────────────────────────────────
     let desde: Date | null = null;
     let hasta: Date | null = null;
@@ -117,21 +132,31 @@ export async function GET(req: NextRequest) {
       .map(([, v]) => ({ fecha: getMesLabel(v.mes, v.anio), monto: v.monto }));
 
     // ── Agrupado por tipo ────────────────────────────────────────────────────
-    const tipoMap: Record<string, number> = {};
-    for (const r of registros) tipoMap[r.tipo] = (tipoMap[r.tipo] ?? 0) + r.monto;
-    const porTipo = Object.entries(tipoMap)
-      .sort(([, a], [, b]) => b - a)
-      .map(([nombre, monto], i) => ({
+    // Cada local carga el "TIPO" a mano: "Corporativo" en un local y
+    // "corporativo" en otro son el mismo motivo mal escrito, no dos categorías
+    // distintas. agruparMontosPorTexto las junta por texto normalizado.
+    const porTipo = agruparMontosPorTexto(registros.map(r => ({ texto: r.tipo, monto: r.monto })))
+      .map(({ nombre, monto }, i) => ({
         nombre, monto,
         porcentaje: totalMerma > 0 ? Math.round((monto / totalMerma) * 100) : 0,
         color: COLORES_MERMA[i % COLORES_MERMA.length],
       }));
 
     // ── Últimos registros ────────────────────────────────────────────────────
-    const ultimosRegistros = [...registros].reverse().slice(0, 20).map(r => ({
-      id: r.id, producto: r.producto, tipo: r.tipo,
-      monto: r.monto, fecha: r.fecha, local: r.local,
-    }));
+    // `registros` es la concatenación de los 4 locales en el orden de
+    // getLocalesConfig() (La Reina, PV, PT, Bilbao) — NO viene ordenada por
+    // fecha. Un simple reverse().slice(0, 20) devolvía siempre la cola de
+    // Bilbao, el último local del array: los otros 3 locales nunca aparecían
+    // en "Registros de Merma" salvo que Bilbao tuviera menos de 20 filas.
+    // Hay que ordenar por fecha real antes de cortar.
+    const ultimosRegistros = [...registros]
+      .filter(r => r.date)
+      .sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime())
+      .slice(0, 20)
+      .map(r => ({
+        id: r.id, producto: r.producto, tipo: r.tipo,
+        monto: r.monto, fecha: r.fecha, local: r.local,
+      }));
 
     return NextResponse.json({
       ok: true,
@@ -143,6 +168,7 @@ export async function GET(req: NextRequest) {
       },
       chartData,
       porTipo,
+      porDia,
       ultimosRegistros,
       locales: localesDisponibles,
       filtros: { local: localParam, periodo: periodoParam },
@@ -183,12 +209,9 @@ export async function fetchMermaForReport(fechaDesde: string, fechaHasta: string
 
     const totalMerma = registros.reduce((s, r) => s + r.monto, 0);
 
-    const tipoMap: Record<string, number> = {};
-    for (const r of registros) tipoMap[r.tipo] = (tipoMap[r.tipo] ?? 0) + r.monto;
-    const porTipo = Object.entries(tipoMap)
-      .sort(([, a], [, b]) => b - a)
-      .map(([tipo, monto]) => ({
-        tipo, monto,
+    const porTipo = agruparMontosPorTexto(registros.map(r => ({ texto: r.tipo, monto: r.monto })))
+      .map(({ nombre, monto }) => ({
+        tipo: nombre, monto,
         pct: totalMerma > 0 ? Math.round((monto / totalMerma) * 100) : 0,
       }));
 

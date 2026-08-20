@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { toLocalDate } from '@/lib/date-utils';
+import { toLocalDate, toLocalISODate, isoWeekMonday } from '@/lib/date-utils';
 import {
   PieChart,
   Pie,
@@ -36,11 +36,6 @@ const categoriasMock = [
   { nombre: 'Pastry (Pastelería)', valor: 1200000, color: '#8B5CF6', porcentaje: 28 },
   { nombre: 'Cafe (Bebidas/Café)', valor: 800000, color: '#06B6D4', porcentaje: 19 },
   { nombre: 'Otros', valor: 400000, color: '#D1D5DB', porcentaje: 10 },
-];
-
-
-const sparklineData = [
-  { v: 0.8 }, { v: 1.1 }, { v: 0.9 }, { v: 1.0 }, { v: 1.2 }, { v: 1.4 }, { v: 1.5 },
 ];
 
 const registrosMock = [
@@ -119,6 +114,89 @@ function getMesesPeriodo(periodo: string, fechaDesde: string, fechaHasta: string
   }
 }
 
+/** "2026-08-15" + 3 → "2026-08-18". Negativos restan. */
+function addDaysISO(iso: string, dias: number): string {
+  const d = toLocalDate(iso);
+  if (!d) return iso;
+  return toLocalISODate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + dias));
+}
+
+/** Suma porDia.monto para fechas en [desde, hasta] inclusive. Compara como strings: YYYY-MM-DD ordena igual que la fecha real. */
+function sumarPorDia(porDia: { fecha: string; monto: number }[], desde: string, hasta: string): number {
+  let total = 0;
+  for (const d of porDia) if (d.fecha >= desde && d.fecha <= hasta) total += d.monto;
+  return total;
+}
+
+interface RangoComparacion {
+  anteriorDesde: string;
+  anteriorHasta: string;
+  caption: string;
+}
+
+/**
+ * Dado el filtro de período activo, calcula el rango "anterior" contra el que
+ * comparar — y una descripción corta de qué se está comparando.
+ *
+ * Compara período a la fecha vs el mismo tramo de días del período anterior
+ * (no el mes anterior completo), para no castigar un mes que todavía no
+ * termina contra uno que sí. 'anio' y sin período no tienen un "anterior" que
+ * tenga sentido mostrar, así que retornan null — la UI cae a un texto neutro.
+ */
+function rangoComparacion(periodo: string, fechaDesde: string, fechaHasta: string): RangoComparacion | null {
+  const hoyISO = toLocalISODate(new Date());
+
+  // Rango personalizado → comparar contra el tramo inmediatamente anterior, de igual duración
+  if (fechaDesde && fechaHasta) {
+    const d = toLocalDate(fechaDesde), h = toLocalDate(fechaHasta);
+    if (!d || !h) return null;
+    const dias = Math.round((h.getTime() - d.getTime()) / 86400000) + 1;
+    if (dias <= 0) return null;
+    return {
+      anteriorDesde: addDaysISO(fechaDesde, -dias),
+      anteriorHasta: addDaysISO(fechaDesde, -1),
+      caption: 'vs período anterior (mismos días)',
+    };
+  }
+
+  const hoy = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  switch (periodo) {
+    case 'mes': {
+      const mesAnt = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+      const ultimoDiaMesAnt = new Date(hoy.getFullYear(), hoy.getMonth(), 0).getDate();
+      const diaComparable = Math.min(hoy.getDate(), ultimoDiaMesAnt);
+      return {
+        anteriorDesde: `${mesAnt.getFullYear()}-${pad(mesAnt.getMonth() + 1)}-01`,
+        anteriorHasta: `${mesAnt.getFullYear()}-${pad(mesAnt.getMonth() + 1)}-${pad(diaComparable)}`,
+        caption: 'vs mes anterior (mismos días)',
+      };
+    }
+    case 'mes_anterior': {
+      const mesAnt = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+      const dosAtras = new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1);
+      return {
+        anteriorDesde: `${dosAtras.getFullYear()}-${pad(dosAtras.getMonth() + 1)}-01`,
+        anteriorHasta: toLocalISODate(new Date(mesAnt.getFullYear(), mesAnt.getMonth(), 0)),
+        caption: 'vs 2 meses atrás',
+      };
+    }
+    case '7d':
+    case '14d': {
+      const dias = periodo === '7d' ? 7 : 14;
+      const actualDesde = addDaysISO(hoyISO, -(dias - 1));
+      return {
+        anteriorDesde: addDaysISO(actualDesde, -dias),
+        anteriorHasta: addDaysISO(actualDesde, -1),
+        caption: periodo === '7d' ? 'vs semana anterior' : 'vs quincena anterior',
+      };
+    }
+    default:
+      return null; // '' (todos) y 'anio': no hay un "anterior" claro que comparar
+  }
+}
+
 // --- Main Page ---
 export default function MermaPage() {
   const [showAll, setShowAll] = useState(false);
@@ -135,6 +213,7 @@ export default function MermaPage() {
   const [sheetKPI, setSheetKPI] = useState<SheetMermaKPI | null>(null);
   const [sheetTipos, setSheetTipos] = useState<SheetMermaTipo[]>([]);
   const [sheetRegistros, setSheetRegistros] = useState<SheetMermaRegistro[]>([]);
+  const [sheetPorDia, setSheetPorDia] = useState<{ fecha: string; monto: number }[]>([]);
   const [localesDisponibles, setLocalesDisponibles] = useState<string[]>([]);
   const [loadingSheet, setLoadingSheet] = useState(true);
   const [ccData, setCcData] = useState<CierreCajaData | null>(null);
@@ -161,6 +240,7 @@ export default function MermaPage() {
           setSheetKPI(data.kpi);
           setSheetTipos(data.porTipo ?? []);
           setSheetRegistros(data.ultimosRegistros ?? []);
+          setSheetPorDia(data.porDia ?? []);
           if (data.locales?.length > 1) setLocalesDisponibles(data.locales);
         }
       })
@@ -262,6 +342,48 @@ export default function MermaPage() {
     if (totalVentas === 0) return null;
     return (compKPI.totalMerma / totalVentas) * 100;
   }, [compKPI, ccData, compMes, localFiltro]);
+
+  // ── Delta del costo total vs el período anterior equivalente ─────────────
+  // sheetKPI.totalMerma ya viene filtrado por período+local desde la API;
+  // sólo hace falta el total del tramo anterior, que se saca de sheetPorDia
+  // (esa serie NO tiene el filtro de período, así que cubre cualquier rango
+  // "anterior" sin pedir el endpoint de nuevo).
+  const deltaMerma = useMemo(() => {
+    if (!sheetKPI || sheetPorDia.length === 0) return null;
+    const r = rangoComparacion(periodo, fechaDesde, fechaHasta);
+    if (!r) return null;
+    const anterior = sumarPorDia(sheetPorDia, r.anteriorDesde, r.anteriorHasta);
+    if (anterior === 0) return null; // sin base real para comparar
+    const pct = ((sheetKPI.totalMerma - anterior) / anterior) * 100;
+    return { pct, caption: r.caption };
+  }, [sheetKPI, sheetPorDia, periodo, fechaDesde, fechaHasta]);
+
+  // ── Tendencia semanal real: semana actual (lunes→hoy) vs la anterior ─────
+  // Independiente del filtro de período activo — es un pulso fijo de "cómo
+  // viene la semana", igual que un sparkline de cualquier dashboard real.
+  const tendenciaSemanal = useMemo(() => {
+    if (sheetPorDia.length === 0) return null;
+    const hoyISO = toLocalISODate(new Date());
+    const lunes = isoWeekMonday(hoyISO);
+    const porDiaMap = new Map(sheetPorDia.map(d => [d.fecha, d.monto]));
+
+    const diasTranscurridos: string[] = [];
+    for (let d = lunes; d <= hoyISO; d = addDaysISO(d, 1)) diasTranscurridos.push(d);
+
+    const totalSemana = diasTranscurridos.reduce((s, d) => s + (porDiaMap.get(d) ?? 0), 0);
+    const lunesAnterior = addDaysISO(lunes, -7);
+    const domingoAnterior = addDaysISO(lunes, -1);
+    const totalSemanaAnterior = sumarPorDia(sheetPorDia, lunesAnterior, domingoAnterior);
+    const pct = totalSemanaAnterior > 0 ? ((totalSemana - totalSemanaAnterior) / totalSemanaAnterior) * 100 : null;
+
+    // Lunes a domingo de esta semana: 0 para los días que todavía no llegan
+    const sparkline = Array.from({ length: 7 }, (_, i) => {
+      const dia = addDaysISO(lunes, i);
+      return { v: dia <= hoyISO ? (porDiaMap.get(dia) ?? 0) : 0 };
+    });
+
+    return { pct, totalSemana, hoyIndex: diasTranscurridos.length - 1, sparkline };
+  }, [sheetPorDia]);
 
   // Helpers de formato
   const MESES_FULL: Record<string, string> = {
@@ -553,12 +675,20 @@ export default function MermaPage() {
               <p className="text-[30px] font-black text-gray-900 leading-none">
                 {loadingSheet ? '...' : sheetKPI ? `$${sheetKPI.totalMerma.toLocaleString('es-CL')}` : '$4.250.000'}
               </p>
-              <span className="text-[12px] font-bold text-red-500 flex items-center gap-0.5 pb-1">
-                <TrendingDown className="w-3 h-3" />-5.2%
-              </span>
+              {!loadingSheet && deltaMerma && (
+                // Para merma, MENOS es mejor: una caída (pct <= 0) es la buena noticia → verde.
+                <span className={`text-[12px] font-bold flex items-center gap-0.5 pb-1 ${deltaMerma.pct <= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {deltaMerma.pct <= 0 ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
+                  {deltaMerma.pct > 0 ? '+' : ''}{deltaMerma.pct.toFixed(1)}%
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-gray-400">
-              {filtrosActivos > 0 ? `${sheetKPI?.totalRegistros ?? '—'} registros filtrados` : 'Mes actual vs anterior'}
+              {deltaMerma
+                ? deltaMerma.caption
+                : filtrosActivos > 0
+                  ? `${sheetKPI?.totalRegistros ?? '—'} registros filtrados`
+                  : 'Histórico completo'}
             </p>
           </div>
 
@@ -603,17 +733,25 @@ export default function MermaPage() {
             <div className="flex items-end justify-between">
               <div>
                 <div className="flex items-end gap-2 mb-1">
-                  <p className="text-[30px] font-black text-gray-900 leading-none">+1.5%</p>
+                  <p className="text-[30px] font-black text-gray-900 leading-none">
+                    {loadingSheet
+                      ? '...'
+                      : tendenciaSemanal?.pct != null
+                        ? `${tendenciaSemanal.pct > 0 ? '+' : ''}${tendenciaSemanal.pct.toFixed(1)}%`
+                        : '—'}
+                  </p>
                 </div>
-                <p className="text-[11px] text-gray-400">Desde el Lunes</p>
+                <p className="text-[11px] text-gray-400">
+                  {tendenciaSemanal ? `$${Math.round(tendenciaSemanal.totalSemana).toLocaleString('es-CL')} desde el lunes` : 'Desde el lunes'}
+                </p>
               </div>
-              {/* Sparkline */}
+              {/* Sparkline: lunes a domingo de esta semana, los días que faltan quedan en 0 */}
               <div className="w-28 h-12">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={sparklineData} barSize={10}>
+                  <BarChart data={tendenciaSemanal?.sparkline ?? []} barSize={10}>
                     <Bar dataKey="v" radius={[2, 2, 0, 0]}>
-                      {sparklineData.map((_, i) => (
-                        <Cell key={i} fill={i === sparklineData.length - 1 ? '#3B82F6' : '#DBEAFE'} />
+                      {(tendenciaSemanal?.sparkline ?? []).map((_, i) => (
+                        <Cell key={i} fill={i === tendenciaSemanal?.hoyIndex ? '#3B82F6' : '#DBEAFE'} />
                       ))}
                     </Bar>
                   </BarChart>
