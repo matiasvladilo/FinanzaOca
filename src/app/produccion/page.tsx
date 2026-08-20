@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -11,7 +12,8 @@ import {
   DollarSign, Package, AlertTriangle, ChevronDown, Calendar,
   Truck, Banknote, Scale, CircleDollarSign,
 } from 'lucide-react';
-import { MesPicker, defaultMesRange } from '@/components/ui/MesPicker';
+import { MesPicker, defaultMesRange, mesKeyToLabel } from '@/components/ui/MesPicker';
+import ProductosTab, { type ProductoAgregado, type ProductosPorDia } from '@/components/produccion/ProductosTab';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface ControlPanCliente {
@@ -43,11 +45,14 @@ interface ProduccionData {
     totalMerma:  number;
     rentabilidad: number;
     totalPedidos: number;
+    totalUnidades: number;
   };
   ventasPorMes:  { key: string; mes: string; ventas: number; pedidos: number }[];
   gastosPorMes:  { key: string; mes: string; monto: number }[];
   mermasPorMes:  { key: string; mes: string; monto: number }[];
   topProductos:  { nombre: string; categoria: string; unidades: number; ingresos: number }[];
+  productos:       ProductoAgregado[];
+  productosPorDia: ProductosPorDia;
   porArea:       { area: string; unidades: number; ingresos: number; color: string }[];
   porTipoMerma:  { tipo: string; monto: number; porcentaje: number; color: string }[];
   controlPan:    ControlPanData | null;
@@ -131,7 +136,19 @@ function EstadoBadge({ estado }: { estado: string }) {
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
+/**
+ * useSearchParams necesita un <Suspense> arriba, si no `next build` falla al
+ * intentar prerenderizar la página.
+ */
 export default function ProduccionPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProduccionContenido />
+    </Suspense>
+  );
+}
+
+function ProduccionContenido() {
   const [data, setData]       = useState<ProduccionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -152,6 +169,31 @@ export default function ProduccionPage() {
   const [fechaDesde, setFechaDesde] = useState(_hoy.toISOString().slice(0, 10));
   const [fechaHasta, setFechaHasta] = useState(_hoy.toISOString().slice(0, 10));
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
+
+  // ── Solapas ───────────────────────────────────────────────────────────────
+  // La solapa activa vive en la URL para poder compartir el link. Se lee en el
+  // render (no en un efecto) para que la primera pintura ya sea la correcta.
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<'resumen' | 'productos'>(
+    searchParams.get('tab') === 'productos' ? 'productos' : 'resumen',
+  );
+  function cambiarTab(t: 'resumen' | 'productos') {
+    setTab(t);
+    const url = new URL(window.location.href);
+    if (t === 'resumen') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', t);
+    window.history.replaceState(null, '', url.toString());
+  }
+
+  /** Describe el período elegido, para rotular los números de la solapa Productos */
+  const periodoLabel = useMemo(() => {
+    if (modoFiltro === 'dia') {
+      return fechaDesde === fechaHasta ? fechaDesde : `${fechaDesde} → ${fechaHasta}`;
+    }
+    return mesDesde === mesHasta
+      ? mesKeyToLabel(mesDesde)
+      : `${mesKeyToLabel(mesDesde)} – ${mesKeyToLabel(mesHasta)}`;
+  }, [modoFiltro, mesDesde, mesHasta, fechaDesde, fechaHasta]);
 
   // Cierra dropdown local al hacer click fuera
   useEffect(() => {
@@ -350,6 +392,26 @@ export default function ProduccionPage() {
         </div>
       )}
 
+      {/* ── Solapas ──────────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 p-1 rounded-xl w-fit"
+        style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+        {([['resumen', 'Resumen'], ['productos', 'Productos']] as const).map(([id, texto]) => (
+          <button
+            key={id}
+            onClick={() => cambiarTab(id)}
+            className="px-4 py-1.5 rounded-lg text-[12px] font-semibold transition-colors"
+            style={{
+              background: tab === id ? 'var(--active-bg)' : 'transparent',
+              color:      tab === id ? 'var(--active-text)' : 'var(--text-2)',
+            }}
+          >
+            {texto}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'resumen' && (
+      <>
       {/* ── KPI Cards ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
@@ -766,6 +828,22 @@ export default function ProduccionPage() {
               </>
             )}
       </div>
+      </>
+      )}
+
+      {/* ── Solapa Productos ─────────────────────────────────────────────────── */}
+      {tab === 'productos' && (
+        <ProductosTab
+          productos={data?.productos ?? []}
+          productosPorDia={data?.productosPorDia ?? {}}
+          totalUnidades={kpi?.totalUnidades ?? 0}
+          totalVentas={kpi?.totalVentas ?? 0}
+          totalPedidos={kpi?.totalPedidos ?? 0}
+          periodoLabel={periodoLabel}
+          agruparPorMes={modoFiltro === 'mes'}
+          cargando={loading}
+        />
+      )}
     </div>
   );
 }

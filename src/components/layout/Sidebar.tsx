@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getClientSession, type ClientSession } from '@/lib/session-client';
 import {
-  LayoutDashboard, TrendingUp, ShoppingBag,
+  LayoutDashboard, TrendingUp,
   Trash2, LogOut, Gauge, BarChart3, Factory, FileText, CalendarDays,
 } from 'lucide-react';
 
@@ -15,7 +15,8 @@ const navItems = [
   { label: 'Dashboard',     href: '/',              icon: LayoutDashboard },
   { label: 'Factor Índice', href: '/factor-indice', icon: Gauge },
   { label: 'Ventas',        href: '/ventas',         icon: TrendingUp },
-  { label: 'Productos',     href: '/productos',      icon: ShoppingBag },
+  // "Productos" ya no es una sección propia: vive como solapa dentro de Producción,
+  // que es donde estaban los mismos datos de ConectOca duplicados.
   { label: 'Merma',         href: '/merma',          icon: Trash2 },
   { label: 'Producción',    href: '/produccion',     icon: Factory },
   { label: 'Eventos',       href: '/eventos',        icon: CalendarDays },
@@ -40,7 +41,7 @@ export default function Sidebar() {
   const visibleNavItems = isLocalRole
     ? navItems.filter(i => i.href === '/ventas')
     : isProduccionRole
-    ? navItems.filter(i => i.href === '/productos' || i.href === '/produccion')
+    ? navItems.filter(i => i.href === '/produccion')
     : navItems;
 
   const handleLogout = async () => {

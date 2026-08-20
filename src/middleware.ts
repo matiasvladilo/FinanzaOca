@@ -37,17 +37,17 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Rol 'produccion': solo puede acceder a /productos y /produccion
+  // Rol 'produccion': solo puede acceder a /produccion (que ahora incluye la
+  // solapa Productos). /productos se mantiene permitido porque sigue existiendo
+  // como redirect para los links viejos.
   if (user.role === 'produccion') {
     const isAllowed =
       pathname.startsWith('/productos') ||
       pathname.startsWith('/produccion') ||
-      pathname.startsWith('/api/productos') ||
       pathname.startsWith('/api/produccion') ||
-      pathname.startsWith('/api/supabase-analytics') ||
       pathname.startsWith('/api/produccion-data');
     if (!isAllowed) {
-      return NextResponse.redirect(new URL('/productos', req.url));
+      return NextResponse.redirect(new URL('/produccion', req.url));
     }
   }
 
