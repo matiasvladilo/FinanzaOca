@@ -127,10 +127,12 @@ type Modo = 'semana' | 'dia';
 
 interface Alerta {
   key: string;          // "{sucursal}-{periodo}" — estable entre renders para el dismiss/ack
+  local: string;
+  periodo: string;      // etiqueta del período real (semana o día), no una hora inventada
+  idx: number;
+  ventas: number;
+  gastos: number;
   tipo: 'critical' | 'warning';
-  titulo: string;
-  tiempo: string;       // etiqueta del período real (semana o día), no una hora inventada
-  mensaje: string;
 }
 
 /**
@@ -147,27 +149,25 @@ interface Alerta {
 function calcularAlertas(
   indice50Data: Record<string, any>[],
   sucursales: string[],
-  fmt: (v: number) => string,
 ): Alerta[] {
-  const crudas: (Alerta & { idx: number })[] = [];
+  const alertas: Alerta[] = [];
   for (const row of indice50Data) {
     for (const suc of sucursales) {
       const idx = row[suc];
       if (idx === undefined || idx <= 60) continue;
-      const ventas = row[`__ventas_${suc}`] ?? 0;
-      const gastos = row[`__gastos_${suc}`] ?? 0;
-      crudas.push({
+      alertas.push({
         idx,
         key: `${suc}-${row.semana}`,
+        local: suc,
+        periodo: row.semana,
+        ventas: row[`__ventas_${suc}`] ?? 0,
+        gastos: row[`__gastos_${suc}`] ?? 0,
         tipo: idx >= 80 ? 'critical' : 'warning',
-        titulo: `${suc} sobre el umbral`,
-        tiempo: row.semana,
-        mensaje: `Índice de ${idx}% en ${row.semana} — gastos ${fmt(gastos)} sobre ventas ${fmt(ventas)}.`,
       });
     }
   }
   // Peor primero: es lo que hay que mirar antes.
-  return crudas.sort((a, b) => b.idx - a.idx);
+  return alertas.sort((a, b) => b.idx - a.idx);
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -181,6 +181,7 @@ export default function FactorIndicePage() {
   // lista se recalcule con datos nuevos.
   const [alertStatus, setAlertStatus] = useState<Record<string, 'acknowledged' | 'dismissed'>>({});
   const [showModal, setShowModal]   = useState(false);
+  const [alertasAbiertas, setAlertasAbiertas] = useState(false);
   const [mesSeleccionado, setMes]   = useState('');
   const [modo, setModo]             = useState<Modo>('semana');
   const [sucOpen, setSucOpen]       = useState(false);
@@ -363,7 +364,7 @@ export default function FactorIndicePage() {
 
   // ── Alertas reales, calculadas del mismo indice50Data que dibuja el gráfico ──
   const alertList = useMemo(() => {
-    const calculadas = calcularAlertas(indice50Data, sucursalesVisibles, fmt);
+    const calculadas = calcularAlertas(indice50Data, sucursalesVisibles);
     return calculadas
       .filter(a => alertStatus[a.key] !== 'dismissed')
       .map(a => ({ ...a, acknowledged: alertStatus[a.key] === 'acknowledged' }));
@@ -578,6 +579,157 @@ export default function FactorIndicePage() {
           />
         )}
 
+        {/* ── Hero: Factor Índice ──────────────────────────────────────────────
+             Antes este número (y su inverso, "Margen Bruto") aparecían tres
+             veces en la pantalla: acá, en la tarjeta "Comparación Ventas vs
+             Gastos" y en la línea de referencia del gráfico. Se muestra una
+             sola vez, grande, como titular — todo lo demás es apoyo. */}
+        <div className="rounded-2xl p-6 sm:p-8 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+          <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+            <div>
+              <p className="text-[11px] font-bold tracking-widest uppercase mb-1" style={{ color: 'var(--text-3)' }}>
+                Factor Índice{mesSeleccionado ? ` · ${mesLabel(mesSeleccionado)}` : ''}
+              </p>
+              <div className="flex items-end gap-3 flex-wrap">
+                <p className="text-[52px] sm:text-[64px] font-black leading-none"
+                  style={{ color: loading ? 'var(--text-3)' : isOpt ? 'var(--text)' : '#EF4444' }}>
+                  {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
+                </p>
+                {factorGlobal !== null && !loading && (
+                  <div className="flex items-center gap-1.5 pb-2">
+                    {isOpt ? <TrendingDown className="w-4 h-4 text-green-500" /> : <TrendingUp className="w-4 h-4 text-red-500" />}
+                    <span className={clsx('text-[13px] font-bold', isOpt ? 'text-green-600' : 'text-red-500')}>
+                      {isOpt ? 'Bajo umbral' : 'Sobre umbral'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: 'var(--text-3)' }}>
+                (Gastos / Ventas) × 100 · objetivo &lt;60%
+                {sucSel.length > 0 && sucSel.length < allSucs.length
+                  ? <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
+                  : <span className="ml-1">· sin Producción</span>}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={clsx(
+                'inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold',
+                loading ? 'border-gray-300 text-gray-400' :
+                  isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
+              )}>
+                {isOpt ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                {loading ? '…' : isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
+              </div>
+              <button onClick={() => setShowModal(true)}
+                className="py-1.5 px-3 rounded-xl text-[12px] font-semibold transition-all"
+                style={{ border: '1.5px solid var(--border-2)', color: 'var(--text-2)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
+                Ver Detalle
+              </button>
+            </div>
+          </div>
+
+          {factorGlobal !== null && (
+            <div className="mb-6">
+              <div className="flex justify-between text-[10px] mb-1.5" style={{ color: 'var(--text-3)' }}>
+                <span>0%</span><span className="font-semibold" style={{ color: 'var(--text-2)' }}>umbral 60%</span><span>100%</span>
+              </div>
+              <div className="w-full rounded-full h-2.5 relative" style={{ background: 'var(--hover)' }}>
+                <div className="h-2.5 rounded-full transition-all duration-700"
+                  style={{ width: `${Math.min(factorGlobal, 100)}%`, background: isOpt ? 'var(--active-text)' : '#EF4444' }} />
+                <div className="absolute top-0 w-0.5 h-2.5" style={{ left: '60%', background: 'var(--text-3)' }} />
+              </div>
+            </div>
+          )}
+
+          {/* Ventas / gastos — el detalle que explica el número de arriba, sin repetirlo */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Ventas Brutas</span>
+                <span className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalVentas)}</span>
+              </div>
+              <div className="w-full rounded-full h-2" style={{ background: 'var(--hover)' }}>
+                <div className="h-2 rounded-full" style={{ width: '100%', background: 'var(--active-text)' }} />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Gastos Operacionales</span>
+                <span className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalGastos)}</span>
+              </div>
+              <div className="w-full rounded-full h-2" style={{ background: 'var(--hover)' }}>
+                <div className="h-2 rounded-full transition-all duration-700" style={{
+                  background: isOpt ? 'var(--active-text)' : '#EF4444',
+                  width: totalVentas > 0 ? `${Math.min((totalGastos / totalVentas) * 100, 100)}%` : '0%',
+                }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Alertas: franja compacta, expandible ──────────────────────────────
+             Antes era una tarjeta entera compitiendo en tamaño con el número
+             principal. Colapsada muestra sólo el peor caso; el resto queda a
+             un click, no metido en la cara todo el tiempo. */}
+        {!loading && alertList.length > 0 && (
+          <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <button onClick={() => setAlertasAbiertas(o => !o)}
+              className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--hover)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; }}>
+              <AlertTriangle className="w-4 h-4 text-orange-500 flex-shrink-0" />
+              <p className="flex-1 text-[12px] leading-snug min-w-0" style={{ color: 'var(--text)' }}>
+                <span className="font-bold">
+                  {activeAlerts} {activeAlerts === 1 ? 'local sobre el umbral' : 'locales sobre el umbral'}
+                </span>
+                {alertList[0] && (
+                  <span style={{ color: 'var(--text-3)' }}>
+                    {' '}— peor caso: {alertList[0].local} {alertList[0].idx}% en {alertList[0].periodo}
+                  </span>
+                )}
+              </p>
+              <ChevronDown className={clsx('w-4 h-4 flex-shrink-0 transition-transform', alertasAbiertas && 'rotate-180')}
+                style={{ color: 'var(--text-3)' }} />
+            </button>
+
+            {alertasAbiertas && (
+              <div className="p-4 pt-1 space-y-3 max-h-96 overflow-y-auto" style={{ borderTop: '1px solid var(--border)' }}>
+                {alertList.map(a => (
+                  <div key={a.key} className={clsx('rounded-xl p-4 mt-3', a.acknowledged ? 'opacity-60' : '')}
+                    style={{ border: '1px solid var(--border-2)', background: a.acknowledged ? 'var(--hover)' : 'var(--card)' }}>
+                    <div className="flex items-start justify-between mb-1">
+                      <p className={clsx('text-[12px] font-bold', a.tipo === 'critical' ? 'text-red-500' : 'text-orange-500')}>
+                        {a.local} sobre el umbral
+                      </p>
+                      <span className="text-[10px] whitespace-nowrap ml-2" style={{ color: 'var(--text-3)' }}>{a.periodo}</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed mb-3" style={{ color: 'var(--text-2)' }}>
+                      Índice de {a.idx}% en {a.periodo} — gastos {fmt(a.gastos)} sobre ventas {fmt(a.ventas)}.
+                    </p>
+                    {!a.acknowledged ? (
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setAlertStatus(prev => ({ ...prev, [a.key]: 'acknowledged' }))}
+                          className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg transition-colors">
+                          Reconocer
+                        </button>
+                        <button onClick={() => setAlertStatus(prev => ({ ...prev, [a.key]: 'dismissed' }))}
+                          className="flex-1 py-1.5 text-[11px] font-semibold rounded-lg transition-colors"
+                          style={{ border: '1px solid var(--border-2)', color: 'var(--text-2)' }}>
+                          Descartar
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] font-medium" style={{ color: 'var(--text-3)' }}>✓ Reconocida</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Chart — full width */}
         <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
           <div className="flex items-start justify-between mb-4">
@@ -678,171 +830,6 @@ export default function FactorIndicePage() {
               </ResponsiveContainer>
             </div>
           )}
-        </div>
-
-        {/* Bottom row */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-5 pb-6">
-
-          {/* Factor Card — compacto */}
-          <div className="sm:col-span-1 rounded-2xl p-4 shadow-sm flex flex-col gap-3"
-            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: 'var(--text-3)' }}>
-                Factor Índice
-              </p>
-              <div className={clsx(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold',
-                loading ? 'border-gray-300 text-gray-400' :
-                  isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
-              )}>
-                {isOpt ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                {loading ? '…' : isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
-              </div>
-            </div>
-            <div className="flex items-end gap-2">
-              <p className={clsx('text-[38px] font-black leading-none',
-                loading ? 'text-gray-400' : isOpt ? '' : 'text-red-500'
-              )} style={{ color: loading ? undefined : isOpt ? 'var(--text)' : undefined }}>
-                {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
-              </p>
-              {factorGlobal !== null && !loading && (
-                <div className="flex items-center gap-1 pb-1">
-                  {isOpt ? <TrendingDown className="w-3.5 h-3.5 text-green-500" /> : <TrendingUp className="w-3.5 h-3.5 text-red-500" />}
-                  <span className={clsx('text-[11px] font-bold', isOpt ? 'text-green-600' : 'text-red-500')}>
-                    {isOpt ? 'Bajo umbral' : 'Sobre umbral'}
-                  </span>
-                </div>
-              )}
-            </div>
-            {factorGlobal !== null && (
-              <div>
-                <div className="flex justify-between text-[9px] mb-1" style={{ color: 'var(--text-3)' }}>
-                  <span>0%</span><span className="text-orange-500 font-semibold">60%</span><span>100%</span>
-                </div>
-                <div className="w-full rounded-full h-2 relative" style={{ background: 'var(--hover)' }}>
-                  <div className={clsx('h-2 rounded-full transition-all duration-700', isOpt ? 'bg-blue-500' : 'bg-red-500')}
-                    style={{ width: `${Math.min(factorGlobal, 100)}%` }} />
-                  <div className="absolute top-0 w-0.5 h-2 bg-orange-400" style={{ left: '60%' }} />
-                </div>
-              </div>
-            )}
-            <p className="text-[10px]" style={{ color: 'var(--text-3)' }}>
-              (Gastos / Ventas) × 100 · objetivo &lt;60%
-              {sucSel.length > 0 && sucSel.length < allSucs.length
-                ? <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
-                // A diferencia de "Índice 60" en Ventas, éste nunca suma Producción —
-                // por diseño, no es un descuido. Se aclara para que no parezcan el
-                // mismo número medido dos veces distinto.
-                : <span className="ml-1">· sin Producción</span>}
-            </p>
-            <button onClick={() => setShowModal(true)}
-              className="mt-auto py-2 rounded-xl text-[12px] font-semibold transition-all"
-              style={{ border: '1.5px solid var(--border-2)', color: 'var(--text-2)' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
-              Ver Detalle
-            </button>
-          </div>
-
-          {/* Ventas vs Gastos */}
-          <div className="sm:col-span-2 rounded-2xl p-6 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <h3 className="text-[15px] font-bold mb-5" style={{ color: 'var(--text)' }}>Comparación Ventas vs Gastos</h3>
-            <div className="space-y-5">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Ventas Brutas</span>
-                  <span className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalVentas)}</span>
-                </div>
-                <div className="w-full rounded-full h-3" style={{ background: 'var(--hover)' }}>
-                  <div className="h-3 rounded-full bg-blue-500" style={{ width: '100%' }} />
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Gastos Operacionales</span>
-                  <span className="text-[14px] font-bold text-red-500">{loading ? '…' : fmt(totalGastos)}</span>
-                </div>
-                <div className="w-full rounded-full h-3" style={{ background: 'var(--hover)' }}>
-                  <div className="h-3 rounded-full bg-red-400"
-                    style={{ width: totalVentas > 0 ? `${Math.min((totalGastos / totalVentas) * 100, 100)}%` : '0%' }} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
-                <div>
-                  <p className="text-[10px] font-bold tracking-widest uppercase mb-1" style={{ color: 'var(--text-3)' }}>Factor Índice</p>
-                  <p className={clsx('text-[26px] font-black', isOpt ? 'text-blue-500' : 'text-red-500')}>
-                    {loading || factorGlobal === null ? '—' : `${factorGlobal}%`}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold tracking-widest uppercase mb-1" style={{ color: 'var(--text-3)' }}>Margen Bruto</p>
-                  <p className="text-[26px] font-black" style={{ color: 'var(--text)' }}>
-                    {loading || factorGlobal === null ? '—' : `${(100 - factorGlobal).toFixed(1)}%`}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold tracking-widest uppercase mb-1" style={{ color: 'var(--text-3)' }}>Estado</p>
-                  <p className={clsx('text-[26px] font-black', isOpt ? 'text-green-500' : 'text-red-500')}>
-                    {loading ? '…' : isOpt ? 'OK' : 'ALERTA'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Alertas */}
-          <div className="sm:col-span-1 rounded-2xl p-5 shadow-sm flex flex-col" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Alertas de Desviación</h3>
-              </div>
-              {activeAlerts > 0 && (
-                <span className="px-2 py-1 bg-red-100 text-red-600 rounded-full text-[10px] font-bold">
-                  {activeAlerts} ACTIVA{activeAlerts > 1 ? 'S' : ''}
-                </span>
-              )}
-            </div>
-
-            <div className="flex-1 space-y-3 overflow-y-auto">
-              {alertList.map(a => (
-                <div key={a.key} className={clsx('rounded-xl p-4', a.acknowledged ? 'opacity-60' : '')}
-                  style={{ border: '1px solid var(--border-2)', background: a.acknowledged ? 'var(--hover)' : 'var(--card)' }}>
-                  <div className="flex items-start justify-between mb-1">
-                    <p className={clsx('text-[12px] font-bold',
-                      a.tipo === 'critical' ? 'text-red-500' : 'text-orange-500')}>
-                      {a.titulo}
-                    </p>
-                    <span className="text-[10px] whitespace-nowrap ml-2" style={{ color: 'var(--text-3)' }}>{a.tiempo}</span>
-                  </div>
-                  <p className="text-[11px] leading-relaxed mb-3" style={{ color: 'var(--text-2)' }}>{a.mensaje}</p>
-                  {!a.acknowledged ? (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setAlertStatus(prev => ({ ...prev, [a.key]: 'acknowledged' }))}
-                        className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold rounded-lg transition-colors">
-                        Reconocer
-                      </button>
-                      <button onClick={() => setAlertStatus(prev => ({ ...prev, [a.key]: 'dismissed' }))}
-                        className="flex-1 py-1.5 text-[11px] font-semibold rounded-lg transition-colors"
-                        style={{ border: '1px solid var(--border-2)', color: 'var(--text-2)' }}>
-                        Descartar
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="text-[10px] font-medium" style={{ color: 'var(--text-3)' }}>✓ Reconocida</span>
-                  )}
-                </div>
-              ))}
-              {alertList.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <CheckCircle2 className="w-8 h-8 text-green-400 mb-2" />
-                  <p className="text-[12px]" style={{ color: 'var(--text-3)' }}>Sin alertas activas</p>
-                </div>
-              )}
-            </div>
-          </div>
-
         </div>
       </main>
 
