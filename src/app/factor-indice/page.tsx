@@ -596,9 +596,12 @@ export default function FactorIndicePage() {
                   {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
                 </p>
                 {factorGlobal !== null && !loading && (
-                  <div className="flex items-center gap-1.5 pb-2">
-                    {isOpt ? <TrendingDown className="w-4 h-4 text-green-500" /> : <TrendingUp className="w-4 h-4 text-red-500" />}
-                    <span className={clsx('text-[13px] font-bold', isOpt ? 'text-green-600' : 'text-red-500')}>
+                  // Neutro a propósito: el número de arriba y el badge "EN RIESGO" ya
+                  // dicen que hay un problema — repetir el rojo acá era la misma
+                  // alarma por tercera vez en la misma tarjeta.
+                  <div className="flex items-center gap-1.5 pb-2" style={{ color: 'var(--text-3)' }}>
+                    {isOpt ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                    <span className="text-[13px] font-bold">
                       {isOpt ? 'Bajo umbral' : 'Sobre umbral'}
                     </span>
                   </div>
@@ -635,9 +638,11 @@ export default function FactorIndicePage() {
               <div className="flex justify-between text-[10px] mb-1.5" style={{ color: 'var(--text-3)' }}>
                 <span>0%</span><span className="font-semibold" style={{ color: 'var(--text-2)' }}>umbral 60%</span><span>100%</span>
               </div>
+              {/* Relleno siempre neutro: la barra muestra magnitud (qué tan cerca del
+                  100% está), no un segundo semáforo — el rojo ya lo dijo el número. */}
               <div className="w-full rounded-full h-2.5 relative" style={{ background: 'var(--hover)' }}>
                 <div className="h-2.5 rounded-full transition-all duration-700"
-                  style={{ width: `${Math.min(factorGlobal, 100)}%`, background: isOpt ? 'var(--active-text)' : '#EF4444' }} />
+                  style={{ width: `${Math.min(factorGlobal, 100)}%`, background: 'var(--active-text)' }} />
                 <div className="absolute top-0 w-0.5 h-2.5" style={{ left: '60%', background: 'var(--text-3)' }} />
               </div>
             </div>
@@ -659,9 +664,11 @@ export default function FactorIndicePage() {
                 <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Gastos Operacionales</span>
                 <span className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalGastos)}</span>
               </div>
+              {/* Mismo tono que "Ventas Brutas": es una magnitud, no un estado —
+                  el estado ya está dicho arriba, una vez. */}
               <div className="w-full rounded-full h-2" style={{ background: 'var(--hover)' }}>
                 <div className="h-2 rounded-full transition-all duration-700" style={{
-                  background: isOpt ? 'var(--active-text)' : '#EF4444',
+                  background: 'var(--active-text)',
                   width: totalVentas > 0 ? `${Math.min((totalGastos / totalVentas) * 100, 100)}%` : '0%',
                 }} />
               </div>
