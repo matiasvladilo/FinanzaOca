@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { getClientSession, type ClientSession } from '@/lib/session-client';
 import {
   LayoutDashboard, TrendingUp,
-  Trash2, LogOut, Gauge, BarChart3, Factory, FileText, CalendarDays,
+  Trash2, LogOut, Gauge, BarChart3, Factory, FileText,
 } from 'lucide-react';
 
 type SessionUser = ClientSession;
@@ -19,7 +19,8 @@ const navItems = [
   // que es donde estaban los mismos datos de ConectOca duplicados.
   { label: 'Merma',         href: '/merma',          icon: Trash2 },
   { label: 'Producción',    href: '/produccion',     icon: Factory },
-  { label: 'Eventos',       href: '/eventos',        icon: CalendarDays },
+  // Eventos oculto del nav a propósito: la sección todavía no está desarrollada.
+  // La ruta /eventos sigue viva, sólo no se linkea desde acá.
   { label: 'Informes',      href: '/informes',       icon: FileText },
 ];
 
