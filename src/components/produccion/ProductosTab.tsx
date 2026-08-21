@@ -15,7 +15,7 @@ import { useMemo, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Search, Package, X, Download } from 'lucide-react';
+import { Search, Package, X, Download, ChevronUp, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 
 export interface ProductoAgregado {
@@ -72,7 +72,18 @@ export default function ProductosTab({
   const [busqueda, setBusqueda] = useState('');
   const [areaSel, setAreaSel] = useState('Todas');
   const [orden, setOrden] = useState<'unidades' | 'ingresos'>('unidades');
+  const [direccion, setDireccion] = useState<'desc' | 'asc'>('desc');
   const [seleccionado, setSeleccionado] = useState<string | null>(null);
+
+  /**
+   * Click en una columna ya activa invierte el orden (para pasar de "el
+   * mejor" a "el menos rentable" sin scrollear 200 filas); click en la otra
+   * columna cambia de criterio y arranca de nuevo por el mejor.
+   */
+  function cambiarOrden(campo: 'unidades' | 'ingresos') {
+    if (orden === campo) setDireccion(d => (d === 'desc' ? 'asc' : 'desc'));
+    else { setOrden(campo); setDireccion('desc'); }
+  }
 
   const areas = useMemo(
     () => ['Todas', ...[...new Set(productos.map(p => p.categoria))].sort()],
@@ -81,11 +92,12 @@ export default function ProductosTab({
 
   const filtrados = useMemo(() => {
     const q = normalizar(busqueda);
+    const signo = direccion === 'desc' ? 1 : -1;
     return productos
       .filter(p => (areaSel === 'Todas' || p.categoria === areaSel))
       .filter(p => !q || normalizar(p.nombre).includes(q))
-      .sort((a, b) => b[orden] - a[orden]);
-  }, [productos, busqueda, areaSel, orden]);
+      .sort((a, b) => signo * (b[orden] - a[orden]));
+  }, [productos, busqueda, areaSel, orden, direccion]);
 
   const producto = useMemo(
     () => (seleccionado ? productos.find(p => p.nombre === seleccionado) ?? null : null),
@@ -293,11 +305,21 @@ export default function ProductosTab({
                   <th className="font-semibold px-4 py-2">Producto</th>
                   <th className="font-semibold px-2 py-2 hidden sm:table-cell">Área</th>
                   <th className="font-semibold px-2 py-2 text-right">
-                    <button onClick={() => setOrden('unidades')} className={clsx(orden === 'unidades' && 'text-blue-400')}>Unidades</button>
+                    <button onClick={() => cambiarOrden('unidades')}
+                      className={clsx('inline-flex items-center gap-0.5', orden === 'unidades' && 'text-blue-400')}
+                      title="Click de nuevo para invertir el orden">
+                      Unidades
+                      {orden === 'unidades' && (direccion === 'desc' ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />)}
+                    </button>
                   </th>
                   <th className="font-semibold px-2 py-2 text-right hidden sm:table-cell">%</th>
                   <th className="font-semibold px-4 py-2 text-right">
-                    <button onClick={() => setOrden('ingresos')} className={clsx(orden === 'ingresos' && 'text-blue-400')}>Ingresos</button>
+                    <button onClick={() => cambiarOrden('ingresos')}
+                      className={clsx('inline-flex items-center gap-0.5', orden === 'ingresos' && 'text-blue-400')}
+                      title="Click de nuevo para invertir el orden — útil para ver el menos rentable">
+                      Ingresos
+                      {orden === 'ingresos' && (direccion === 'desc' ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />)}
+                    </button>
                   </th>
                 </tr>
               </thead>
