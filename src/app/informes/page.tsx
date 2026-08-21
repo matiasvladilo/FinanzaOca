@@ -389,21 +389,24 @@ function EmailModal({
 
 // ── Automation Panel ───────────────────────────────────────────────────────────
 
+/**
+ * Lo que realmente está programado — no viene de ningún API, es una
+ * descripción de lo que hoy dice netlify.toml. Cambiar esto de verdad
+ * significa editar netlify.toml y volver a desplegar; no hay ningún botón
+ * en esta app que pueda tocar el cron desde el navegador.
+ *
+ * Antes este panel tenía checkboxes que sólo escribían a localStorage — ni
+ * siquiera se releían al recargar la página, así que tildar/destildar "Diario"
+ * no encendía ni apagaba nada real. Se reemplaza por un estado, no un control.
+ */
+const AUTOMATIZACION_REAL = [
+  { key: 'weekly',  label: 'Informe semanal', activo: true,  detalle: 'Martes 9:00 (hora Chile) · lunes a viernes de la semana anterior' },
+  { key: 'monthly', label: 'Informe mensual', activo: true,  detalle: 'Día 1 de cada mes, 9:00 (hora Chile) · mes anterior completo' },
+  { key: 'daily',   label: 'Informe diario',  activo: false, detalle: 'No hay ningún cron programado — el botón "Enviar" de arriba es la única forma de mandarlo hoy' },
+] as const;
+
 function AutomationPanel() {
   const [expanded, setExpanded] = useState(false);
-  const [config, setConfig] = useState({
-    daily: false,
-    weekly: false,
-    monthly: true,
-    recipients: '',
-  });
-  const [saved, setSaved] = useState(false);
-
-  const handleSave = () => {
-    localStorage.setItem('reportAutomationConfig', JSON.stringify(config));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
 
   return (
     <div
@@ -424,53 +427,31 @@ function AutomationPanel() {
       {expanded && (
         <div className="px-5 pb-5 border-t" style={{ borderColor: 'var(--border)' }}>
           <p className="text-xs mt-4 mb-4" style={{ color: 'var(--text-2)' }}>
-            Configura los informes automáticos. El servidor ejecuta el envío vía cron job configurado en Netlify.
+            Esto es lo que corre hoy en el servidor. Para cambiarlo hay que editar{' '}
+            <code className="text-[11px]" style={{ color: 'var(--text-2)' }}>netlify.toml</code> y volver a desplegar —
+            no es algo que se prenda o apague desde acá.
           </p>
 
           <div className="space-y-3 mb-4">
-            {[
-              { key: 'daily', label: 'Informe diario', desc: 'Cada día con datos del día anterior' },
-              { key: 'weekly', label: 'Informe semanal', desc: 'Lunes con datos de la semana anterior' },
-              { key: 'monthly', label: 'Informe mensual', desc: 'Primer día del mes con datos del mes anterior' },
-            ].map(({ key, label, desc }) => (
-              <label key={key} className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config[key as keyof typeof config] as boolean}
-                  onChange={e => setConfig(c => ({ ...c, [key]: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 rounded accent-blue-600"
-                />
+            {AUTOMATIZACION_REAL.map(({ key, label, activo, detalle }) => (
+              <div key={key} className="flex items-start gap-3">
+                {activo
+                  ? <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-green-500" />
+                  : <Minus className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />}
                 <div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{label}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{desc}</p>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                    {label} <span style={{ color: activo ? '#22C55E' : 'var(--text-3)' }}>· {activo ? 'activo' : 'no configurado'}</span>
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{detalle}</p>
                 </div>
-              </label>
+              </div>
             ))}
           </div>
 
-          <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-2)' }}>
-            Destinatarios automáticos
-          </label>
-          <input
-            type="text"
-            value={config.recipients}
-            onChange={e => setConfig(c => ({ ...c, recipients: e.target.value }))}
-            placeholder="email1@ejemplo.com, email2@ejemplo.com"
-            className="w-full rounded-lg px-3 py-2 text-sm border outline-none mb-4"
-            style={{ background: 'var(--bg)', border: '1px solid var(--border-2)', color: 'var(--text)' }}
-          />
-
-          <div className="rounded-lg p-3 mb-4" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Endpoint del cron job:</p>
+          <div className="rounded-lg p-3" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Endpoint que dispara cada envío:</p>
             <code className="text-xs" style={{ color: 'var(--text-3)' }}>GET /api/informes/cron?type=daily|weekly|monthly&secret=CRON_SECRET</code>
           </div>
-
-          <button
-            onClick={handleSave}
-            className="w-full py-2 rounded-lg text-sm font-medium bg-blue-600 text-white"
-          >
-            {saved ? '✓ Configuración guardada' : 'Guardar configuración'}
-          </button>
         </div>
       )}
     </div>
