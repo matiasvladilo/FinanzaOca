@@ -25,17 +25,11 @@ interface RegistroMerma {
 }
 
 const MESES_SHORT = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-const MESES_LARGO = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
-  'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const fmtCLP = (v: number) => '$' + Math.round(v).toLocaleString('es-CL');
 const mesCorto = (k: string) => {
   const [a, m] = k.split('-');
   return `${MESES_SHORT[parseInt(m, 10)] ?? m} ${a.slice(2)}`;
-};
-const mesLargo = (k: string) => {
-  const [a, m] = k.split('-');
-  return `${MESES_LARGO[parseInt(m, 10)] ?? m} ${a}`;
 };
 /** Minúsculas y sin tildes, para comparar texto tipeado a mano. */
 const clave = (s: string) =>
@@ -49,11 +43,7 @@ export default function ExploradorMerma() {
   const [busqueda, setBusqueda]   = useState('');
   const [tipoSel, setTipoSel]     = useState('');   // '' = todos
   const [localSel, setLocalSel]   = useState('');   // '' = todos
-  // Mes concreto, no ventana relativa: "agosto 2026" tiene que dar siempre lo
-  // mismo, no depender de qué día se mire el panel. '' = sin fijar todavía
-  // (se completa solo apenas llegan los datos, ver efecto más abajo).
-  const [mesDesde, setMesDesde]   = useState('');
-  const [mesHasta, setMesHasta]   = useState('');
+  const [nMeses, setNMeses]       = useState(6);
 
   useEffect(() => {
     let cancelado = false;
@@ -61,19 +51,8 @@ export default function ExploradorMerma() {
       .then(r => r.json())
       .then(d => {
         if (cancelado) return;
-        if (d?.ok) {
-          const regs: RegistroMerma[] = d.registros ?? [];
-          setRegistros(regs);
-          // Default: los últimos 6 meses con datos, terminando en el más
-          // reciente. Se fija sólo una vez, cuando todavía no hay selección
-          // (mesHasta === '') — así no le pisa la elección al usuario si
-          // vuelve a disparar este efecto.
-          const disponibles = [...new Set(regs.map(r => r.mesKey))].filter(Boolean).sort();
-          if (disponibles.length) {
-            setMesHasta(prev => prev || disponibles[disponibles.length - 1]);
-            setMesDesde(prev => prev || disponibles[Math.max(disponibles.length - 6, 0)]);
-          }
-        } else setError(true);
+        if (d?.ok) setRegistros(d.registros ?? []);
+        else setError(true);
       })
       .catch(() => { if (!cancelado) setError(true); })
       .finally(() => { if (!cancelado) setCargando(false); });
@@ -92,16 +71,11 @@ export default function ExploradorMerma() {
     [registros],
   );
 
-  // Todos los meses con datos entre mesDesde y mesHasta — las columnas de la
-  // matriz. Comparación por string funciona porque el formato es "YYYY-MM".
-  const mesesConDatos = useMemo(
-    () => [...new Set(registros.map(r => r.mesKey))].filter(k => k && !k.startsWith('0')).sort(),
-    [registros],
-  );
-  const mesesVisibles = useMemo(
-    () => mesesConDatos.filter(m => (!mesDesde || m >= mesDesde) && (!mesHasta || m <= mesHasta)),
-    [mesesConDatos, mesDesde, mesHasta],
-  );
+  // Los N meses más recientes que tienen datos — las columnas de la matriz.
+  const mesesVisibles = useMemo(() => {
+    const todos = [...new Set(registros.map(r => r.mesKey))].filter(k => k && !k.startsWith('0')).sort();
+    return todos.slice(-nMeses);
+  }, [registros, nMeses]);
 
   const filtrados = useMemo(() => {
     const q = clave(busqueda);
@@ -190,35 +164,9 @@ export default function ExploradorMerma() {
           {locales.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
 
-        <div className="flex items-center gap-1.5">
-          <select
-            value={mesDesde}
-            onChange={e => {
-              const v = e.target.value;
-              setMesDesde(v);
-              // Si quedaría invertido (desde > hasta), arrastro el otro extremo
-              // en vez de mostrar una grilla vacía sin explicación.
-              if (mesHasta && v > mesHasta) setMesHasta(v);
-            }}
-            aria-label="Desde el mes"
-            className={selectCls}
-          >
-            {mesesConDatos.map(m => <option key={m} value={m}>{mesLargo(m)}</option>)}
-          </select>
-          <span className="text-[11px] text-gray-400">a</span>
-          <select
-            value={mesHasta}
-            onChange={e => {
-              const v = e.target.value;
-              setMesHasta(v);
-              if (mesDesde && v < mesDesde) setMesDesde(v);
-            }}
-            aria-label="Hasta el mes"
-            className={selectCls}
-          >
-            {mesesConDatos.map(m => <option key={m} value={m}>{mesLargo(m)}</option>)}
-          </select>
-        </div>
+        <select value={nMeses} onChange={e => setNMeses(Number(e.target.value))} aria-label="Cantidad de meses" className={selectCls}>
+          {[3, 6, 12, 24].map(n => <option key={n} value={n}>Últimos {n} meses</option>)}
+        </select>
 
         {hayFiltro && (
           <button
@@ -252,8 +200,7 @@ export default function ExploradorMerma() {
 
           {filtrados.length === 0 ? (
             <p className="text-[13px] text-gray-400 text-center py-10">
-              Sin merma que coincida con ese filtro
-              {mesDesde && mesHasta ? (mesDesde === mesHasta ? ` en ${mesLargo(mesDesde)}` : ` entre ${mesLargo(mesDesde)} y ${mesLargo(mesHasta)}`) : ''}.
+              Sin merma que coincida con ese filtro en los últimos {nMeses} meses.
             </p>
           ) : (
             <>
