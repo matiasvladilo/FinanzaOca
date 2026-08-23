@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
     try {
       const aiRes = await fetch(`${baseUrl}/api/informes/ai-analysis`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
         body: JSON.stringify({
           filters:      reportData.filters,
           current:      reportData.current,
@@ -233,7 +233,7 @@ export async function GET(req: NextRequest) {
     const sendEmail = async (recipients: string[], data: unknown) => {
       const res = await fetch(`${baseUrl}/api/informes/send-email`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-cron-secret': cronSecret },
         body: JSON.stringify({ recipients, subject, reportData: data }),
       });
       return res.json() as Promise<SendEmailResponse>;

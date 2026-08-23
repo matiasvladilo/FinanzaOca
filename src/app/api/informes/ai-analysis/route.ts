@@ -101,8 +101,17 @@ function fmt(n: number): string {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  // Permitir llamadas internas desde el cron autenticadas con x-cron-secret
+  // (igual que /api/informes/generate) — no hay sesión de usuario en una
+  // llamada servidor-a-servidor disparada por la scheduled function.
+  const cronHeader = req.headers.get('x-cron-secret');
+  const cronSecret = process.env.CRON_SECRET;
+  const isCronCall = !!cronSecret && cronHeader === cronSecret;
+
+  if (!isCronCall) {
+    const auth = await requireAuth(req);
+    if (auth instanceof NextResponse) return auth;
+  }
 
   try {
     const body = (await req.json()) as AnalysisRequestBody;

@@ -26,3 +26,6 @@ yarn-error.log*
 .agents/
 .claude/
 tsconfig.tsbuildinfo
+
+# Brainstorming visual companion (local scratch, no compartir)
+.superpowers/

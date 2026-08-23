@@ -2,7 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, SESSION_UI_COOKIE } from '@/lib/session-cookies';
 import { verifySession } from '@/lib/session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/api/auth/login',
+  '/api/auth/logout',
+  // Automatización de informes (Netlify Scheduled Functions → llamadas
+  // servidor-a-servidor, sin cookie de sesión). Cada una valida su propio
+  // secreto (CRON_SECRET vía query param o header x-cron-secret) adentro
+  // del route handler, así que dejarlas pasar acá no las deja abiertas.
+  '/api/informes/cron',
+  '/api/informes/generate',
+  '/api/informes/send-email',
+  '/api/informes/ai-analysis',
+];
 
 /** Redirige a /login limpiando las dos cookies de sesión. */
 function toLogin(req: NextRequest) {
