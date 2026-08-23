@@ -14,8 +14,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { requireAuth } from '@/lib/auth-api';
-import { parseMonto, parseFecha, getMesLabel, getPeriodoRange, findHeader, agruparMontosPorTexto } from '@/lib/data/parsers';
+import { parseMonto, parseFecha, getMesLabel, getPeriodoRange, findHeader, agruparMontosPorTexto,
+         normalizeRetiroCorporativo, esMermaCorporativa } from '@/lib/data/parsers';
 import { buildDateRange, filterByDateRange, toLocalISODate } from '@/lib/date-utils';
+import { withCacheSWR } from '@/lib/data/cache';
 
 const COLORES_MERMA = ['#3B82F6', '#8B5CF6', '#06B6D4', '#10B981', '#F97316', '#EF4444', '#D1D5DB'];
 
@@ -39,10 +41,15 @@ async function fetchLocalMerma(nombre: string, sheetId: string, tab: string) {
     .map((r, i) => {
       const fechaParsed = parseFecha(r[idx.fecha] ?? '');
       const mes = parseInt(r[idx.mes] ?? '0', 10) || fechaParsed.mes;
+      const tipo = r[idx.tipo] ?? 'Sin tipo';
+      const productoRaw = r[idx.producto] ?? '';
       return {
         id:       i + 1,
-        producto: r[idx.producto] ?? '',
-        tipo:     r[idx.tipo]     ?? 'Sin tipo',
+        // En corporativo la columna PRODUCTO trae a la persona que retiró, y
+        // cada local la escribe distinto — unificar acá evita que "marce" (La
+        // Reina) y "Marcela" (PV) figuren como dos líneas.
+        producto: esMermaCorporativa(tipo) ? normalizeRetiroCorporativo(productoRaw) : productoRaw,
+        tipo,
         monto:    parseMonto(r[idx.monto] ?? ''),
         fecha:    r[idx.fecha]    ?? '',
         mes,
@@ -63,8 +70,43 @@ export async function GET(req: NextRequest) {
     const periodoParam    = searchParams.get('periodo')     ?? '';
     const fechaDesdeParam = searchParams.get('fechaDesde')  ?? '';
     const fechaHastaParam = searchParams.get('fechaHasta')  ?? '';
+    const scopeParam      = searchParams.get('scope')       ?? '';
 
     const locales = getLocalesConfig();
+
+    // ── scope=todo: histórico completo, los 4 locales, sin filtrar ───────────
+    // Lo consume el explorador de la página, que cruza producto × local × mes
+    // del lado del cliente. Son ~1.600 filas: pivotear en el browser es
+    // instantáneo y evita un viaje al servidor por cada combinación.
+    if (scopeParam === 'todo') {
+      const todos = await withCacheSWR('merma-todo-v1', async () => {
+        const res = await Promise.allSettled(
+          locales.map(l => fetchLocalMerma(l.nombre, l.id, l.tabs.merma)),
+        );
+        return res.flatMap((r, i) => {
+          if (r.status === 'fulfilled') return r.value;
+          console.error(`[merma-data] Error leyendo ${locales[i].nombre}:`, r.reason);
+          return [];
+        });
+      });
+
+      const registrosTodos = todos
+        .filter(r => r.date)
+        .sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime())
+        .map(r => ({
+          id: `${r.local}-${r.id}`, producto: r.producto, tipo: r.tipo,
+          monto: r.monto, fecha: r.fecha, local: r.local,
+          // "YYYY-MM" precalculado: el cliente agrupa por mes y parsear la
+          // fecha en cada render de 1.600 filas es trabajo al pedo.
+          mesKey: `${r.anio}-${String(r.mes).padStart(2, '0')}`,
+        }));
+
+      return NextResponse.json({
+        ok: true,
+        registros: registrosTodos,
+        locales: ['Todos', ...locales.map(l => l.nombre)],
+      });
+    }
 
     // Si se filtra por local específico, solo leer ese sheet
     const localesALeer = (localParam && localParam !== 'todos' && localParam !== 'Todos')

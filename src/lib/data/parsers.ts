@@ -137,6 +137,49 @@ export function normalizeProveedorName(raw: string): string {
   return raw.trim();
 }
 
+// ── Normalización de retiros corporativos (merma) ─────────────────────────────
+
+/**
+ * En la merma tipo "Corporativo" la columna PRODUCTO no lleva un producto sino
+ * a quién se lo llevó, y cada local escribe a la misma persona distinto: PT les
+ * antepone "DON", La Reina usa el apodo corto y PV el nombre. Sin unificar,
+ * una sola persona aparece como tres líneas separadas y nadie suma lo mismo.
+ *
+ * El mapa es explícito y por coincidencia exacta a propósito: agrupar por
+ * "empieza con" o "contiene" es lo que llevaría a cargarle a una persona el
+ * consumo de otra ("Mati Lagos" vs "Mati V"). Para sumar a alguien nuevo hay
+ * que agregar su variante acá.
+ */
+const RETIROS_CORPORATIVOS: Record<string, string> = {
+  'marce': 'Marcela',        'marcela': 'Marcela',
+  'niko': 'Nicolás',         'don niko': 'Nicolás',
+  'nikolas': 'Nicolás',      'nicolas': 'Nicolás',
+  'fena': 'Fernando',        'don fena': 'Fernando',
+  'fernando': 'Fernando',
+  'matias l': 'Matías Lagos','mati lagos': 'Matías Lagos',
+  'matias lagos': 'Matías Lagos',
+  'matias v': 'Matías V',    'mati v': 'Matías V',
+  'don mati': 'Matías V',
+  'maca': 'Maca',
+  'vale': 'Vale',
+  'p.v': 'Local PV',
+};
+
+/**
+ * Unifica las variantes de un retiro corporativo. Devuelve el texto original si
+ * no está mapeado — lo que no es una persona ("asado", "Otros", "Desayuno") pasa
+ * derecho.
+ */
+export function normalizeRetiroCorporativo(raw: string): string {
+  if (!raw?.trim()) return '';
+  return RETIROS_CORPORATIVOS[claveAgrupacion(raw).replace(/\s+/g, ' ')] ?? raw.trim();
+}
+
+/** true si el tipo de merma es el de retiros de los dueños. */
+export function esMermaCorporativa(tipo: string): boolean {
+  return claveAgrupacion(tipo) === 'corporativo';
+}
+
 // ── Agrupación de texto libre (tipos, motivos, categorías tipeadas a mano) ────
 
 /**

@@ -27,6 +27,7 @@ import {
 import clsx from 'clsx';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
+import ExploradorMerma from '@/components/merma/ExploradorMerma';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 
@@ -951,6 +952,9 @@ export default function MermaPage() {
             )}
           </div>
         </div>
+
+        {/* Explorador: producto × local × mes sobre el histórico completo */}
+        <ExploradorMerma />
 
         {/* Registros Recientes */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
