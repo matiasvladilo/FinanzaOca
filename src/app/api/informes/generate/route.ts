@@ -12,6 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { toLocalDate, filterByDateRange, toLocalISODate } from '@/lib/date-utils';
 import { normalizeProveedorName } from '@/lib/data/parsers';
+import { getDistribuidoraConfig } from '@/lib/google-sheets';
+import { fetchGastosFacturas, topProveedores } from '@/lib/data/gastos';
 import { requireAuth } from '@/lib/auth-api';
 import { fetchCierreCajaData } from '@/app/api/cierre-caja/route';
 import { fetchVentasData } from '@/app/api/ventas/route';
@@ -94,6 +96,46 @@ function daysBetween(isoFrom: string, isoTo: string): number {
   const to = toLocalDate(isoTo);
   if (!from || !to) return 0;
   return Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+// ── Distribuidora (bloque informativo) ───────────────────────────────────────
+
+export interface DistribuidoraReportData {
+  /** Lo que Distribuidora le compró a terceros en el período. */
+  gastoExterno: number;
+  facturas: number;
+  topProveedores: Array<{ nombre: string; monto: number }>;
+  /** Lo que los locales anotaron como compra a Distribuidora en el período. */
+  traspasoALocales: number;
+  porLocal: Array<{ local: string; monto: number }>;
+}
+
+/**
+ * Gasto de la Distribuidora en el período, leído de su propia planilla.
+ *
+ * Va al informe como bloque informativo: NO se suma a los totales del período.
+ * Distribuidora traspasa al costo, así que lo que le compra un local ya está
+ * anotado como gasto de ese local — el dato acá sirve para ver cuánto compró
+ * afuera y cuánto de eso ya salió hacia los locales.
+ */
+async function fetchDistribuidoraForReport(
+  fechaDesde: string,
+  fechaHasta: string,
+): Promise<Omit<DistribuidoraReportData, 'traspasoALocales' | 'porLocal'> | null> {
+  const config = getDistribuidoraConfig();
+  if (!config) return null;
+
+  const desde = toLocalDate(fechaDesde);
+  const hasta = toLocalDate(fechaHasta);
+  if (!desde || !hasta) return null;
+  hasta.setHours(23, 59, 59, 999);
+
+  const gastos = await fetchGastosFacturas(config.id, 'todos', desde, hasta);
+  return {
+    gastoExterno: gastos.reduce((s, r) => s + r.monto, 0),
+    facturas: gastos.length,
+    topProveedores: topProveedores(gastos, 5),
+  };
 }
 
 // ── Cálculo de métricas por período ──────────────────────────────────────────
@@ -380,7 +422,7 @@ export async function GET(req: NextRequest) {
     const prevDesdeStr = offsetDate(prevHastaStr, -(duration - 1));
 
     // Obtener datos en paralelo (cierre-caja, ventas, merma, producción actual+anterior, gasto fijo)
-    const [ccResult, ventasResult, mermaResult, produccionCurrResult, produccionPrevResult, gastoFijoResult, gastoIndirectoResult] = await Promise.allSettled([
+    const [ccResult, ventasResult, mermaResult, produccionCurrResult, produccionPrevResult, gastoFijoResult, gastoIndirectoResult, distribuidoraResult] = await Promise.allSettled([
       fetchCierreCajaData(),
       fetchVentasData(),
       fetchMermaForReport(fechaDesde, fechaHasta),
@@ -388,6 +430,7 @@ export async function GET(req: NextRequest) {
       fetchProduccionForReport(prevDesdeStr, prevHastaStr),
       perms.canAccessGastoFijo ? fetchGastoFijoForReport(fechaDesde, fechaHasta) : Promise.resolve({ porLocal: [], totalGeneral: 0 } as GastoFijoData),
       perms.canAccessGastoFijo ? fetchGastoIndirectoForReport(fechaDesde, fechaHasta) : Promise.resolve({ categorias: [], total: 0 } as GastoIndirectoData),
+      fetchDistribuidoraForReport(fechaDesde, fechaHasta),
     ]);
 
     const ccData      = ccResult.status      === 'fulfilled' ? ccResult.value      : null;
@@ -398,6 +441,7 @@ export async function GET(req: NextRequest) {
     const produccionPrev = produccionPrevResult.status === 'fulfilled' ? produccionPrevResult.value : emptyProduccion;
     const gastoFijoData      = gastoFijoResult.status      === 'fulfilled' ? gastoFijoResult.value      : { porLocal: [], totalGeneral: 0 } as GastoFijoData;
     const gastoIndirectoData = gastoIndirectoResult.status === 'fulfilled' ? gastoIndirectoResult.value : { categorias: [], total: 0 } as GastoIndirectoData;
+    const distribuidoraData  = distribuidoraResult.status  === 'fulfilled' ? distribuidoraResult.value  : null;
 
     const registrosDiarios       = ccData?.registrosDiarios          ?? [];
     const registrosDiariosGastos = ventasData?.registrosDiariosGastos ?? [];
@@ -450,6 +494,28 @@ export async function GET(req: NextRequest) {
         previous.margenPct = previous.ventas > 0 ? (previous.margen / previous.ventas) * 100 : 0;
       }
     }
+
+    // Distribuidora: cruzar su gasto externo con lo que los locales le compraron.
+    // Bloque informativo — nada de esto se suma a current/previous.
+    const distribuidoraReport: DistribuidoraReportData | null = distribuidoraData && (() => {
+      const porLocalMap: Record<string, number> = {};
+      let traspaso = 0;
+      for (const r of registrosDiariosGastos) {
+        if (normalizeProveedorName(r.proveedor) !== 'Distribuidora Oca') continue;
+        const d = toLocalDate(r.fecha);
+        if (!filterByDateRange(d, currDesde, currHasta)) continue;
+        if (sucursal && r.sucursal !== sucursal) continue;
+        traspaso += r.monto;
+        porLocalMap[r.sucursal] = (porLocalMap[r.sucursal] ?? 0) + r.monto;
+      }
+      return {
+        ...distribuidoraData,
+        traspasoALocales: traspaso,
+        porLocal: Object.entries(porLocalMap)
+          .map(([local, monto]) => ({ local, monto }))
+          .sort((a, b) => b.monto - a.monto),
+      };
+    })();
 
     // Deltas porcentuales
     const deltaVentas = pctDelta(current.ventas, previous.ventas);
@@ -515,6 +581,7 @@ export async function GET(req: NextRequest) {
       deudaPendienteProduccion: produccionCurr.deudaPendiente,
       gastoFijoData,
       gastoIndirectoData,
+      distribuidoraData: distribuidoraReport,
       proyeccion,
     });
   } catch (error: unknown) {

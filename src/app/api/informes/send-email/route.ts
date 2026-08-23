@@ -69,6 +69,14 @@ interface GastoFijoLocal {
 }
 interface GastoFijoData { porLocal: GastoFijoLocal[]; totalGeneral: number }
 
+interface DistribuidoraData {
+  gastoExterno: number;
+  facturas: number;
+  topProveedores: Array<{ nombre: string; monto: number }>;
+  traspasoALocales: number;
+  porLocal: Array<{ local: string; monto: number }>;
+}
+
 interface ProyeccionSucursal {
   nombre: string;
   ventasActuales: number;
@@ -104,6 +112,7 @@ interface ReportData {
   mermaData?: MermaData;
   produccionData?: ProduccionData;
   gastoFijoData?: GastoFijoData;
+  distribuidoraData?: DistribuidoraData | null;
   proyeccion?: Proyeccion;
 }
 
@@ -113,36 +122,39 @@ interface SendEmailBody {
   subject?: string;
 }
 
-// ── Paleta (igual que el ReportDocument de la UI) ────────────────────────────
+// ── Paleta ────────────────────────────────────────────────────────────────────
+// Tono documento operativo, no dashboard: acentos desaturados y fondos casi
+// blancos. Los acentos se usan sobre blanco en texto chico, así que están
+// bajados hasta ~4.5:1 de contraste — pastel en el fondo, legible en el texto.
 
 const C = {
   bg:          '#ffffff',
-  surface:     '#f8fafc',
-  surfaceAlt:  '#f1f5f9',
-  border:      '#e2e8f0',
-  borderStrong:'#cbd5e1',
-  navy:        '#0f2147',
-  navyLight:   '#1e3a6e',
-  blue:        '#1d4ed8',
-  blueLight:   '#dbeafe',
-  text:        '#0f172a',
-  textSub:     '#475569',
-  textMuted:   '#94a3b8',
-  green:       '#059669',
-  greenBg:     '#ecfdf5',
-  greenBdr:    '#6ee7b7',
-  red:         '#dc2626',
-  redBg:       '#fff1f2',
-  redBdr:      '#fecdd3',
-  amber:       '#d97706',
-  amberBg:     '#fffbeb',
-  amberBdr:    '#fde68a',
-  purple:      '#6d28d9',
-  purpleBg:    '#f5f3ff',
-  purpleBdr:   '#c4b5fd',
-  cyan:        '#0891b2',
-  cyanBg:      '#f0f9ff',
-  cyanBdr:     '#bae6fd',
+  surface:     '#fafbfc',
+  surfaceAlt:  '#f4f6f8',
+  border:      '#e5e9ed',
+  borderStrong:'#d3dae1',
+  navy:        '#3a4a5e',
+  navyLight:   '#4a5f7a',
+  blue:        '#3d6f9f',
+  blueLight:   '#eef3f8',
+  text:        '#2d3540',
+  textSub:     '#5f6b7a',
+  textMuted:   '#6e7a88',
+  green:       '#4a7a5c',
+  greenBg:     '#f4f8f5',
+  greenBdr:    '#d5e3da',
+  red:         '#a05555',
+  redBg:       '#faf4f4',
+  redBdr:      '#e8d6d6',
+  amber:       '#96703c',
+  amberBg:     '#faf7f1',
+  amberBdr:    '#e7dcc7',
+  purple:      '#6f6291',
+  purpleBg:    '#f6f5f9',
+  purpleBdr:   '#ddd8e6',
+  cyan:        '#4a7684',
+  cyanBg:      '#f2f6f8',
+  cyanBdr:     '#d2e0e5',
 } as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -197,10 +209,38 @@ function sectionHeader(title: string, accent: string = C.blue): string {
   </tr>`;
 }
 
-function insightStyle(type: Insight['type']): { bg: string; bdr: string; col: string; cls: string } {
-  if (type === 'positive') return { bg: C.greenBg,  bdr: C.greenBdr,  col: C.green,  cls: 'em-green-bg'  };
-  if (type === 'negative') return { bg: C.redBg,    bdr: C.redBdr,    col: C.red,    cls: 'em-red-bg'    };
-  return                          { bg: C.amberBg,  bdr: C.amberBdr,  col: C.amber,  cls: 'em-amber-bg'  };
+/**
+ * Barras horizontales con tablas anidadas — no hay SVG ni CSS moderno que
+ * sobreviva a Outlook/Gmail, así que el ancho de la barra es un width="%" real.
+ */
+function barChart(rows: Array<{ label: string; value: number; color?: string }>): string {
+  const max = Math.max(...rows.map(r => r.value), 1);
+  return rows.map(r => {
+    const pct = Math.max(Math.round((r.value / max) * 100), 1);
+    const color = r.color ?? C.blue;
+    return `
+    <tr>
+      <td width="88" class="em-text-sub" style="padding:3px 8px 3px 0;font-size:11px;color:${C.textSub};white-space:nowrap">${r.label}</td>
+      <td style="padding:3px 0">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+          <td width="${pct}%" style="background:${color};font-size:0;line-height:13px;height:13px">&nbsp;</td>
+          <td width="${100 - pct}%" class="em-surface" style="background:${C.surfaceAlt};font-size:0;line-height:13px;height:13px">&nbsp;</td>
+        </tr></table>
+      </td>
+      <td width="104" align="right" class="em-text" style="padding:3px 0 3px 8px;font-size:11px;font-weight:700;color:${C.text};white-space:nowrap">${fmt(r.value)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/**
+ * Los insights van sobre fondo neutro: el color queda solo en el filete
+ * izquierdo y en la etiqueta chica. Un bloque entero teñido de rojo lee como
+ * alarma, y acá la mayoría son observaciones de rutina.
+ */
+function insightStyle(type: Insight['type']): { col: string; label: string } {
+  if (type === 'positive') return { col: C.green, label: 'Favorable' };
+  if (type === 'negative') return { col: C.red,   label: 'Revisar'   };
+  return                          { col: C.amber, label: 'Atención'  };
 }
 
 // ── Constructor del HTML ──────────────────────────────────────────────────────
@@ -208,7 +248,7 @@ function insightStyle(type: Insight['type']): { bg: string; bdr: string; col: st
 function buildEmailHtml(d: ReportData): string {
   const { filters, current, previous, deltaVentas, deltaGastos, deltaMargen, deltaTx,
           tendencia, insights, aiAnalysis, mermaData, produccionData, gastoFijoData,
-          generatedAt, periodoAnterior, proyeccion } = d;
+          generatedAt, periodoAnterior, proyeccion, distribuidoraData } = d;
 
   const sucursalLabel = filters.sucursal ? filters.sucursal : 'Todas las sucursales';
   const generadoLabel = generatedAt
@@ -475,48 +515,174 @@ function buildEmailHtml(d: ReportData): string {
       </div>`;
   })() : '';
 
+  // ── Ficha numérica del período (cifras planas, sin adornos) ───────────────
+  const fichaRows: Array<[string, string]> = [
+    ['Ventas totales',      fmt(current.ventas)],
+    ['Gastos totales',      fmt(current.gastos)],
+    ['Margen',              `${fmt(current.margen)}  (${current.margenPct.toFixed(1)}%)`],
+    ['Índice 60',           `${indice50Curr.toFixed(1)}%`],
+    ['Transacciones',       `${current.transacciones.toLocaleString('es-CL')} cierres de caja`],
+    ['Ticket promedio',     fmt(current.ticketPromedio)],
+    ['Días del período',    `${current.porDia.length}`],
+  ];
+  const fichaSection = `
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${C.border};margin-bottom:24px">
+      ${sectionHeader('Cifras del período', C.navy)}
+      ${fichaRows.map(([k, v], i) => `
+      <tr class="${i % 2 === 0 ? 'em-td-base' : 'em-td-alt'}" style="background:${i % 2 === 0 ? C.bg : C.surface}">
+        <td class="em-text-sub" style="${tdStyle}color:${C.textSub};font-size:12px">${k}</td>
+        <td class="em-text" style="${tdStyle}text-align:right;font-weight:700;font-variant-numeric:tabular-nums">${v}</td>
+      </tr>`).join('')}
+    </table>`;
+
+  // ── Gráfico de ventas por sucursal ────────────────────────────────────────
+  const chartSection = Object.keys(current.porSucursal).length > 0 ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:8px">
+      ${sectionHeader('Ventas por sucursal', C.blue)}
+    </table>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px">
+      ${barChart(
+        Object.entries(current.porSucursal)
+          .sort(([, a], [, b]) => b.ventas - a.ventas)
+          .map(([nombre, dd]) => ({ label: nombre, value: dd.ventas })),
+      )}
+    </table>` : '';
+
+  // ── Distribuidora (informativo, no suma a los totales) ────────────────────
+  const distribuidoraSection = (distribuidoraData &&
+    (distribuidoraData.gastoExterno > 0 || distribuidoraData.traspasoALocales > 0)) ? (() => {
+    const dd = distribuidoraData;
+    const enStock = dd.gastoExterno - dd.traspasoALocales;
+    const provRows = dd.topProveedores.map((p, i) => `
+      <tr style="background:${i % 2 === 0 ? C.bg : C.surface}">
+        <td class="em-text" style="${tdStyle}font-size:12px">${p.nombre}</td>
+        <td class="em-text" style="${tdStyle}text-align:right;font-weight:700;font-size:12px">${fmt(p.monto)}</td>
+      </tr>`).join('');
+    const localRows = dd.porLocal.map((l, i) => `
+      <tr style="background:${i % 2 === 0 ? C.bg : C.surface}">
+        <td class="em-text" style="${tdStyle}font-size:12px">${l.local}</td>
+        <td class="em-text" style="${tdStyle}text-align:right;font-weight:700;font-size:12px">${fmt(l.monto)}</td>
+      </tr>`).join('');
+    return `
+      <div style="margin-top:24px">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+          ${sectionHeader('Distribuidora — dato informativo', C.cyan)}
+        </table>
+        <div class="em-cyan-bg" style="background:${C.cyanBg};border:1px solid ${C.cyanBdr};padding:10px 14px;margin-bottom:10px">
+          <span style="font-size:11px;color:${C.textSub};line-height:1.5">
+            Distribuidora traspasa <strong>al costo</strong>: lo que un local le compra ya está contado
+            como gasto de ese local. Estas cifras <strong>no se suman</strong> a los totales de arriba.
+          </span>
+        </div>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td width="33%" style="padding:0 4px 0 0;vertical-align:top">
+              <div class="em-surface" style="background:${C.surface};border:1px solid ${C.border};border-top:3px solid ${C.cyan};padding:12px">
+                <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.08em;color:${C.textMuted};text-transform:uppercase;margin-bottom:6px">Compró a terceros</div>
+                <div class="em-text" style="font-size:16px;font-weight:800;color:${C.text}">${fmt(dd.gastoExterno)}</div>
+                <div class="em-text-sub" style="font-size:10px;color:${C.textSub};margin-top:3px">${dd.facturas} factura${dd.facturas === 1 ? '' : 's'}</div>
+              </div>
+            </td>
+            <td width="33%" style="padding:0 4px;vertical-align:top">
+              <div class="em-surface" style="background:${C.surface};border:1px solid ${C.border};border-top:3px solid ${C.green};padding:12px">
+                <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.08em;color:${C.textMuted};text-transform:uppercase;margin-bottom:6px">Traspasó a locales</div>
+                <div class="em-text" style="font-size:16px;font-weight:800;color:${C.text}">${fmt(dd.traspasoALocales)}</div>
+                <div class="em-text-sub" style="font-size:10px;color:${C.textSub};margin-top:3px">ya contado en cada local</div>
+              </div>
+            </td>
+            <td width="33%" style="padding:0 0 0 4px;vertical-align:top">
+              <div class="em-surface" style="background:${C.surface};border:1px solid ${C.border};border-top:3px solid ${enStock >= 0 ? C.amber : C.textMuted};padding:12px">
+                <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.08em;color:${C.textMuted};text-transform:uppercase;margin-bottom:6px">Diferencia</div>
+                <div class="em-text" style="font-size:16px;font-weight:800;color:${C.text}">${fmt(enStock)}</div>
+                <div class="em-text-sub" style="font-size:10px;color:${C.textSub};margin-top:3px">${enStock >= 0 ? 'comprado, aún no traspasado' : 'traspasado por sobre lo comprado'}</div>
+              </div>
+            </td>
+          </tr>
+        </table>
+        ${(provRows || localRows) ? `
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px">
+          <tr>
+            ${provRows ? `
+            <td width="50%" style="padding-right:5px;vertical-align:top">
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${C.border}">
+                <tr><th colspan="2" style="${thStyle}left">Le compró a</th></tr>
+                ${provRows}
+              </table>
+            </td>` : ''}
+            ${localRows ? `
+            <td width="50%" style="padding-left:${provRows ? '5px' : '0'};vertical-align:top">
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid ${C.border}">
+                <tr><th colspan="2" style="${thStyle}left">Le vendió a</th></tr>
+                ${localRows}
+              </table>
+            </td>` : ''}
+          </tr>
+        </table>` : ''}
+      </div>`;
+  })() : '';
+
   // ── Insights ──────────────────────────────────────────────────────────────
   const insightsSection = (insights && insights.length > 0) ? (() => {
     const items = insights.slice(0, 8).map(ins => {
       const s = insightStyle(ins.type);
       return `
-        <div class="${s.cls}" style="margin-bottom:8px;padding:12px 16px;background:${s.bg};border-left:4px solid ${s.col};border-top:1px solid ${s.bdr};border-right:1px solid ${s.bdr};border-bottom:1px solid ${s.bdr};">
-          <div style="font-weight:700;font-size:13px;color:${s.col};margin-bottom:4px">${ins.titulo}</div>
-          <div class="em-text-sub" style="font-size:12px;color:${C.textSub};line-height:1.5">${ins.descripcion}</div>
-          ${ins.accion ? `<div class="em-text-sub" style="font-size:12px;color:${C.textSub};margin-top:5px;font-style:italic">Acción: ${ins.accion}</div>` : ''}
-        </div>`;
+        <tr>
+          <td style="padding:0 0 6px">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+              <tr>
+                <td width="3" style="background:${s.col};font-size:0;line-height:0">&nbsp;</td>
+                <td style="background:${C.surface};border-top:1px solid ${C.border};border-right:1px solid ${C.border};border-bottom:1px solid ${C.border};padding:9px 14px">
+                  <span style="font-size:9px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:${s.col}">${s.label}</span>
+                  <span style="color:${C.borderStrong};padding:0 5px">·</span>
+                  <span style="font-size:12.5px;font-weight:600;color:${C.text}">${ins.titulo}</span>
+                  <div style="font-size:12px;color:${C.textSub};line-height:1.5;margin-top:3px">${ins.descripcion}</div>
+                  ${ins.accion ? `<div style="font-size:11.5px;color:${C.textMuted};margin-top:4px">Acción: ${ins.accion}</div>` : ''}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
     }).join('');
     return `
       <div style="margin-top:24px">
-        <table width="100%" cellpadding="0" cellspacing="0">${sectionHeader('Alertas e insights automáticos', C.amber)}</table>
-        ${items}
+        <table width="100%" cellpadding="0" cellspacing="0">${sectionHeader('Observaciones del período', C.navy)}</table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${items}</table>
       </div>`;
   })() : '';
 
-  // ── Análisis IA ───────────────────────────────────────────────────────────
+  // ── Análisis IA — cuatro áreas con el mismo tratamiento visual ────────────
+  // Filete de 3px y etiqueta chica en color; el cuerpo siempre sobre fondo
+  // casi blanco. Cuatro bloques teñidos enteros competían entre sí.
+  const aiBlock = (label: string, color: string, bg: string, body: string) => `
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:8px">
+      <tr>
+        <td width="3" style="background:${color};font-size:0;line-height:0">&nbsp;</td>
+        <td style="background:${bg};border-top:1px solid ${C.border};border-right:1px solid ${C.border};border-bottom:1px solid ${C.border};padding:12px 16px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:0.09em;color:${color};text-transform:uppercase;margin-bottom:7px">${label}</div>
+          ${body}
+        </td>
+      </tr>
+    </table>`;
+
+  const aiParagraph = (t: string) =>
+    `<p style="font-size:12.5px;color:${C.text};line-height:1.6;margin:0">${t}</p>`;
+
+  const aiList = (items: string[], numbered: boolean) =>
+    items.map((t, i) => `
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:5px"><tr>
+        <td width="16" valign="top" style="font-size:12px;color:${C.textMuted};line-height:1.6">${numbered ? `${i + 1}.` : '·'}</td>
+        <td style="font-size:12.5px;color:${C.text};line-height:1.6">${t}</td>
+      </tr></table>`).join('');
+
   const aiSection = aiAnalysis ? `
     <div style="margin-top:24px">
-      <table width="100%" cellpadding="0" cellspacing="0">${sectionHeader('Análisis inteligente', C.purple)}</table>
-      ${aiAnalysis.resumen ? `
-        <div class="em-purple-bg" style="margin-bottom:10px;padding:16px 20px;background:${C.purpleBg};border-left:4px solid ${C.purple};border-top:1px solid ${C.purpleBdr};border-right:1px solid ${C.purpleBdr};border-bottom:1px solid ${C.purpleBdr}">
-          <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.purple};text-transform:uppercase;margin-bottom:8px">Resumen ejecutivo</div>
-          <p class="em-text" style="font-size:13px;color:${C.text};line-height:1.65;margin:0">${aiAnalysis.resumen}</p>
-        </div>` : ''}
-      ${aiAnalysis.comparacion ? `
-        <div class="em-surface" style="margin-bottom:10px;padding:16px 20px;background:${C.surface};border-left:4px solid ${C.borderStrong};border-top:1px solid ${C.border};border-right:1px solid ${C.border};border-bottom:1px solid ${C.border}">
-          <div class="em-text-muted" style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.textMuted};text-transform:uppercase;margin-bottom:8px">Análisis comparativo</div>
-          <p class="em-text" style="font-size:13px;color:${C.text};line-height:1.65;margin:0">${aiAnalysis.comparacion}</p>
-        </div>` : ''}
-      ${(aiAnalysis.problemas?.length ?? 0) > 0 ? `
-        <div class="em-red-bg" style="margin-bottom:10px;padding:14px 18px;background:${C.redBg};border-left:4px solid ${C.red};border-top:1px solid ${C.redBdr};border-right:1px solid ${C.redBdr};border-bottom:1px solid ${C.redBdr}">
-          <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.red};text-transform:uppercase;margin-bottom:10px">Problemas detectados</div>
-          ${(aiAnalysis.problemas ?? []).map(p => `<div class="em-text" style="font-size:13px;color:${C.text};margin-bottom:6px;padding-left:12px">• ${p}</div>`).join('')}
-        </div>` : ''}
-      ${(aiAnalysis.recomendaciones?.length ?? 0) > 0 ? `
-        <div class="em-green-bg" style="padding:14px 18px;background:${C.greenBg};border-left:4px solid ${C.green};border-top:1px solid ${C.greenBdr};border-right:1px solid ${C.greenBdr};border-bottom:1px solid ${C.greenBdr}">
-          <div style="font-size:9px;font-weight:700;letter-spacing:0.1em;color:${C.green};text-transform:uppercase;margin-bottom:10px">Recomendaciones</div>
-          ${(aiAnalysis.recomendaciones ?? []).map((r, i) => `<div class="em-text" style="font-size:13px;color:${C.text};margin-bottom:6px;padding-left:12px">${i + 1}. ${r}</div>`).join('')}
-        </div>` : ''}
+      <table width="100%" cellpadding="0" cellspacing="0">${sectionHeader('Análisis del período', C.navy)}</table>
+      ${aiAnalysis.resumen      ? aiBlock('Resumen ejecutivo',   C.blue,   C.blueLight, aiParagraph(aiAnalysis.resumen))       : ''}
+      ${aiAnalysis.comparacion  ? aiBlock('Análisis comparativo', C.purple, C.purpleBg,  aiParagraph(aiAnalysis.comparacion))   : ''}
+      ${(aiAnalysis.problemas?.length ?? 0) > 0
+        ? aiBlock('Puntos a revisar', C.amber, C.amberBg, aiList(aiAnalysis.problemas ?? [], false)) : ''}
+      ${(aiAnalysis.recomendaciones?.length ?? 0) > 0
+        ? aiBlock('Recomendaciones', C.green, C.greenBg, aiList(aiAnalysis.recomendaciones ?? [], true)) : ''}
     </div>` : '';
 
   // ── HTML final ────────────────────────────────────────────────────────────
@@ -525,70 +691,32 @@ function buildEmailHtml(d: ReportData): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="supported-color-schemes" content="light dark">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
   <title>Informe FinanzasOca</title>
   <style>
-    :root { color-scheme: light dark; }
-
-    /* ── Dark mode: Gmail (data-ogsc), Apple Mail, Outlook app ── */
-    @media (prefers-color-scheme: dark) {
-      body, .em-body        { background-color: #0d1117 !important; }
-      .em-wrap              { background-color: #161b22 !important; }
-      .em-surface           { background-color: #1c2128 !important; }
-      .em-surface-alt       { background-color: #21262d !important; }
-      .em-text              { color: #e6edf3 !important; }
-      .em-text-sub          { color: #8b949e !important; }
-      .em-text-muted        { color: #6e7681 !important; }
-      .em-border            { border-color: #30363d !important; }
-      .em-border-strong     { border-color: #484f58 !important; }
-      .em-th                { background-color: #21262d !important; color: #8b949e !important; border-color: #484f58 !important; }
-      .em-td-alt            { background-color: #1c2128 !important; }
-      .em-td-base           { background-color: #161b22 !important; }
-      .em-kpi               { background-color: #21262d !important; border-color: #30363d !important; }
-      .em-green-bg          { background-color: #0d2a1a !important; border-color: #1a4731 !important; }
-      .em-red-bg            { background-color: #2a0d0d !important; border-color: #4d1414 !important; }
-      .em-amber-bg          { background-color: #2a1d00 !important; border-color: #4d3800 !important; }
-      .em-purple-bg         { background-color: #1a0d2e !important; border-color: #3b1f6e !important; }
-      .em-blue-bg           { background-color: #0d1a2e !important; border-color: #1d3a6e !important; }
-      .em-cyan-bg           { background-color: #0d2233 !important; border-color: #0d4466 !important; }
-    }
-    /* Gmail forced dark mode selector */
-    [data-ogsc] body, [data-ogsc] .em-body  { background-color: #0d1117 !important; }
-    [data-ogsc] .em-wrap                    { background-color: #161b22 !important; }
-    [data-ogsc] .em-surface                 { background-color: #1c2128 !important; }
-    [data-ogsc] .em-surface-alt             { background-color: #21262d !important; }
-    [data-ogsc] .em-text                    { color: #e6edf3 !important; }
-    [data-ogsc] .em-text-sub                { color: #8b949e !important; }
-    [data-ogsc] .em-text-muted              { color: #6e7681 !important; }
-    [data-ogsc] .em-border                  { border-color: #30363d !important; }
-    [data-ogsc] .em-border-strong           { border-color: #484f58 !important; }
-    [data-ogsc] .em-th                      { background-color: #21262d !important; color: #8b949e !important; border-color: #484f58 !important; }
-    [data-ogsc] .em-td-alt                  { background-color: #1c2128 !important; }
-    [data-ogsc] .em-td-base                 { background-color: #161b22 !important; }
-    [data-ogsc] .em-kpi                     { background-color: #21262d !important; border-color: #30363d !important; }
-    [data-ogsc] .em-green-bg                { background-color: #0d2a1a !important; border-color: #1a4731 !important; }
-    [data-ogsc] .em-red-bg                  { background-color: #2a0d0d !important; border-color: #4d1414 !important; }
-    [data-ogsc] .em-amber-bg                { background-color: #2a1d00 !important; border-color: #4d3800 !important; }
-    [data-ogsc] .em-purple-bg               { background-color: #1a0d2e !important; border-color: #3b1f6e !important; }
-    [data-ogsc] .em-blue-bg                 { background-color: #0d1a2e !important; border-color: #1d3a6e !important; }
-    [data-ogsc] .em-cyan-bg                 { background-color: #0d2233 !important; border-color: #0d4466 !important; }
+    /* Informe siempre en tono claro. Declararlo light-only evita que Apple Mail
+       y Outlook inviertan la paleta; Gmail igual puede forzar su dark mode, pero
+       sin reglas nuestras que lo acompañen el resultado queda mucho más cerca
+       del original que con un tema oscuro propio. */
+    :root { color-scheme: light only; supported-color-schemes: light; }
+    body  { color-scheme: light only; }
   </style>
 </head>
-<body class="em-body" style="margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7">
+<body class="em-body" style="margin:0;padding:0;background:#f2f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f7">
 <tr><td align="center" style="padding:16px 8px">
   <table class="em-wrap" width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;background:#ffffff">
 
   <!-- Header -->
   <tr>
-    <td style="background-color:${C.navy};padding:24px 20px">
-      <div style="font-size:11px;font-weight:700;letter-spacing:0.12em;color:#93c5fd;text-transform:uppercase;margin-bottom:6px">FinanzasOca · Informe de gestión</div>
-      <div style="font-size:22px;font-weight:800;color:#ffffff;margin-bottom:8px">
+    <td style="background-color:${C.navy};padding:22px 20px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.12em;color:#c2ccd8;text-transform:uppercase;margin-bottom:6px">FinanzasOca · Informe de gestión</div>
+      <div style="font-size:21px;font-weight:700;color:#ffffff;margin-bottom:8px">
         ${tendenciaChar} ${fd(filters.fechaDesde)} – ${fd(filters.fechaHasta)}
       </div>
-      <div style="font-size:13px;color:#bfdbfe;margin-bottom:4px">${sucursalLabel}</div>
-      <div style="font-size:11px;color:#93c5fd">Generado: ${generadoLabel}</div>
+      <div style="font-size:13px;color:#dde3ea;margin-bottom:4px">${sucursalLabel}</div>
+      <div style="font-size:11px;color:#aeb9c7">Generado: ${generadoLabel}</div>
     </td>
   </tr>
 
@@ -600,6 +728,12 @@ function buildEmailHtml(d: ReportData): string {
       ${sectionHeader('Indicadores clave del período')}
       ${kpiCards}
     </table>
+
+    <!-- Cifras planas del período -->
+    ${fichaSection}
+
+    <!-- Gráfico de ventas por sucursal -->
+    ${chartSection}
 
     <!-- Proyección de ventas -->
     ${proyeccion ? `
@@ -652,6 +786,9 @@ function buildEmailHtml(d: ReportData): string {
 
     <!-- Gasto fijo -->
     ${gastoFijoSection}
+
+    <!-- Distribuidora (informativo) -->
+    ${distribuidoraSection}
 
     <!-- Insights -->
     ${insightsSection}

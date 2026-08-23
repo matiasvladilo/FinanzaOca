@@ -33,6 +33,8 @@ interface PeriodMetrics {
   ticketPromedio: number;
   porSucursal: Record<string, { ventas: number; gastos: number; margen: number; transacciones: number }>;
   topProveedores: Array<{ nombre: string; monto: number; pct: number }>;
+  /** Serie diaria. Se usa para detectar períodos con distinta cantidad de días con venta. */
+  porDia?: Array<{ fecha: string; ventas: number; gastos: number }>;
 }
 
 interface Insight {
@@ -130,10 +132,38 @@ export async function POST(req: NextRequest) {
     }
 
     const sucursalLabel = filters.sucursal ? `sucursal "${filters.sucursal}"` : 'todas las sucursales';
+
+    // Cobertura de cada período. Si el actual tiene menos días con venta que el
+    // anterior (típico al pedir el mes en curso), comparar los totales crudos
+    // exagera la caída — el modelo tiene que saberlo y decirlo.
+    const diasCurr = current.porDia?.filter(d => d.ventas > 0).length ?? 0;
+    const diasPrev = previous.porDia?.filter(d => d.ventas > 0).length ?? 0;
+    const cobertura = (diasCurr > 0 && diasPrev > 0)
+      ? `Días con venta — período actual: ${diasCurr}, período anterior: ${diasPrev}.` +
+        (diasCurr < diasPrev * 0.9
+          ? ` ATENCIÓN: el período actual tiene MENOS días con venta que el anterior, así que los totales NO son comparables de forma directa.` +
+            ` Promedio diario actual ${formatCLP(current.ventas / diasCurr)} vs anterior ${formatCLP(previous.ventas / diasPrev)}` +
+            ` (${(((current.ventas / diasCurr) / (previous.ventas / diasPrev) - 1) * 100).toFixed(1)}%).`
+          : '')
+      : '';
     const insightsText  = insights.map(i => `- [${i.type.toUpperCase()}/${i.severity}] ${i.titulo}: ${i.descripcion}${i.accion ? ` Acción sugerida: ${i.accion}` : ''}`).join('\n');
 
+    // Por sucursal, con su variación vs el período anterior: sin esto el modelo
+    // no puede decir "PV creció X%" y termina escribiendo generalidades.
     const sucursalesTexto = Object.entries(current.porSucursal)
-      .map(([nombre, d]) => `  - ${nombre}: ventas ${formatCLP(d.ventas)}, gastos ${formatCLP(d.gastos)}, margen ${formatCLP(d.margen)}`)
+      .sort(([, a], [, b]) => b.ventas - a.ventas)
+      .map(([nombre, d]) => {
+        const prev = previous.porSucursal?.[nombre];
+        const deltaV = prev && prev.ventas > 0
+          ? `${((d.ventas - prev.ventas) / prev.ventas * 100).toFixed(1)}%`
+          : 's/d';
+        const margenPct = d.ventas > 0 ? (d.margen / d.ventas * 100).toFixed(1) : '0.0';
+        const indice60  = d.ventas > 0 ? (d.gastos / d.ventas * 100).toFixed(1) : '0.0';
+        const shareVentas = current.ventas > 0 ? (d.ventas / current.ventas * 100).toFixed(1) : '0.0';
+        return `  - ${nombre}: ventas ${formatCLP(d.ventas)} (${shareVentas}% del total, ${deltaV} vs período anterior)`
+             + `, gastos ${formatCLP(d.gastos)}, margen ${formatCLP(d.margen)} (${margenPct}%), índice 60: ${indice60}%`
+             + (prev ? ` | anterior: ventas ${formatCLP(prev.ventas)}` : '');
+      })
       .join('\n');
 
     const topProvText = current.topProveedores
@@ -167,6 +197,7 @@ export async function POST(req: NextRequest) {
     const prompt = `Eres el analista financiero de FinanzasOca, una cadena de locales gastronómicos en Chile. Analiza los siguientes datos del período y genera un informe ejecutivo en español claro y accionable.
 
 PERÍODO ANALIZADO: ${filters.fechaDesde} al ${filters.fechaHasta} — ${sucursalLabel}
+${cobertura}
 
 MÉTRICAS PERÍODO ACTUAL:
 - Ventas totales:      ${formatCLP(current.ventas)}
@@ -203,22 +234,36 @@ ${insightsText || '  (sin alertas)'}
 
 Genera un análisis ejecutivo ÚNICAMENTE en formato JSON válido con esta estructura exacta:
 {
-  "resumen": "1 sola oración con el estado general del negocio en el período",
-  "comparacion": "1 sola oración comparando con el período anterior, el cambio más relevante nada más",
-  "problemas": ["problema 1 identificado", "problema 2 identificado"],
-  "recomendaciones": ["acción concreta 1", "acción concreta 2"]
+  "resumen": "1-2 oraciones con el estado general del período, con las cifras principales",
+  "comparacion": "2-3 oraciones comparando con el período anterior CON NÚMEROS: cuánto varió cada cosa y qué local explica esa variación",
+  "problemas": ["hallazgo puntual, con local y cifra"],
+  "recomendaciones": ["acción puntual sobre un número concreto"]
 }
 
-REGLAS:
-- Máximo 2 recomendaciones, máximo 2 problemas — solo lo más importante, no rellenes
-- "resumen" y "comparacion" van en UNA sola oración cada uno, corta y directa
-- Cada ítem de "problemas" y "recomendaciones" también en una sola oración corta
-- Lenguaje ejecutivo, directo y accionable — nada de relleno ni frases genéricas
-- Cifras en pesos chilenos (CLP) con formato "$X.XXX.XXX"
-- Si la merma o algún producto destaca, mencionalo solo si es relevante, no por completitud
-- NO incluyas texto fuera del JSON
-- NO uses markdown dentro del JSON
-- El JSON debe ser parseable directamente`;
+REGLAS GENERALES:
+- Escribe como un analista interno, no como un asistente: afirmaciones secas, sin adjetivos de relleno ("excelente", "notable", "es importante destacar").
+- Cifras en pesos chilenos con formato "$X.XXX.XXX". Los porcentajes con un decimal.
+- NO incluyas texto fuera del JSON. NO uses markdown dentro del JSON. Debe ser parseable directo.
+
+"comparacion" — SIEMPRE con números explícitos:
+- Di cuánto variaron ventas, gastos y margen: el porcentaje Y el monto ("las ventas subieron 8,4%, de $108.500.000 a $117.805.786").
+- Nombra los locales que explican la variación y con qué cifra ("PV lideró con $41.200.000, 35,0% del total y +12,3% vs el mes anterior").
+- Si algún local cayó, dilo con su número.
+- Prohibido escribir "subieron respecto al mes pasado" sin el cuánto, o "X lideró" sin su porcentaje.
+- Si arriba dice que los períodos NO son comparables por tener distinta cantidad de días, tienes que
+  advertirlo en la PRIMERA oración y comparar por promedio diario, no por totales. No reportes una
+  caída de X% como si fuera del negocio cuando en realidad es que el período tiene menos días.
+
+"problemas" — hallazgos concretos, máximo 3:
+- Cada uno debe nombrar el LOCAL o el ítem específico y su CIFRA. Ejemplo del nivel esperado: "La Reina tiene índice 60 en 68,2%, doce puntos sobre el umbral" o "La merma de PT fue $1.240.000, 4,1% de sus ventas, concentrada en Pastelería ($820.000)".
+- Si la merma es un problema, di en qué local y de qué tipo fue la más grande, con monto.
+- Nada de generalidades como "la merma se mantiene sobre el umbral esperado": eso no sirve sin el local y el número.
+- Si no hay ningún hallazgo que cumpla esta vara, devuelve lista vacía. Es preferible a inventar.
+
+"recomendaciones" — máximo 2, y SOLO si hay algo puntual que revisar:
+- Solo cuando haya un número disparado, una inconsistencia o algo que no cuadre en los datos.
+- Debe apuntar a un dato específico ("revisar los $3.889.597 de MIGUEL AMPUERO en La Reina: es el 4º gasto del mes y aparece solo en ese local").
+- NO escribas consejos genéricos de gestión ("optimizar costos", "capacitar al personal", "monitorear la merma"). Si no hay nada puntual, devuelve lista vacía.`;
 
     const client = new Anthropic();
 
