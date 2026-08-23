@@ -18,6 +18,11 @@ import { fetchMermaForReport, MermaReportData } from '@/app/api/merma-data/route
 import { fetchProduccionForReport, ProduccionReportDataFull } from '@/app/api/produccion-data/route';
 import { fetchGastoFijoForReport, GastoFijoData, fetchGastoIndirectoForReport, GastoIndirectoData } from '@/lib/gasto-fijo';
 
+// Forzar runtime Node (no Edge) y más tiempo: agrega datos de varias
+// planillas de Sheets, puede tardar más que el default de una Edge Function.
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 // ── Tipos internos ────────────────────────────────────────────────────────────
 
 interface RegistroDiario {

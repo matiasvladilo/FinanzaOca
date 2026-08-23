@@ -17,6 +17,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { toLocalISODate } from '@/lib/date-utils';
 
+// Forzar runtime Node (no Edge) y más tiempo de ejecución: esta ruta orquesta
+// generate + ai-analysis + 2 envíos de Resend en cadena, y el default de
+// Netlify no alcanza ("the edge function timed out").
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 type CronType = 'daily' | 'weekly' | 'monthly';

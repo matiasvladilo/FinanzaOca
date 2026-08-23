@@ -9,6 +9,10 @@ import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-api';
 
+// Forzar runtime Node (no Edge) y más tiempo de ejecución.
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface SucursalMetrics {

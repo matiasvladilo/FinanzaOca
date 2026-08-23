@@ -10,6 +10,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-api';
 
+// Forzar runtime Node (no Edge) y más tiempo: la llamada a Anthropic puede
+// tardar más que el default de una Edge Function.
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
 interface Filters {
