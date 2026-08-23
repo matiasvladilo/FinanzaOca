@@ -21,9 +21,19 @@ import { withCacheSWR } from '@/lib/data/cache';
 
 const COLORES_MERMA = ['#3B82F6', '#8B5CF6', '#06B6D4', '#10B981', '#F97316', '#EF4444', '#D1D5DB'];
 
+/** Fila de merma que no se puede imputar a ningún mes por su fecha. */
+export interface MermaSinFecha {
+  local: string;
+  fila: number;
+  producto: string;
+  tipo: string;
+  monto: number;
+  valorCelda: string;
+}
+
 async function fetchLocalMerma(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:G5000`);
-  if (rows.length < 2) return [];
+  if (rows.length < 2) return { registros: [], sinFecha: [] as MermaSinFecha[] };
 
   const [headers, ...data] = rows;
   const idx = {
@@ -36,28 +46,55 @@ async function fetchLocalMerma(nombre: string, sheetId: string, tab: string) {
     mes:      findHeader(headers, 'MES', 'Mes', 'mes'),
   };
 
-  return data
-    .filter(r => r[idx.monto])
-    .map((r, i) => {
-      const fechaParsed = parseFecha(r[idx.fecha] ?? '');
-      const mes = parseInt(r[idx.mes] ?? '0', 10) || fechaParsed.mes;
-      const tipo = r[idx.tipo] ?? 'Sin tipo';
-      const productoRaw = r[idx.producto] ?? '';
-      return {
-        id:       i + 1,
-        // En corporativo la columna PRODUCTO trae a la persona que retiró, y
-        // cada local la escribe distinto — unificar acá evita que "marce" (La
-        // Reina) y "Marcela" (PV) figuren como dos líneas.
-        producto: esMermaCorporativa(tipo) ? normalizeRetiroCorporativo(productoRaw) : productoRaw,
-        tipo,
-        monto:    parseMonto(r[idx.monto] ?? ''),
-        fecha:    r[idx.fecha]    ?? '',
-        mes,
-        anio:     fechaParsed.anio,
-        date:     fechaParsed.date,
-        local:    nombre,   // nombre canónico forzado por sheet
-      };
+  const registros = [];
+  // Filas con monto pero sin fecha utilizable: no se pueden imputar a ningún
+  // mes y quedan fuera de todas las vistas. Antes desaparecían en silencio; se
+  // reportan con su número de fila para corregirlas en la planilla.
+  const sinFecha: MermaSinFecha[] = [];
+
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (!r[idx.monto]) continue;
+
+    const fechaParsed = parseFecha(r[idx.fecha] ?? '');
+    const tipo = r[idx.tipo] ?? 'Sin tipo';
+    const productoRaw = r[idx.producto] ?? '';
+    // En corporativo la columna PRODUCTO trae a la persona que retiró, y cada
+    // local la escribe distinto — unificar acá evita que "marce" (La Reina) y
+    // "Marcela" (PV) figuren como dos líneas.
+    const producto = esMermaCorporativa(tipo) ? normalizeRetiroCorporativo(productoRaw) : productoRaw;
+    const monto = parseMonto(r[idx.monto] ?? '');
+
+    if (!fechaParsed.date) {
+      // Sin monto no hay plata sin contabilizar: es basura en la celda del
+      // total y reportarla sería ruido para quien corrige la planilla.
+      if (monto > 0) {
+        sinFecha.push({
+          local: nombre,
+          fila: i + 2,            // +2: la fila 1 son los encabezados
+          producto: productoRaw.trim(),
+          tipo: tipo.trim(),
+          monto,
+          valorCelda: (r[idx.fecha] ?? '').trim(),
+        });
+      }
+      continue;
+    }
+
+    registros.push({
+      id:       i + 1,
+      producto,
+      tipo,
+      monto,
+      fecha:    r[idx.fecha] ?? '',
+      mes:      parseInt(r[idx.mes] ?? '0', 10) || fechaParsed.mes,
+      anio:     fechaParsed.anio,
+      date:     fechaParsed.date,
+      local:    nombre,   // nombre canónico forzado por sheet
     });
+  }
+
+  return { registros, sinFecha };
 }
 
 export async function GET(req: NextRequest) {
@@ -79,19 +116,18 @@ export async function GET(req: NextRequest) {
     // del lado del cliente. Son ~1.600 filas: pivotear en el browser es
     // instantáneo y evita un viaje al servidor por cada combinación.
     if (scopeParam === 'todo') {
-      const todos = await withCacheSWR('merma-todo-v1', async () => {
+      const todos = await withCacheSWR('merma-todo-v2', async () => {
         const res = await Promise.allSettled(
           locales.map(l => fetchLocalMerma(l.nombre, l.id, l.tabs.merma)),
         );
         return res.flatMap((r, i) => {
-          if (r.status === 'fulfilled') return r.value;
+          if (r.status === 'fulfilled') return r.value.registros;
           console.error(`[merma-data] Error leyendo ${locales[i].nombre}:`, r.reason);
           return [];
         });
       });
 
       const registrosTodos = todos
-        .filter(r => r.date)
         .sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime())
         .map(r => ({
           id: `${r.local}-${r.id}`, producto: r.producto, tipo: r.tipo,
@@ -118,10 +154,16 @@ export async function GET(req: NextRequest) {
     );
 
     let registros = results.flatMap((r, i) => {
-      if (r.status === 'fulfilled') return r.value;
+      if (r.status === 'fulfilled') return r.value.registros;
       console.error(`[merma-data] Error leyendo ${localesALeer[i].nombre}:`, r.reason);
       return [];
     });
+
+    // Filas descartadas por fecha inválida. No dependen del filtro de período
+    // (justamente no se pueden ubicar en el tiempo), así que van completas.
+    const sinFecha = results
+      .flatMap(r => (r.status === 'fulfilled' ? r.value.sinFecha : []))
+      .sort((a, b) => b.monto - a.monto);
 
     // ── Serie diaria, SIN el filtro de período ────────────────────────────────
     // Se calcula antes de aplicar el filtro de fecha (que sí respeta el de
@@ -217,6 +259,7 @@ export async function GET(req: NextRequest) {
       // Alias histórico: la página vieja leía este campo. Ahora trae todo el
       // período, no sólo los últimos 20.
       ultimosRegistros: registrosPeriodo,
+      sinFecha,
       locales: localesDisponibles,
       filtros: { local: localParam, periodo: periodoParam },
     });
@@ -245,7 +288,7 @@ export async function fetchMermaForReport(fechaDesde: string, fechaHasta: string
     );
 
     let registros = results.flatMap((r, i) => {
-      if (r.status === 'fulfilled') return r.value;
+      if (r.status === 'fulfilled') return r.value.registros;
       console.error(`[merma-data] fetchMermaForReport error ${locales[i].nombre}:`, r.reason);
       return [];
     });

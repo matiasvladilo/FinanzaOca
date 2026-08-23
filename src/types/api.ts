@@ -128,6 +128,19 @@ export interface MermaResponse {
   registros: MermaRegistro[];
   /** @deprecated Alias de `registros` — hoy trae el período completo, no 20. */
   ultimosRegistros: MermaRegistro[];
+  /**
+   * Filas con monto pero sin fecha utilizable: no se pueden imputar a ningún
+   * mes, así que no entran en ninguna vista. Van completas, sin filtrar por
+   * período — justamente no se pueden ubicar en el tiempo.
+   */
+  sinFecha: {
+    local: string;
+    fila: number;
+    producto: string;
+    tipo: string;
+    monto: number;
+    valorCelda: string;
+  }[];
   locales: string[];
   filtros: { local: string; periodo: string };
 }

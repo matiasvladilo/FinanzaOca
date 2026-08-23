@@ -28,6 +28,7 @@ import clsx from 'clsx';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import ExploradorMerma from '@/components/merma/ExploradorMerma';
+import MermaSinFechaPanel, { type MermaSinFechaItem } from '@/components/merma/MermaSinFecha';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 
@@ -202,6 +203,8 @@ export default function MermaPage() {
   const [sheetRegistros, setSheetRegistros] = useState<SheetMermaRegistro[]>([]);
   const [sheetPorDia, setSheetPorDia] = useState<{ fecha: string; monto: number }[]>([]);
   const [localesDisponibles, setLocalesDisponibles] = useState<string[]>([]);
+  // Filas con monto pero sin fecha utilizable: quedan fuera de todos los totales.
+  const [sinFecha, setSinFecha] = useState<MermaSinFechaItem[]>([]);
   const [loadingSheet, setLoadingSheet] = useState(true);
   const [ccData, setCcData] = useState<CierreCajaData | null>(null);
 
@@ -233,6 +236,7 @@ export default function MermaPage() {
           setSheetKPI(data.kpi);
           setSheetTipos(data.porTipo ?? []);
           setSheetRegistros(data.registros ?? data.ultimosRegistros ?? []);
+          setSinFecha(data.sinFecha ?? []);
           setSheetPorDia(data.porDia ?? []);
           if (data.locales?.length > 1) setLocalesDisponibles(data.locales);
         }
@@ -952,6 +956,9 @@ export default function MermaPage() {
             )}
           </div>
         </div>
+
+        {/* Merma que no entra en ningún total por tener la fecha mal */}
+        <MermaSinFechaPanel items={sinFecha} />
 
         {/* Explorador: producto × local × mes sobre el histórico completo */}
         <ExploradorMerma />
