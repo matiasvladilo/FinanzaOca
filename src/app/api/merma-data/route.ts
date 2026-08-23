@@ -142,19 +142,21 @@ export async function GET(req: NextRequest) {
         color: COLORES_MERMA[i % COLORES_MERMA.length],
       }));
 
-    // ── Últimos registros ────────────────────────────────────────────────────
+    // ── Registros del período ────────────────────────────────────────────────
+    // Se devuelven TODOS los del período, no una muestra: la página filtra y
+    // busca sobre esta lista, y con un tope de 20 no se podía responder "de qué
+    // se compone la merma corporativa de junio" — la búsqueda sólo veía esas 20
+    // filas. El histórico completo son ~1.600 registros entre los 4 locales, así
+    // que cabe de sobra en una respuesta y evita un segundo endpoint.
+    //
     // `registros` es la concatenación de los 4 locales en el orden de
-    // getLocalesConfig() (La Reina, PV, PT, Bilbao) — NO viene ordenada por
-    // fecha. Un simple reverse().slice(0, 20) devolvía siempre la cola de
-    // Bilbao, el último local del array: los otros 3 locales nunca aparecían
-    // en "Registros de Merma" salvo que Bilbao tuviera menos de 20 filas.
-    // Hay que ordenar por fecha real antes de cortar.
-    const ultimosRegistros = [...registros]
+    // getLocalesConfig(), NO viene ordenada por fecha: hay que ordenarla antes
+    // de mandarla, o la tabla queda agrupada por local en vez de cronológica.
+    const registrosPeriodo = [...registros]
       .filter(r => r.date)
       .sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime())
-      .slice(0, 20)
       .map(r => ({
-        id: r.id, producto: r.producto, tipo: r.tipo,
+        id: `${r.local}-${r.id}`, producto: r.producto, tipo: r.tipo,
         monto: r.monto, fecha: r.fecha, local: r.local,
       }));
 
@@ -169,7 +171,10 @@ export async function GET(req: NextRequest) {
       chartData,
       porTipo,
       porDia,
-      ultimosRegistros,
+      registros: registrosPeriodo,
+      // Alias histórico: la página vieja leía este campo. Ahora trae todo el
+      // período, no sólo los últimos 20.
+      ultimosRegistros: registrosPeriodo,
       locales: localesDisponibles,
       filtros: { local: localParam, periodo: periodoParam },
     });

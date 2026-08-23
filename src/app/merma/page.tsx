@@ -180,6 +180,11 @@ function rangoComparacion(mesFiltro: string, fechaDesde: string, fechaHasta: str
 export default function MermaPage() {
   const [showAll, setShowAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Tipo de merma sobre el que se está profundizando ('' = todos). Se setea
+  // clickeando una barra de "Merma por Categoría".
+  const [tipoFiltro, setTipoFiltro] = useState('');
+  // Vista de la tabla: registro por registro, o sumado por producto.
+  const [vistaRegistros, setVistaRegistros] = useState<'detalle' | 'producto'>('detalle');
 
   // ── Filtros ──────────────────────────────────────────────────────────────
   // El mes cae solo en el mes en curso al abrir la página — nunca hay que
@@ -226,7 +231,7 @@ export default function MermaPage() {
         if (data.ok) {
           setSheetKPI(data.kpi);
           setSheetTipos(data.porTipo ?? []);
-          setSheetRegistros(data.ultimosRegistros ?? []);
+          setSheetRegistros(data.registros ?? data.ultimosRegistros ?? []);
           setSheetPorDia(data.porDia ?? []);
           if (data.locales?.length > 1) setLocalesDisponibles(data.locales);
         }
@@ -295,6 +300,7 @@ export default function MermaPage() {
     mesFiltro !== mesActualKey() ? mesFiltro : '',
     fechaDesde,
     fechaHasta,
+    tipoFiltro,
   ].filter(Boolean).length;
 
   const clearFiltros = () => {
@@ -302,6 +308,7 @@ export default function MermaPage() {
     setLocalFiltro('');
     setFechaDesde('');
     setFechaHasta('');
+    setTipoFiltro('');
     setShowDatePicker(false);
   };
 
@@ -396,6 +403,9 @@ export default function MermaPage() {
   };
   const mesLabel = (k: string) => { const [a, m] = k.split('-'); return (MESES_FULL[m] ?? m) + ' ' + a; };
   const fmtCLP   = (v: number) => '$' + Math.round(v).toLocaleString('es-CL');
+  /** Minúsculas y sin tildes: "Producción" y "Produccion" son el mismo tipo. */
+  const claveTipo = (s: string) =>
+    (s ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
   // ── Datos para UI ────────────────────────────────────────────────────────
   const categoriasActivas = sheetTipos.length > 0
@@ -419,8 +429,11 @@ export default function MermaPage() {
       }))
     : registrosMock;
 
-  // Filtramos por búsqueda local (client-side)
+  // Filtramos por tipo y por búsqueda (client-side). El tipo se compara
+  // normalizado porque cada local lo tipea distinto: "Produccion" y
+  // "Producción" son el mismo motivo, y el API ya los agrupa así en porTipo.
   const registrosFiltrados = registrosSheet.filter(r => {
+    if (tipoFiltro && claveTipo(r.categoria) !== claveTipo(tipoFiltro)) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -431,19 +444,53 @@ export default function MermaPage() {
     );
   });
 
-  const registrosVisibles = showAll ? registrosFiltrados : registrosFiltrados.slice(0, 4);
+  // Total de lo que está a la vista — sin esto hay que sumar a mano para saber
+  // cuánto pesa "corporativo de junio", que es justo la pregunta a responder.
+  const totalFiltrado = registrosFiltrados.reduce((s, r) => s + r.costo, 0);
 
+  // Composición: mismo conjunto filtrado, sumado por producto.
+  const porProducto = (() => {
+    const map: Record<string, { producto: string; monto: number; veces: number; locales: Set<string> }> = {};
+    for (const r of registrosFiltrados) {
+      const key = claveTipo(r.producto) || '(sin producto)';
+      if (!map[key]) map[key] = { producto: r.producto.trim() || '(sin producto)', monto: 0, veces: 0, locales: new Set() };
+      map[key].monto += r.costo;
+      map[key].veces += 1;
+      if (r.local) map[key].locales.add(r.local);
+    }
+    return Object.values(map)
+      .map(v => ({ ...v, locales: [...v.locales].join(', ') }))
+      .sort((a, b) => b.monto - a.monto);
+  })();
+
+  const registrosVisibles = showAll ? registrosFiltrados : registrosFiltrados.slice(0, 8);
+  const productosVisibles = showAll ? porProducto : porProducto.slice(0, 8);
+
+  // El CSV baja lo que está a la vista: mismo filtro y misma agrupación.
   const handleCSV = () => {
-    exportToCSV(
-      registrosFiltrados.map(r => ({
-        Fecha: r.timestamp,
-        Producto: r.producto,
-        Tipo: r.categoria,
-        'Monto CLP': r.costo,
-        Local: r.local,
-      })),
-      'merma_registros'
-    );
+    if (vistaRegistros === 'producto') {
+      exportToCSV(
+        porProducto.map(p => ({
+          Producto: p.producto,
+          Veces: p.veces,
+          Locales: p.locales,
+          'Monto CLP': Math.round(p.monto),
+          '% del filtro': totalFiltrado > 0 ? ((p.monto / totalFiltrado) * 100).toFixed(1) : '0.0',
+        })),
+        'merma_por_producto'
+      );
+    } else {
+      exportToCSV(
+        registrosFiltrados.map(r => ({
+          Fecha: r.timestamp,
+          Producto: r.producto,
+          Tipo: r.categoria,
+          'Monto CLP': r.costo,
+          Local: r.local,
+        })),
+        'merma_registros'
+      );
+    }
     toast('Registros de merma exportados');
   };
 
@@ -796,23 +843,39 @@ export default function MermaPage() {
               ) : categoriasActivas.length === 0 ? (
                 <p className="text-[12px] text-gray-400 text-center py-6">Sin datos para el filtro seleccionado</p>
               ) : (
-                categoriasActivas.map((cat) => (
-                  <div key={cat.nombre}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[12px] text-gray-700 font-medium">{cat.nombre}</span>
-                      <span className="text-[12px] font-bold text-gray-800">${cat.valor.toLocaleString('es-CL')}</span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2.5">
-                      <div
-                        className="h-2.5 rounded-full transition-all duration-700"
-                        style={{
-                          width: `${(cat.valor / maxCategoria) * 100}%`,
-                          backgroundColor: cat.color,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))
+                categoriasActivas.map((cat) => {
+                  const activo = claveTipo(tipoFiltro) === claveTipo(cat.nombre);
+                  return (
+                    <button
+                      key={cat.nombre}
+                      type="button"
+                      onClick={() => { setTipoFiltro(activo ? '' : cat.nombre); setShowAll(true); }}
+                      aria-pressed={activo}
+                      title={activo ? 'Quitar el filtro' : `Ver de qué se compone "${cat.nombre}"`}
+                      className={`w-full text-left rounded-lg px-2 py-1.5 -mx-2 transition-colors ${
+                        activo ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className={`text-[12px] font-medium ${activo ? 'text-blue-700' : 'text-gray-700'}`}>
+                          {cat.nombre}
+                          {activo && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide">· filtrando</span>}
+                        </span>
+                        <span className="text-[12px] font-bold text-gray-800">${cat.valor.toLocaleString('es-CL')}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2.5">
+                        <div
+                          className="h-2.5 rounded-full transition-all duration-700"
+                          style={{
+                            width: `${(cat.valor / maxCategoria) * 100}%`,
+                            backgroundColor: cat.color,
+                            opacity: tipoFiltro && !activo ? 0.35 : 1,
+                          }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
@@ -891,23 +954,115 @@ export default function MermaPage() {
 
         {/* Registros Recientes */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-5">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div className="min-w-0">
               <h3 className="text-[14px] font-bold text-gray-900">Registros de Merma</h3>
-              {filtrosActivos > 0 && (
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  Mostrando {registrosFiltrados.length} resultado{registrosFiltrados.length !== 1 ? 's' : ''}
-                  {localFiltro ? ` · ${localFiltro}` : ''}
-                  {mesFiltro ? ` · ${periodoLabel}` : ''}
-                </p>
-              )}
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                {registrosFiltrados.length} registro{registrosFiltrados.length !== 1 ? 's' : ''}
+                {' · '}
+                <span className="font-bold text-gray-800">{fmtCLP(totalFiltrado)}</span>
+                {tipoFiltro ? ` · ${tipoFiltro}` : ''}
+                {localFiltro ? ` · ${localFiltro}` : ''}
+                {mesFiltro ? ` · ${periodoLabel}` : ''}
+                {searchQuery ? ` · "${searchQuery}"` : ''}
+              </p>
             </div>
-            <button onClick={handleCSV} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-[12px] font-semibold transition-colors shadow-sm">
-              <Download className="w-3.5 h-3.5" />
-              Descargar CSV
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Detalle fila por fila vs. sumado por producto */}
+              <div className="flex rounded-full bg-gray-100 p-0.5">
+                {(['detalle', 'producto'] as const).map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setVistaRegistros(v)}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors ${
+                      vistaRegistros === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {v === 'detalle' ? 'Detalle' : 'Por producto'}
+                  </button>
+                ))}
+              </div>
+              <button onClick={handleCSV} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-[12px] font-semibold transition-colors shadow-sm">
+                <Download className="w-3.5 h-3.5" />
+                CSV
+              </button>
+            </div>
           </div>
 
+          {/* Chip del tipo sobre el que se está profundizando */}
+          {tipoFiltro && (
+            <div className="flex items-center gap-2 mb-4">
+              <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 bg-blue-50 text-blue-700 rounded-full text-[11px] font-semibold ring-1 ring-blue-200">
+                Composición de “{tipoFiltro}”
+                <button
+                  type="button"
+                  onClick={() => setTipoFiltro('')}
+                  aria-label={`Quitar el filtro de tipo ${tipoFiltro}`}
+                  className="w-4 h-4 rounded-full bg-blue-200/70 hover:bg-blue-300 flex items-center justify-center leading-none"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            </div>
+          )}
+
+          {/* Vista "Por producto": responde "de qué se compone" sumando el
+              mismo conjunto filtrado por ítem, de mayor a menor. */}
+          {vistaRegistros === 'producto' && (
+            loadingSheet ? (
+              <div className="space-y-3">
+                {[1,2,3,4].map(i => (
+                  <div key={i} className="animate-pulse flex justify-between gap-3">
+                    <div className="h-3 bg-gray-100 rounded w-40" />
+                    <div className="h-3 bg-gray-100 rounded w-20" />
+                  </div>
+                ))}
+              </div>
+            ) : productosVisibles.length === 0 ? (
+              <div className="py-10 text-center">
+                <p className="text-[13px] text-gray-400">No hay registros para el filtro seleccionado.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                <div className="pb-3 border-b border-gray-100 grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_70px_auto_110px] gap-3">
+                  {['Producto', 'Veces', 'Locales', 'Total'].map((col, i) => (
+                    <p key={col} className={clsx(
+                      'text-[10px] font-bold tracking-widest text-gray-400 uppercase',
+                      i === 3 && 'text-right',
+                      (i === 1 || i === 2) && 'hidden sm:block',
+                    )}>{col}</p>
+                  ))}
+                </div>
+                {productosVisibles.map(p => (
+                  <div key={p.producto} className="py-3 grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_70px_auto_110px] gap-3 items-center hover:bg-gray-50/50 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-[12.5px] font-semibold text-gray-800 truncate">{p.producto}</p>
+                      <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-1.5 rounded-full bg-blue-500"
+                          style={{ width: `${totalFiltrado > 0 ? Math.max((p.monto / totalFiltrado) * 100, 1) : 0}%` }}
+                        />
+                      </div>
+                      <p className="sm:hidden text-[10.5px] text-gray-400 mt-1">
+                        {p.veces}× · {p.locales || '—'}
+                      </p>
+                    </div>
+                    <p className="hidden sm:block text-[12px] text-gray-600">{p.veces}</p>
+                    <p className="hidden sm:block text-[12px] text-gray-500 truncate">{p.locales || '—'}</p>
+                    <div className="text-right">
+                      <p className="text-[12.5px] font-bold text-gray-800">{fmtCLP(p.monto)}</p>
+                      <p className="text-[10.5px] text-gray-400">
+                        {totalFiltrado > 0 ? ((p.monto / totalFiltrado) * 100).toFixed(1) : '0.0'}%
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {vistaRegistros === 'detalle' && <>
           {/* Mobile: Card layout */}
           <div className="sm:hidden divide-y divide-gray-100">
             {loadingSheet ? (
@@ -1002,12 +1157,19 @@ export default function MermaPage() {
               )}
             </div>
           </div>
+          </>}
 
-          <div className="pt-4 border-t border-gray-100 text-center">
-            <button onClick={() => setShowAll(v => !v)} className="text-[12px] text-blue-600 font-semibold hover:text-blue-800 transition-colors">
-              {showAll ? 'Ver menos' : `Ver todos los registros (${registrosFiltrados.length})`}
-            </button>
-          </div>
+          {(vistaRegistros === 'producto' ? porProducto.length : registrosFiltrados.length) > 8 && (
+            <div className="pt-4 border-t border-gray-100 text-center">
+              <button onClick={() => setShowAll(v => !v)} className="text-[12px] text-blue-600 font-semibold hover:text-blue-800 transition-colors">
+                {showAll
+                  ? 'Ver menos'
+                  : vistaRegistros === 'producto'
+                    ? `Ver todos los productos (${porProducto.length})`
+                    : `Ver todos los registros (${registrosFiltrados.length})`}
+              </button>
+            </div>
+          )}
         </div>
       </main>
 

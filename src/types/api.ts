@@ -104,7 +104,8 @@ export interface MermaTipo {
 }
 
 export interface MermaRegistro {
-  id: number;
+  /** "<local>-<fila>" — el índice de fila solo es único dentro de cada planilla. */
+  id: string;
   producto: string;
   tipo: string;
   monto: number;
@@ -123,6 +124,9 @@ export interface MermaResponse {
    * sin pedir el endpoint una segunda vez.
    */
   porDia: { fecha: string; monto: number }[];
+  /** Todos los registros del período, ordenados por fecha descendente. */
+  registros: MermaRegistro[];
+  /** @deprecated Alias de `registros` — hoy trae el período completo, no 20. */
   ultimosRegistros: MermaRegistro[];
   locales: string[];
   filtros: { local: string; periodo: string };
