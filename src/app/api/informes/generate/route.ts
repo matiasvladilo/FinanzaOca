@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { toLocalDate, filterByDateRange, toLocalISODate } from '@/lib/date-utils';
+import { normalizeProveedorName } from '@/lib/data/parsers';
 import { requireAuth } from '@/lib/auth-api';
 import { fetchCierreCajaData } from '@/app/api/cierre-caja/route';
 import { fetchVentasData } from '@/app/api/ventas/route';
@@ -145,16 +146,15 @@ function calcMetrics(
     porSucursal[nombre].margen = porSucursal[nombre].ventas - porSucursal[nombre].gastos;
   }
 
-  // Top proveedores en el período (re-calcular desde registros filtrados)
+  // Top proveedores en el período (re-calcular desde registros filtrados).
+  // Unificar variantes tipeadas a mano antes de agrupar — ver normalizeProveedorName.
   const proveedorMap: Record<string, number> = {};
-  for (const r of gastosFiltrados) {
-    const key = r.proveedor.toLowerCase();
-    proveedorMap[key] = (proveedorMap[key] ?? 0) + r.monto;
-  }
   const proveedorNombres: Record<string, string> = {};
   for (const r of gastosFiltrados) {
-    const key = r.proveedor.toLowerCase();
-    if (!proveedorNombres[key]) proveedorNombres[key] = r.proveedor;
+    const canonico = normalizeProveedorName(r.proveedor);
+    const key = canonico.toLowerCase();
+    proveedorMap[key] = (proveedorMap[key] ?? 0) + r.monto;
+    if (!proveedorNombres[key]) proveedorNombres[key] = canonico;
   }
   // Si no hay datos en el período, usar top global como referencia
   const topProveedoresSrc = Object.keys(proveedorMap).length > 0

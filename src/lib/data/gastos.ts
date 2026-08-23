@@ -16,7 +16,7 @@
  */
 
 import { readSheet } from '@/lib/google-sheets';
-import { parseMonto, parseFecha, findHeader } from '@/lib/data/parsers';
+import { parseMonto, parseFecha, findHeader, normalizeProveedorName } from '@/lib/data/parsers';
 
 export interface GastoFactura {
   local: string;
@@ -114,8 +114,10 @@ export async function fetchGastosFacturas(
 
 /**
  * Agrupa gastos por proveedor y devuelve el top N por monto.
- * El nombre se normaliza a minúsculas para agrupar, pero se muestra
- * con la grafía de la primera aparición.
+ * Antes de agrupar, las variantes tipeadas a mano del mismo proveedor se
+ * unifican con normalizeProveedorName ("panaderia" y "panaderia y pasteleria"
+ * son el mismo). El resto se agrupa por minúsculas y se muestra con la grafía
+ * de la primera aparición.
  */
 export function topProveedores(
   gastos: GastoFactura[],
@@ -125,9 +127,10 @@ export function topProveedores(
   const nombres: Record<string, string> = {};
   for (const r of gastos) {
     if (!r.proveedor) continue;
-    const key = r.proveedor.toLowerCase().trim();
+    const canonico = normalizeProveedorName(r.proveedor);
+    const key = canonico.toLowerCase().trim();
     if (!key) continue;
-    if (!nombres[key]) nombres[key] = r.proveedor.trim();
+    if (!nombres[key]) nombres[key] = canonico;
     montos[key] = (montos[key] ?? 0) + r.monto;
   }
   return Object.entries(montos)

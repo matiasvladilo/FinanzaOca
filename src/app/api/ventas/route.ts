@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
-import { parseMonto, parseFecha, getMesLabel, findHeader } from '@/lib/data/parsers';
+import { parseMonto, parseFecha, getMesLabel, findHeader, normalizeProveedorName } from '@/lib/data/parsers';
 import { withCacheSWR } from '@/lib/data/cache';
 import { requireAuth } from '@/lib/auth-api';
 
@@ -184,11 +184,13 @@ async function fetchVentasRaw() {
   }
 
   // ── Top proveedores ─────────────────────────────────────────────────────
+  // Unificar variantes tipeadas a mano antes de agrupar — ver normalizeProveedorName.
   const porProveedor: Record<string, number> = {};
   const proveedorNombre: Record<string, string> = {};
   for (const r of gastos) {
-    const key = r.proveedor.toLowerCase();
-    if (!proveedorNombre[key]) proveedorNombre[key] = r.proveedor;
+    const canonico = normalizeProveedorName(r.proveedor);
+    const key = canonico.toLowerCase();
+    if (!proveedorNombre[key]) proveedorNombre[key] = canonico;
     porProveedor[key] = (porProveedor[key] ?? 0) + r.monto;
   }
   const topProveedores = Object.entries(porProveedor)

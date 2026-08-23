@@ -203,18 +203,19 @@ ${insightsText || '  (sin alertas)'}
 
 Genera un análisis ejecutivo ÚNICAMENTE en formato JSON válido con esta estructura exacta:
 {
-  "resumen": "párrafo de 2-3 oraciones con el estado general del negocio en el período",
-  "comparacion": "párrafo de 2-3 oraciones comparando con el período anterior, destacando los cambios más relevantes",
+  "resumen": "1 sola oración con el estado general del negocio en el período",
+  "comparacion": "1 sola oración comparando con el período anterior, el cambio más relevante nada más",
   "problemas": ["problema 1 identificado", "problema 2 identificado"],
-  "recomendaciones": ["acción concreta 1", "acción concreta 2", "acción concreta 3"]
+  "recomendaciones": ["acción concreta 1", "acción concreta 2"]
 }
 
 REGLAS:
-- Máximo 5 recomendaciones
-- Máximo 4 problemas
-- Lenguaje ejecutivo, directo y accionable
+- Máximo 2 recomendaciones, máximo 2 problemas — solo lo más importante, no rellenes
+- "resumen" y "comparacion" van en UNA sola oración cada uno, corta y directa
+- Cada ítem de "problemas" y "recomendaciones" también en una sola oración corta
+- Lenguaje ejecutivo, directo y accionable — nada de relleno ni frases genéricas
 - Cifras en pesos chilenos (CLP) con formato "$X.XXX.XXX"
-- Incluye en tu análisis observaciones sobre la merma (si es alta o controlada) y los productos más vendidos
+- Si la merma o algún producto destaca, mencionalo solo si es relevante, no por completitud
 - NO incluyas texto fuera del JSON
 - NO uses markdown dentro del JSON
 - El JSON debe ser parseable directamente`;

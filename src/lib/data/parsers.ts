@@ -113,6 +113,30 @@ export function normalizeLocalName(raw: string): string {
   return raw.trim();
 }
 
+// ── Normalización de proveedores ──────────────────────────────────────────────
+
+/**
+ * Unifica las variantes tipeadas a mano de un mismo proveedor a un nombre
+ * canónico. Mismo criterio que normalizeLocalName, pero para la columna
+ * Proveedor de las planillas de los locales.
+ *
+ * Hoy cubre los dos casos que aparecen escritos de cuatro formas distintas:
+ *   - "PANADERIA" / "panaderia" / "Panadería" / "panaderia y pasteleria"
+ *     → lo que Producción manda a los locales vía ConectOca.
+ *   - "DISTRIBUIDOCA" / "Distribuidora oca" / "distribuidoca"
+ *     → Distribuidora Oca. OJO: "Distribuidora Virgo" y "distribuidora
+ *       franklin" son terceros distintos y NO deben caer acá.
+ */
+export function normalizeProveedorName(raw: string): string {
+  if (!raw?.trim()) return '';
+  const s = claveAgrupacion(raw).replace(/\s+/g, ' ');
+
+  if (s.includes('panaderia') || s.includes('pasteleria')) return 'Panadería y Pastelería';
+  if (/^distribuid(ora?)?\s*oca$/.test(s))                 return 'Distribuidora Oca';
+
+  return raw.trim();
+}
+
 // ── Agrupación de texto libre (tipos, motivos, categorías tipeadas a mano) ────
 
 /**
