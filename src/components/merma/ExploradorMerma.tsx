@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search, X, Table2 } from 'lucide-react';
+import { PeriodSelect } from '@/components/ui/PeriodSelect';
 
 interface RegistroMerma {
   id: string;
@@ -149,7 +150,10 @@ export default function ExploradorMerma() {
   const maxCelda = Math.max(...filas.flatMap(f => Object.values(f.meses)), 1);
   const hayFiltro = !!(busqueda || tipoSel || localSel);
 
-  const selectCls = 'text-[12px] border border-gray-200 rounded-lg px-2.5 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300';
+  // Opciones cortas para los dropdowns de mes: el botón de PeriodSelect toma
+  // el ancho del label seleccionado, así que "Ago 26" en vez de "Agosto 2026"
+  // es lo que evita que la barra de filtros se rompa en pantallas chicas.
+  const opcionesMes = mesesConDatos.map(m => ({ label: mesCorto(m), value: m }));
 
   return (
     <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
@@ -161,9 +165,11 @@ export default function ExploradorMerma() {
         Buscá un producto y compará entre locales y meses. Ej.: escribí «palta».
       </p>
 
-      {/* Controles */}
+      {/* Controles — envuelven en varias filas en pantallas chicas; cada
+          control es independiente (no se estira) para que el wrap quede
+          prolijo en vez de partir un grupo (ej. "Desde"/"Hasta") por la mitad. */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex items-center gap-2 flex-1 min-w-[180px] bg-gray-100 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 sm:min-w-[180px] bg-gray-100 rounded-lg px-3 py-2">
           <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
           <input
             type="text"
@@ -180,44 +186,54 @@ export default function ExploradorMerma() {
           )}
         </div>
 
-        <select value={tipoSel} onChange={e => setTipoSel(e.target.value)} aria-label="Filtrar por tipo" className={selectCls}>
-          <option value="">Todos los tipos</option>
-          {tipos.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <PeriodSelect
+          label="Tipo"
+          value={tipoSel}
+          options={tipos.map(t => ({ label: t, value: t }))}
+          onChange={setTipoSel}
+          allLabel="Todos"
+          size="sm"
+        />
 
-        <select value={localSel} onChange={e => setLocalSel(e.target.value)} aria-label="Filtrar por local" className={selectCls}>
-          <option value="">Todos los locales</option>
-          {locales.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
+        {locales.length > 1 && (
+          <PeriodSelect
+            label="Local"
+            value={localSel}
+            options={locales.map(l => ({ label: l, value: l }))}
+            onChange={setLocalSel}
+            allLabel="Todos"
+            size="sm"
+          />
+        )}
 
-        <div className="flex items-center gap-1.5">
-          <select
+        {/* Este par no se separa nunca al hacer wrap: "Desde" solo, sin su
+            "Hasta", no dice nada. */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <PeriodSelect
+            label="Desde"
             value={mesDesde}
-            onChange={e => {
-              const v = e.target.value;
+            options={opcionesMes}
+            allLabel="Inicio"
+            size="sm"
+            onChange={v => {
               setMesDesde(v);
-              // Si quedaría invertido (desde > hasta), arrastro el otro extremo
-              // en vez de mostrar una grilla vacía sin explicación.
-              if (mesHasta && v > mesHasta) setMesHasta(v);
+              // Si quedaría invertido (desde > hasta), arrastro el otro
+              // extremo en vez de mostrar una grilla vacía sin explicación.
+              if (v && mesHasta && v > mesHasta) setMesHasta(v);
             }}
-            aria-label="Desde el mes"
-            className={selectCls}
-          >
-            {mesesConDatos.map(m => <option key={m} value={m}>{mesLargo(m)}</option>)}
-          </select>
-          <span className="text-[11px] text-gray-400">a</span>
-          <select
+          />
+          <span className="text-[11px] text-gray-400">–</span>
+          <PeriodSelect
+            label="Hasta"
             value={mesHasta}
-            onChange={e => {
-              const v = e.target.value;
+            options={opcionesMes}
+            allLabel="Hoy"
+            size="sm"
+            onChange={v => {
               setMesHasta(v);
-              if (mesDesde && v < mesDesde) setMesDesde(v);
+              if (v && mesDesde && v < mesDesde) setMesDesde(v);
             }}
-            aria-label="Hasta el mes"
-            className={selectCls}
-          >
-            {mesesConDatos.map(m => <option key={m} value={m}>{mesLargo(m)}</option>)}
-          </select>
+          />
         </div>
 
         {hayFiltro && (
@@ -321,14 +337,16 @@ export default function ExploradorMerma() {
                       className="w-full flex items-center gap-3 text-left rounded-lg px-2 py-1 -mx-2 hover:bg-gray-50 transition-colors"
                     >
                       <span className="text-[12px] text-gray-700 truncate flex-1 min-w-0">{p.nombre}</span>
-                      <span className="text-[10.5px] text-gray-400 whitespace-nowrap">{p.veces}×</span>
-                      <span className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
+                      {/* Veces y barra sólo desde sm: en mobile alcanza con nombre + monto,
+                          y así el nombre no queda reducido a 3 letras en pantallas chicas. */}
+                      <span className="hidden sm:inline text-[10.5px] text-gray-400 whitespace-nowrap">{p.veces}×</span>
+                      <span className="hidden sm:block w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden flex-shrink-0">
                         <span
                           className="block h-1.5 bg-blue-500 rounded-full"
                           style={{ width: `${total > 0 ? Math.max((p.monto / total) * 100, 2) : 0}%` }}
                         />
                       </span>
-                      <span className="text-[12px] font-bold text-gray-800 w-24 text-right whitespace-nowrap tabular-nums">{fmtCLP(p.monto)}</span>
+                      <span className="text-[12px] font-bold text-gray-800 w-20 sm:w-24 text-right whitespace-nowrap tabular-nums">{fmtCLP(p.monto)}</span>
                     </button>
                   ))}
                 </div>

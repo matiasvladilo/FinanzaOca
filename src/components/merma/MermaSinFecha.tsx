@@ -67,8 +67,8 @@ export default function MermaSinFecha({ items }: { items: MermaSinFechaItem[] })
             vuelven solas.
           </p>
 
-          <div className="max-h-72 overflow-y-auto">
-            <table className="w-full text-[11px]">
+          <div className="max-h-72 overflow-y-auto overflow-x-auto">
+            <table className="w-full min-w-[480px] text-[11px]">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-gray-400 text-left">
                   <th className="font-semibold px-4 py-1.5">Planilla</th>
