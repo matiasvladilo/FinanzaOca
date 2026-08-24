@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { requireAuth } from '@/lib/auth-api';
 import { parseMonto, parseFecha, getMesLabel, getPeriodoRange, findHeader, agruparMontosPorTexto,
-         normalizeRetiroCorporativo, esMermaCorporativa } from '@/lib/data/parsers';
+         normalizeRetiroCorporativo, esMermaCorporativa, esRetiroCorporativoConocido } from '@/lib/data/parsers';
 import { buildDateRange, filterByDateRange, toLocalISODate } from '@/lib/date-utils';
 import { withCacheSWR } from '@/lib/data/cache';
 
@@ -57,12 +57,19 @@ async function fetchLocalMerma(nombre: string, sheetId: string, tab: string) {
     if (!r[idx.monto]) continue;
 
     const fechaParsed = parseFecha(r[idx.fecha] ?? '');
-    const tipo = r[idx.tipo] ?? 'Sin tipo';
+    const tipoOriginal = r[idx.tipo] ?? 'Sin tipo';
     const productoRaw = r[idx.producto] ?? '';
-    // En corporativo la columna PRODUCTO trae a la persona que retiró, y cada
-    // local la escribe distinto — unificar acá evita que "marce" (La Reina) y
-    // "Marcela" (PV) figuren como dos líneas.
-    const producto = esMermaCorporativa(tipo) ? normalizeRetiroCorporativo(productoRaw) : productoRaw;
+    // El nombre manda sobre el Tipo tipeado: si el producto es un retiro
+    // corporativo conocido, la fila se reclasifica como Corporativo aunque el
+    // dropdown de Tipo se haya seleccionado mal en la planilla (pasa: "marce"
+    // con Tipo=Verdura por $192.500 en La Reina). Si el Tipo ya decía
+    // Corporativo pero el nombre no está en el mapa (ej. "Otros", "asado"),
+    // sólo se normaliza el nombre, sin tocar el tipo.
+    const esRetiro = esRetiroCorporativoConocido(productoRaw);
+    const tipo = esRetiro ? 'Corporativo' : tipoOriginal;
+    const producto = esRetiro
+      ? normalizeRetiroCorporativo(productoRaw)
+      : (esMermaCorporativa(tipoOriginal) ? normalizeRetiroCorporativo(productoRaw) : productoRaw);
     const monto = parseMonto(r[idx.monto] ?? '');
 
     if (!fechaParsed.date) {

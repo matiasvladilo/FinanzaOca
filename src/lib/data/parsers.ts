@@ -180,6 +180,23 @@ export function esMermaCorporativa(tipo: string): boolean {
   return claveAgrupacion(tipo) === 'corporativo';
 }
 
+/**
+ * true si el PRODUCTO es uno de los nombres conocidos de retiro corporativo,
+ * sin mirar la columna Tipo.
+ *
+ * A veces el Tipo queda mal tipeado en la planilla (el dropdown se selecciona
+ * mal) pero el nombre de la persona en Producto es inequívoco — "marce" no es
+ * una verdura por más que la fila diga Tipo=Verdura. En esos casos el nombre
+ * manda: la fila se reclasifica como Corporativo completa, no sólo el label.
+ */
+export function esRetiroCorporativoConocido(producto: string): boolean {
+  if (!producto?.trim()) return false;
+  return Object.prototype.hasOwnProperty.call(
+    RETIROS_CORPORATIVOS,
+    claveAgrupacion(producto).replace(/\s+/g, ' '),
+  );
+}
+
 // ── Agrupación de texto libre (tipos, motivos, categorías tipeadas a mano) ────
 
 /**
