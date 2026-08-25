@@ -104,6 +104,36 @@ async function fetchLocalMerma(nombre: string, sheetId: string, tab: string) {
   return { registros, sinFecha };
 }
 
+/**
+ * Histórico completo de merma, los 4 locales, sin filtrar por período.
+ * La usa tanto GET ?scope=todo (el explorador de la página) como la
+ * herramienta buscar_merma del asistente virtual — una sola fuente de verdad.
+ */
+export async function fetchMermaHistoricoCompleto() {
+  const locales = getLocalesConfig();
+  const todos = await withCacheSWR('merma-todo-v2', async () => {
+    const res = await Promise.allSettled(
+      locales.map(l => fetchLocalMerma(l.nombre, l.id, l.tabs.merma)),
+    );
+    const fallidos = res
+      .map((r, i) => (r.status === 'rejected' ? locales[i].nombre : null))
+      .filter((n): n is string => n !== null);
+    if (fallidos.length > 0) {
+      throw new Error(`[merma-data] Falló la lectura de: ${fallidos.join(', ')}`);
+    }
+    return (res as PromiseFulfilledResult<Awaited<ReturnType<typeof fetchLocalMerma>>>[])
+      .flatMap(r => r.value.registros);
+  });
+
+  return todos
+    .sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime())
+    .map(r => ({
+      id: `${r.local}-${r.id}`, producto: r.producto, tipo: r.tipo,
+      monto: r.monto, fecha: r.fecha, local: r.local,
+      mesKey: `${r.anio}-${String(r.mes).padStart(2, '0')}`,
+    }));
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
@@ -119,38 +149,11 @@ export async function GET(req: NextRequest) {
     const locales = getLocalesConfig();
 
     // ── scope=todo: histórico completo, los 4 locales, sin filtrar ───────────
-    // Lo consume el explorador de la página, que cruza producto × local × mes
-    // del lado del cliente. Son ~1.600 filas: pivotear en el browser es
-    // instantáneo y evita un viaje al servidor por cada combinación.
+    // La lógica vive en fetchMermaHistoricoCompleto() (más abajo en este mismo
+    // archivo) porque el asistente virtual también la necesita — evita que un
+    // GET HTTP interno tenga que reimplementar el filtrado.
     if (scopeParam === 'todo') {
-      const todos = await withCacheSWR('merma-todo-v2', async () => {
-        const res = await Promise.allSettled(
-          locales.map(l => fetchLocalMerma(l.nombre, l.id, l.tabs.merma)),
-        );
-        // Si algún local falló, tirar error en vez de devolver lo parcial —
-        // withCacheSWR cachearía ese resultado incompleto como si fuera
-        // válido hasta por 30 minutos (ver el mismo fix en cierre-caja y
-        // ventas — misma causa detrás del incidente de hoy).
-        const fallidos = res
-          .map((r, i) => (r.status === 'rejected' ? locales[i].nombre : null))
-          .filter((n): n is string => n !== null);
-        if (fallidos.length > 0) {
-          throw new Error(`[merma-data] Falló la lectura de: ${fallidos.join(', ')}`);
-        }
-        return (res as PromiseFulfilledResult<Awaited<ReturnType<typeof fetchLocalMerma>>>[])
-          .flatMap(r => r.value.registros);
-      });
-
-      const registrosTodos = todos
-        .sort((a, b) => (b.date as Date).getTime() - (a.date as Date).getTime())
-        .map(r => ({
-          id: `${r.local}-${r.id}`, producto: r.producto, tipo: r.tipo,
-          monto: r.monto, fecha: r.fecha, local: r.local,
-          // "YYYY-MM" precalculado: el cliente agrupa por mes y parsear la
-          // fecha en cada render de 1.600 filas es trabajo al pedo.
-          mesKey: `${r.anio}-${String(r.mes).padStart(2, '0')}`,
-        }));
-
+      const registrosTodos = await fetchMermaHistoricoCompleto();
       return NextResponse.json({
         ok: true,
         registros: registrosTodos,
