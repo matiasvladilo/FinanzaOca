@@ -52,7 +52,7 @@ inventan fuentes de datos nuevas.
 | `obtener_informe_periodo` | `fechaDesde, fechaHasta, sucursal?` | Ventas, gastos, margen, índice 60, por sucursal, top proveedores, insights | Lógica de `/api/informes/generate`, extraída a función invocable directo (sin HTTP) |
 | `buscar_merma` | `producto?, tipo?, local?, mesDesde?, mesHasta?` | Histórico completo de merma, cualquier corte | El dataset `scope=todo` de `merma-data/route.ts` |
 | `buscar_gasto_proveedor` | `proveedor?, mesDesde?, mesHasta?` | Histórico de gastos agrupado por proveedor (ya normalizado) | `fetchVentasData()` + `normalizeProveedorName` |
-| `buscar_producto_venta` | `nombre, fechaDesde?, fechaHasta?` | Cualquier producto de ConectOca, no solo el top 15 | Datos de `produccion-data/route.ts` (items de Supabase), sin el corte a top-N, respetando `categoriasExcluidas` (familia Distribuidora) |
+| `buscar_producto_venta` | `nombre, fechaDesde, fechaHasta` | Cualquier producto de ConectOca, no solo el top 15 | Datos de `produccion-data/route.ts` (items de Supabase), sin el corte a top-N. Nota (ajustado durante Task 3): fechaDesde/fechaHasta quedaron requeridos, no opcionales — `buscarProductoPorNombre()` no tiene fallback de rango. Tampoco filtra `categoriasExcluidas`: una pregunta directa por nombre de producto debe devolver el dato real aunque sea de la familia Distribuidora. |
 | `obtener_gasto_fijo` | `fechaDesde, fechaHasta` | Costos fijos por local | `fetchGastoFijoForReport` |
 | `obtener_gasto_indirecto` | `fechaDesde, fechaHasta` | Gasto indirecto por categoría | `fetchGastoIndirectoForReport` |
 | `obtener_distribuidora` | `fechaDesde, fechaHasta` | Compras a terceros + traspaso a locales | `fetchDistribuidoraForReport` |
