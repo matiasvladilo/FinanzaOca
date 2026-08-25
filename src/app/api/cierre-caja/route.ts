@@ -76,12 +76,22 @@ async function fetchCierreCajaRaw() {
     locales.map(l => fetchLocalCierreCaja(l.nombre, l.id, l.tabs.cierreCaja))
   );
 
-  // Combinar registros de todos los locales (ignorar los que fallaron)
-  const registros = results.flatMap((r, i) => {
-    if (r.status === 'fulfilled') return r.value;
-    console.error(`[cierre-caja] Error leyendo ${locales[i].nombre}:`, r.reason);
-    return [];
-  });
+  // Si algún local falló (hipo transitorio de la API de Sheets, cuota, etc.),
+  // esto TIENE que tirar error en vez de seguir con lo parcial. withCacheSWR
+  // cachea lo que sea que devuelva esta función como si fuera válido — si
+  // acá devolviéramos igual el resultado parcial, un fallo de 2 segundos
+  // quedaría "congelado" mostrando datos incompletos hasta por 30 minutos.
+  // Tirando error acá: en caché frío el request falla visible (mejor que
+  // ceros silenciosos); en revalidación de caché vencido, withCacheSWR ya
+  // atrapa el error y sigue sirviendo el último dato bueno sin pisarlo.
+  const fallidos = results
+    .map((r, i) => (r.status === 'rejected' ? locales[i].nombre : null))
+    .filter((n): n is string => n !== null);
+  if (fallidos.length > 0) {
+    throw new Error(`[cierre-caja] Falló la lectura de: ${fallidos.join(', ')}`);
+  }
+
+  const registros = results.flatMap(r => (r as PromiseFulfilledResult<Awaited<ReturnType<typeof fetchLocalCierreCaja>>>).value);
 
   if (registros.length === 0) return null;
 

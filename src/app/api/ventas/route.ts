@@ -126,14 +126,21 @@ async function fetchVentasRaw() {
     locales.map(l => fetchLocalVentas(l.nombre, l.id, l.tabs.facturas))
   );
 
-  const registros = results.flatMap((r, i) => {
-    if (r.status === 'fulfilled') return r.value.registros;
-    console.error(`[ventas] Error leyendo ${locales[i].nombre}:`, r.reason);
-    return [];
-  });
+  // Si algún local falló, tirar error en vez de seguir con lo parcial — ver
+  // el comentario largo en cierre-caja/route.ts, mismo motivo acá: sin esto,
+  // un hipo transitorio de la API de Sheets queda cacheado por withCacheSWR
+  // como si fuera un resultado válido, hasta por 30 minutos.
+  const fallidos = results
+    .map((r, i) => (r.status === 'rejected' ? locales[i].nombre : null))
+    .filter((n): n is string => n !== null);
+  if (fallidos.length > 0) {
+    throw new Error(`[ventas] Falló la lectura de: ${fallidos.join(', ')}`);
+  }
 
-  const facturasSinFecha = results
-    .flatMap(r => (r.status === 'fulfilled' ? r.value.sinFecha : []))
+  const fulfilled = results as PromiseFulfilledResult<Awaited<ReturnType<typeof fetchLocalVentas>>>[];
+  const registros = fulfilled.flatMap(r => r.value.registros);
+  const facturasSinFecha = fulfilled
+    .flatMap(r => r.value.sinFecha)
     .sort((a, b) => a.sucursal.localeCompare(b.sucursal) || a.fila - b.fila);
   if (facturasSinFecha.length) {
     const total = facturasSinFecha.reduce((s, f) => s + f.monto, 0);

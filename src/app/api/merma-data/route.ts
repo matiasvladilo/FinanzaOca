@@ -127,11 +127,18 @@ export async function GET(req: NextRequest) {
         const res = await Promise.allSettled(
           locales.map(l => fetchLocalMerma(l.nombre, l.id, l.tabs.merma)),
         );
-        return res.flatMap((r, i) => {
-          if (r.status === 'fulfilled') return r.value.registros;
-          console.error(`[merma-data] Error leyendo ${locales[i].nombre}:`, r.reason);
-          return [];
-        });
+        // Si algún local falló, tirar error en vez de devolver lo parcial —
+        // withCacheSWR cachearía ese resultado incompleto como si fuera
+        // válido hasta por 30 minutos (ver el mismo fix en cierre-caja y
+        // ventas — misma causa detrás del incidente de hoy).
+        const fallidos = res
+          .map((r, i) => (r.status === 'rejected' ? locales[i].nombre : null))
+          .filter((n): n is string => n !== null);
+        if (fallidos.length > 0) {
+          throw new Error(`[merma-data] Falló la lectura de: ${fallidos.join(', ')}`);
+        }
+        return (res as PromiseFulfilledResult<Awaited<ReturnType<typeof fetchLocalMerma>>>[])
+          .flatMap(r => r.value.registros);
       });
 
       const registrosTodos = todos
