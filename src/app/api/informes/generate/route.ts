@@ -125,7 +125,7 @@ export interface DistribuidoraReportData {
  * anotado como gasto de ese local — el dato acá sirve para ver cuánto compró
  * afuera y cuánto de eso ya salió hacia los locales.
  */
-async function fetchDistribuidoraForReport(
+export async function fetchDistribuidoraForReport(
   fechaDesde: string,
   fechaHasta: string,
 ): Promise<Omit<DistribuidoraReportData, 'traspasoALocales' | 'porLocal'> | null> {
