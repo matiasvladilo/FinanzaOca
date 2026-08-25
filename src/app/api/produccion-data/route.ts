@@ -49,8 +49,27 @@ function rangoSupabase(
 
 const COLORES = ['#3B82F6', '#8B5CF6', '#10B981', '#F97316', '#EF4444', '#06B6D4', '#D1D5DB'];
 
-// Categorías excluidas de todos los análisis
-const CATS_EXCLUIDAS = new Set(['Bebidas', 'bebidas', 'BEBIDAS']);
+// ── Categorías de Distribuidora, excluidas de todos los análisis ─────────────
+//
+// Bebidas se excluía por nombre ("Bebidas" tipeado literal). Cuando ConectOca
+// la renombró a "Bebidas y Aguas" y le sumó 7 hermanas (Abarrotes, Lácteos,
+// Limpieza, Hogar, Snacks, Galletas y cereales, Dulces y Chocolates) — todas
+// reselló de Distribuidora, no producción propia — un match por nombre exacto
+// se habría roto igual, y encima habría dejado pasar a las 7 nuevas. La
+// relación real está en el dato: todas cuelgan de la categoría "DISTRIBUIDORA"
+// vía parent_id. Se usa esa relación en vez de una lista de nombres, para que
+// una subcategoría nueva quede afuera sola, sin tocar código.
+interface CategoriaRaw { id: string; name: string; parent_id: string | null }
+
+function esCategoriaDistribuidora(id: string, porId: Map<string, CategoriaRaw>): boolean {
+  let cur = porId.get(id);
+  let guard = 0; // corta ante un parent_id circular por dato corrupto
+  while (cur && guard++ < 10) {
+    if (cur.name.trim().toUpperCase() === 'DISTRIBUIDORA') return true;
+    cur = cur.parent_id ? porId.get(cur.parent_id) : undefined;
+  }
+  return false;
+}
 
 // ── Rango de fechas ──────────────────────────────────────────────────────────
 function getDateRange(params: {
@@ -145,12 +164,12 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   // getSupabaseClient() acepta service_role o anon — pedir anon sí o sí hacía
   // que devolviera vacío en silencio si solo estaba configurada la service_role.
   if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
-    return { orders: [], items: [], productCategoryMap: {} as Record<string, string> };
+    return { orders: [], items: [], productCategoryMap: {} as Record<string, string>, categoriasExcluidas: new Set<string>() };
   }
   const db = getSupabaseClient();
 
   const [categoriesRes, productsRes] = await Promise.all([
-    db.from('categories').select('id, name'),
+    db.from('categories').select('id, name, parent_id'),
     db.from('products').select('id, category_id'),
   ]);
 
@@ -198,13 +217,23 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   }
   console.log(`[produccion-data] rango: ${desdeStr} → ${hastaStr} | orders: ${orders.length} | items: ${allItems.length}`);
 
-  // product_id → nombre de categoría normalizado
-  const categoryNameMap: Record<string, string> = {};
-  for (const c of (categoriesRes.data ?? [])) {
+  // product_id → nombre de categoría normalizado, + qué categorías (por nombre
+  // normalizado) cuelgan de Distribuidora — ver esCategoriaDistribuidora arriba.
+  const categoriasRaw: CategoriaRaw[] = (categoriesRes.data ?? []).map(c => {
     const r = c as Record<string, unknown>;
-    const id = String(r.id ?? '');
-    if (id) categoryNameMap[id] = normalizeCat(String(r.name ?? ''));
+    return { id: String(r.id ?? ''), name: String(r.name ?? ''), parent_id: r.parent_id ? String(r.parent_id) : null };
+  });
+  const porId = new Map(categoriasRaw.map(c => [c.id, c]));
+
+  const categoryNameMap: Record<string, string> = {};
+  const categoriasExcluidas = new Set<string>();
+  for (const c of categoriasRaw) {
+    if (!c.id) continue;
+    const nombre = normalizeCat(c.name);
+    categoryNameMap[c.id] = nombre;
+    if (esCategoriaDistribuidora(c.id, porId)) categoriasExcluidas.add(nombre);
   }
+
   const productCategoryMap: Record<string, string> = {};
   for (const p of (productsRes.data ?? [])) {
     const r  = p as Record<string, unknown>;
@@ -213,7 +242,7 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
     if (id && ci) productCategoryMap[id] = categoryNameMap[ci] ?? 'Sin área';
   }
 
-  return { orders, items: allItems, productCategoryMap };
+  return { orders, items: allItems, productCategoryMap, categoriasExcluidas };
 }
 
 // ── Fetch Control Pan ─────────────────────────────────────────────────────────
@@ -396,17 +425,18 @@ export async function GET(req: NextRequest) {
       fetchControlPan(desde, hasta),
     ]);
 
-    const { orders, items, productCategoryMap } = ventasData;
+    const { orders, items, productCategoryMap, categoriasExcluidas } = ventasData;
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const totalCostos     = gastos.reduce((s, r) => s + r.monto, 0);
     const totalMerma      = mermaData.reduce((s, r) => s + r.monto, 0);
-    // Ventas ConectOca: orders.total como base confiable, menos la parte de bebidas (calculada por ítems)
+    // Ventas ConectOca: orders.total como base confiable, menos la parte de
+    // Distribuidora (bebidas y el resto de sus subcategorías, calculada por ítems)
     const totalOrdersSum  = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
     const bebidasItems    = items.reduce((s, item) => {
       const productId = String(item.product_id ?? '');
       const categoria = productCategoryMap[productId] ?? 'Sin área';
-      if (!CATS_EXCLUIDAS.has(categoria)) return s;
+      if (!categoriasExcluidas.has(categoria)) return s;
       return s + Number(item.quantity ?? 0) * Number(item.price ?? 0);
     }, 0);
     const ventasConectOca = totalOrdersSum - bebidasItems;
@@ -484,7 +514,7 @@ export async function GET(req: NextRequest) {
       const precio    = Number(item.price    ?? 0);
       const productId = String(item.product_id ?? '');
       const categoria = productCategoryMap[productId] ?? 'Sin área';
-      if (CATS_EXCLUIDAS.has(categoria)) continue;
+      if (categoriasExcluidas.has(categoria)) continue;
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;
@@ -508,7 +538,7 @@ export async function GET(req: NextRequest) {
     for (const item of items) {
       const productId = String(item.product_id ?? '');
       const categoria = productCategoryMap[productId] ?? 'Sin área';
-      if (CATS_EXCLUIDAS.has(categoria)) continue;
+      if (categoriasExcluidas.has(categoria)) continue;
       const cant      = Number(item.quantity ?? 0);
       const precio    = Number(item.price    ?? 0);
       if (!categoriaVentasMap[categoria]) categoriaVentasMap[categoria] = { unidades: 0, ingresos: 0 };
@@ -572,7 +602,7 @@ export interface ProduccionReportData {
 
 export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta: string): Promise<ProduccionReportData> {
   try {
-    const { orders, items, productCategoryMap } = await fetchVentasSupabase(fechaDesde, fechaHasta);
+    const { orders, items, productCategoryMap, categoriasExcluidas } = await fetchVentasSupabase(fechaDesde, fechaHasta);
 
     const totalPedidos = orders.length;
 
@@ -583,6 +613,7 @@ export async function fetchTopProductosForReport(fechaDesde: string, fechaHasta:
       const precio    = Number(item.price    ?? 0);
       const productId = String(item.product_id ?? '');
       const categoria = productCategoryMap[productId] ?? 'Sin área';
+      if (categoriasExcluidas.has(categoria)) continue;
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;
@@ -631,11 +662,22 @@ export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: s
       fetchControlPan(desde, hasta),
     ]);
 
-    const { orders, items, productCategoryMap: prodCatMap } = ventasRes.status === 'fulfilled'
+    const { orders, items, productCategoryMap: prodCatMap, categoriasExcluidas } = ventasRes.status === 'fulfilled'
       ? ventasRes.value
-      : { orders: [], items: [], productCategoryMap: {} as Record<string, string> };
+      : { orders: [], items: [], productCategoryMap: {} as Record<string, string>, categoriasExcluidas: new Set<string>() };
 
-    const ventasConectOca = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    // Antes esto era orders.reduce(...) sin descontar nada: el informe por
+    // correo incluía Bebidas y el resto de Distribuidora en las "ventas de
+    // Producción" mientras el dashboard sí las sacaba — dos números distintos
+    // para la misma métrica según de dónde se mirara. Mismo criterio acá.
+    const totalOrdersSum = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
+    const distribuidoraItems = items.reduce((s, item) => {
+      const productId = String(item.product_id ?? '');
+      const categoria = prodCatMap[productId] ?? 'Sin área';
+      if (!categoriasExcluidas.has(categoria)) return s;
+      return s + Number(item.quantity ?? 0) * Number(item.price ?? 0);
+    }, 0);
+    const ventasConectOca = totalOrdersSum - distribuidoraItems;
     const totalPedidos    = orders.length;
     const panExterno      = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.totalDeudaGenerada ?? 0) : 0;
     const deudaPendiente  = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.saldoPendiente ?? 0) : 0;
@@ -650,7 +692,7 @@ export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: s
       const precio    = Number(item.price    ?? 0);
       const productId = String(item.product_id ?? '');
       const categoria = prodCatMap[productId] ?? 'Sin área';
-      if (CATS_EXCLUIDAS.has(categoria)) continue;
+      if (categoriasExcluidas.has(categoria)) continue;
       if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
       prodMap[nombre].unidades += cant;
       prodMap[nombre].ingresos += cant * precio;
