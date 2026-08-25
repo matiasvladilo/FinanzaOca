@@ -20,6 +20,8 @@ interface SucursalMetrics {
   gastos: number;
   margen: number;
   transacciones: number;
+  /** Sólo viene cuando cortaAntesDeFinDeMes es true — ver ReportData. */
+  gastosMesCompleto?: number;
 }
 
 interface PeriodMetrics {
@@ -114,6 +116,8 @@ interface ReportData {
   gastoFijoData?: GastoFijoData;
   distribuidoraData?: DistribuidoraData | null;
   proyeccion?: Proyeccion;
+  /** true cuando fechaHasta corta antes de fin de mes — agrega la columna de acumulado del mes. */
+  cortaAntesDeFinDeMes?: boolean;
 }
 
 interface SendEmailBody {
@@ -248,7 +252,7 @@ function insightStyle(type: Insight['type']): { col: string; label: string } {
 function buildEmailHtml(d: ReportData): string {
   const { filters, current, previous, deltaVentas, deltaGastos, deltaMargen, deltaTx,
           tendencia, insights, aiAnalysis, mermaData, produccionData, gastoFijoData,
-          generatedAt, periodoAnterior, proyeccion, distribuidoraData } = d;
+          generatedAt, periodoAnterior, proyeccion, distribuidoraData, cortaAntesDeFinDeMes } = d;
 
   const sucursalLabel = filters.sucursal ? filters.sucursal : 'Todas las sucursales';
   const generadoLabel = generatedAt
@@ -311,6 +315,10 @@ function buildEmailHtml(d: ReportData): string {
     </tr>`).join('');
 
   // ── Por sucursal ──────────────────────────────────────────────────────────
+  // Cuando el informe corta antes de fin de mes (ej. se pide al día 25), se
+  // agrega una columna con el acumulado del mes calendario completo — "lo que
+  // va" (Gastos) al lado de "cómo viene el mes" (Gasto mes), sin mezclar los
+  // dos en la misma cifra.
   const sucursalSection = Object.keys(current.porSucursal).length > 0 ? (() => {
     const rows = Object.entries(current.porSucursal)
       .sort(([, a], [, b]) => b.ventas - a.ventas)
@@ -325,6 +333,7 @@ function buildEmailHtml(d: ReportData): string {
             <td class="em-text" style="${tdStyle}font-weight:600">${nombre}</td>
             <td class="em-text" style="${tdStyle}text-align:right;font-weight:700">${fmt(data.ventas)}</td>
             <td style="${tdStyle}text-align:right;color:${C.amber}">${fmt(data.gastos)}</td>
+            ${cortaAntesDeFinDeMes ? `<td class="em-text-sub" style="${tdStyle}text-align:right;color:${C.textSub}">${data.gastosMesCompleto != null ? fmt(data.gastosMesCompleto) : '—'}</td>` : ''}
             <td style="${tdStyle}text-align:right;color:${data.margen >= 0 ? C.green : C.red};font-weight:600">${fmt(data.margen)}</td>
             <td class="em-text-sub" style="${tdStyle}text-align:right;font-size:11px;color:${C.textSub}">${margenPct.toFixed(1)}%</td>
             <td style="${tdStyle}text-align:right;font-size:11px;font-weight:700;color:${indice50Color}">${indice50Suc.toFixed(1)}%</td>
@@ -337,14 +346,16 @@ function buildEmailHtml(d: ReportData): string {
         <tr>
           <th style="${thStyle}left">Sucursal</th>
           <th style="${thStyle}right">Ventas</th>
-          <th style="${thStyle}right">Gastos</th>
+          <th style="${thStyle}right">Gastos${cortaAntesDeFinDeMes ? ` (al ${fd(filters.fechaHasta)})` : ''}</th>
+          ${cortaAntesDeFinDeMes ? `<th style="${thStyle}right">Gasto mes</th>` : ''}
           <th style="${thStyle}right">Margen</th>
           <th style="${thStyle}right">Margen %</th>
           <th style="${thStyle}right">Índice 60</th>
           <th style="${thStyle}right">Δ Ventas</th>
         </tr>
         ${rows}
-      </table>`;
+      </table>
+      ${cortaAntesDeFinDeMes ? `<p style="font-size:10.5px;color:${C.textMuted};margin:6px 2px 0">"Gasto mes" es el acumulado del mes calendario completo, no sólo hasta la fecha de corte de este informe.</p>` : ''}`;
   })() : '';
 
   // ── Top proveedores ───────────────────────────────────────────────────────

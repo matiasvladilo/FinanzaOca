@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { toLocalDate, filterByDateRange, toLocalISODate } from '@/lib/date-utils';
+import { toLocalDate, filterByDateRange, toLocalISODate, ultimoDiaDelMes } from '@/lib/date-utils';
 import { normalizeProveedorName } from '@/lib/data/parsers';
 import { getDistribuidoraConfig } from '@/lib/google-sheets';
 import { fetchGastosFacturas, topProveedores } from '@/lib/data/gastos';
@@ -57,6 +57,13 @@ interface SucursalMetrics {
   gastos: number;
   margen: number;
   transacciones: number;
+  /**
+   * Sólo presente cuando fechaHasta corta antes de fin de mes (ver
+   * cortaAntesDeFinDeMes más abajo). Es el gasto de ese local en el mes
+   * calendario completo, no acotado al corte pedido — para poder comparar
+   * "lo que va" contra "cómo termina siendo el mes".
+   */
+  gastosMesCompleto?: number;
 }
 
 interface PeriodMetrics {
@@ -136,6 +143,25 @@ async function fetchDistribuidoraForReport(
     facturas: gastos.length,
     topProveedores: topProveedores(gastos, 5),
   };
+}
+
+/** Suma el gasto de cada local dentro de [desde, hasta] — misma lógica que
+ *  calcMetrics pero acotada a lo que hace falta para el "mes completo",
+ *  sin recalcular ventas ni el resto de las métricas. */
+function sumGastosPorSucursal(
+  gastos: RegistroGasto[],
+  desde: Date | null,
+  hasta: Date | null,
+  sucursal: string,
+): Record<string, number> {
+  const porSucursal: Record<string, number> = {};
+  for (const r of gastos) {
+    const d = toLocalDate(r.fecha);
+    if (!filterByDateRange(d, desde, hasta)) continue;
+    if (sucursal && r.sucursal !== sucursal) continue;
+    porSucursal[r.sucursal] = (porSucursal[r.sucursal] ?? 0) + r.monto;
+  }
+  return porSucursal;
 }
 
 // ── Cálculo de métricas por período ──────────────────────────────────────────
@@ -421,13 +447,26 @@ export async function GET(req: NextRequest) {
     const prevHastaStr = offsetDate(fechaDesde, -1);
     const prevDesdeStr = offsetDate(prevHastaStr, -(duration - 1));
 
+    // Mes calendario completo que contiene fechaHasta. Si el informe se pide
+    // a mitad de mes (ej. día 25), el gasto por sucursal queda acotado a esa
+    // fecha — acá se arma el rango para mostrar, al lado, cómo va el
+    // acumulado del mes completo (día 1 al último).
+    const [hy, hm, hd]   = fechaHasta.split('-').map(Number);
+    const ultimoDiaMes   = ultimoDiaDelMes(hy, hm);
+    const cortaAntesDeFinDeMes = hd < ultimoDiaMes;
+    const mesDesdeStr    = `${hy}-${String(hm).padStart(2, '0')}-01`;
+    const mesHastaStr    = `${hy}-${String(hm).padStart(2, '0')}-${String(ultimoDiaMes).padStart(2, '0')}`;
+
     // Obtener datos en paralelo (cierre-caja, ventas, merma, producción actual+anterior, gasto fijo)
-    const [ccResult, ventasResult, mermaResult, produccionCurrResult, produccionPrevResult, gastoFijoResult, gastoIndirectoResult, distribuidoraResult] = await Promise.allSettled([
+    const [ccResult, ventasResult, mermaResult, produccionCurrResult, produccionPrevResult, produccionMesCompletoResult, gastoFijoResult, gastoIndirectoResult, distribuidoraResult] = await Promise.allSettled([
       fetchCierreCajaData(),
       fetchVentasData(),
       fetchMermaForReport(fechaDesde, fechaHasta),
       fetchProduccionForReport(fechaDesde, fechaHasta),
       fetchProduccionForReport(prevDesdeStr, prevHastaStr),
+      // Sólo si hace falta: si fechaHasta ya es fin de mes, es la misma
+      // consulta de arriba — no pegarle dos veces a Supabase por lo mismo.
+      cortaAntesDeFinDeMes ? fetchProduccionForReport(mesDesdeStr, mesHastaStr) : Promise.resolve(null),
       perms.canAccessGastoFijo ? fetchGastoFijoForReport(fechaDesde, fechaHasta) : Promise.resolve({ porLocal: [], totalGeneral: 0 } as GastoFijoData),
       perms.canAccessGastoFijo ? fetchGastoIndirectoForReport(fechaDesde, fechaHasta) : Promise.resolve({ categorias: [], total: 0 } as GastoIndirectoData),
       fetchDistribuidoraForReport(fechaDesde, fechaHasta),
@@ -439,6 +478,7 @@ export async function GET(req: NextRequest) {
     const emptyProduccion: ProduccionReportDataFull = { topProductos: [], totalPedidos: 0, ventasConectOca: 0, panExterno: 0, totalVentas: 0, gastos: 0, deudaPendiente: 0 };
     const produccionCurr = produccionCurrResult.status === 'fulfilled' ? produccionCurrResult.value : emptyProduccion;
     const produccionPrev = produccionPrevResult.status === 'fulfilled' ? produccionPrevResult.value : emptyProduccion;
+    const produccionMesCompleto = produccionMesCompletoResult.status === 'fulfilled' ? produccionMesCompletoResult.value : null;
     const gastoFijoData      = gastoFijoResult.status      === 'fulfilled' ? gastoFijoResult.value      : { porLocal: [], totalGeneral: 0 } as GastoFijoData;
     const gastoIndirectoData = gastoIndirectoResult.status === 'fulfilled' ? gastoIndirectoResult.value : { categorias: [], total: 0 } as GastoIndirectoData;
     const distribuidoraData  = distribuidoraResult.status  === 'fulfilled' ? distribuidoraResult.value  : null;
@@ -492,6 +532,27 @@ export async function GET(req: NextRequest) {
         previous.gastos   += produccionPrev.gastos;
         previous.margen    = previous.ventas - previous.gastos;
         previous.margenPct = previous.ventas > 0 ? (previous.margen / previous.ventas) * 100 : 0;
+      }
+    }
+
+    // Gasto del mes calendario completo por sucursal — sólo tiene sentido
+    // mostrarlo cuando el corte pedido no llega a fin de mes (ver arriba).
+    // No se suma a current.gastos ni a ningún total: es sólo referencia, para
+    // comparar "lo que va" contra "cómo termina siendo el mes".
+    if (cortaAntesDeFinDeMes) {
+      const mesDesde = toLocalDate(mesDesdeStr);
+      const mesHasta = (() => {
+        const d = toLocalDate(mesHastaStr);
+        if (!d) return null;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+      })();
+      const gastosMesPorSucursal = sumGastosPorSucursal(registrosDiariosGastos, mesDesde, mesHasta, sucursal);
+      for (const [nombre, monto] of Object.entries(gastosMesPorSucursal)) {
+        if (!current.porSucursal[nombre]) current.porSucursal[nombre] = { ventas: 0, gastos: 0, margen: 0, transacciones: 0 };
+        current.porSucursal[nombre].gastosMesCompleto = monto;
+      }
+      if (!sucursal && produccionMesCompleto && produccionMesCompleto.gastos > 0 && current.porSucursal['Producción']) {
+        current.porSucursal['Producción'].gastosMesCompleto = produccionMesCompleto.gastos;
       }
     }
 
@@ -583,6 +644,7 @@ export async function GET(req: NextRequest) {
       gastoIndirectoData,
       distribuidoraData: distribuidoraReport,
       proyeccion,
+      cortaAntesDeFinDeMes,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error desconocido';
