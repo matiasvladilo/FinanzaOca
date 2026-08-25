@@ -32,7 +32,7 @@ export const ASISTENTE_TOOLS: Tool[] = [
       properties: {
         producto: { type: 'string', description: 'Substring del nombre del producto a buscar (ej. "palta"). Omitir para no filtrar por producto.' },
         tipo: { type: 'string', description: 'Tipo de merma exacto (ej. "Corporativo", "Verdura", "Produccion"). Omitir para no filtrar por tipo.' },
-        local: { type: 'string', description: 'Nombre exacto de una sucursal. Omitir para todas.' },
+        local: { type: 'string', description: 'Nombre exacto de una sucursal ("La Reina", "PV", "PT", "Bilbao") para filtrar a una sola. Omitir para todas.' },
         mesDesde: { type: 'string', description: 'Mes de inicio, formato YYYY-MM. Omitir para desde el principio del histórico.' },
         mesHasta: { type: 'string', description: 'Mes de fin, formato YYYY-MM. Omitir para hasta el mes más reciente.' },
       },
@@ -107,7 +107,7 @@ export const ASISTENTE_TOOLS: Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        local: { type: 'string', description: 'Nombre exacto de una sucursal. Omitir para todas.' },
+        local: { type: 'string', description: 'Nombre exacto de una sucursal ("La Reina", "PV", "PT", "Bilbao") para filtrar a una sola. Omitir para todas.' },
         mesDesde: { type: 'string', description: 'Mes de inicio, formato YYYY-MM. Omitir para desde el principio.' },
         mesHasta: { type: 'string', description: 'Mes de fin, formato YYYY-MM. Omitir para hasta el final.' },
       },
