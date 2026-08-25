@@ -160,7 +160,7 @@ function normalizeCat(name: string): string {
 }
 
 // ── Fetch ventas desde Supabase (ConectOca) ──────────────────────────────────
-async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
+export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   // getSupabaseClient() acepta service_role o anon — pedir anon sí o sí hacía
   // que devolviera vacío en silencio si solo estaba configurada la service_role.
   if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
@@ -243,6 +243,45 @@ async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   }
 
   return { orders, items: allItems, productCategoryMap, categoriasExcluidas };
+}
+
+/**
+ * Busca un producto por nombre (substring, sin distinguir mayúsculas) en TODO
+ * el catálogo de ConectOca del período — a diferencia de topProductos, que se
+ * corta en los primeros 15 por volumen. La usa el asistente virtual para
+ * preguntas tipo "qué porcentaje de venta son las sopaipillas", donde el
+ * producto puede no estar entre los más vendidos.
+ *
+ * A propósito NO excluye la familia Distribuidora (categoriasExcluidas): si
+ * preguntan puntualmente por un producto, la respuesta tiene que ser real
+ * sin importar en qué categoría cayó — la exclusión es para no mezclarlo con
+ * el ranking de Producción, no para ocultar el dato si se pide directo.
+ */
+export async function buscarProductoPorNombre(
+  nombre: string,
+  fechaDesde: string,
+  fechaHasta: string,
+): Promise<Array<{ nombre: string; categoria: string; unidades: number; ingresos: number }>> {
+  const { desdeISO, hastaISO } = limitesUtcDelRango(fechaDesde, fechaHasta);
+  const { items, productCategoryMap } = await fetchVentasSupabase(desdeISO, hastaISO);
+
+  const q = nombre.trim().toLowerCase();
+  if (!q) return [];
+
+  const porProducto: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
+  for (const item of items) {
+    const productName = String(item.product_name ?? '');
+    if (!productName.toLowerCase().includes(q)) continue;
+    const productId = String(item.product_id ?? '');
+    const categoria = productCategoryMap[productId] ?? 'Sin área';
+    const cant   = Number(item.quantity ?? 0);
+    const precio = Number(item.price ?? 0);
+    if (!porProducto[productName]) porProducto[productName] = { nombre: productName, categoria, unidades: 0, ingresos: 0 };
+    porProducto[productName].unidades += cant;
+    porProducto[productName].ingresos += cant * precio;
+  }
+
+  return Object.values(porProducto).sort((a, b) => b.ingresos - a.ingresos);
 }
 
 // ── Fetch Control Pan ─────────────────────────────────────────────────────────
