@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSheet } from '@/lib/google-sheets';
 import { requireAuth } from '@/lib/auth-api';
+import { normalizeLocalName } from '@/lib/data/parsers';
 
 export interface PresupuestoRow {
   local: string;
@@ -31,7 +32,13 @@ export async function fetchPresupuesto(): Promise<PresupuestoRow[]> {
   return rows.slice(1)
     .filter(row => row.some(c => c?.trim()))
     .map(row => ({
-      local:       (row[idxLocal] ?? '').trim(),
+      // La planilla de Presupuesto es una sola hoja compartida, tipeada a mano
+      // ("LA OCA LA REINA", "BILBAO" en mayúsculas, etc.) — a diferencia de
+      // ventas/merma/cierre-caja, que leen un spreadsheet por local y por eso
+      // pueden forzar el nombre canónico en el origen. Acá hay que normalizar
+      // explícitamente, si no "La Reina"/"Bilbao" (como los pide el asistente
+      // virtual y el resto de la app) nunca hacen match exacto.
+      local:       normalizeLocalName((row[idxLocal] ?? '').trim()),
       mes:         parseInt(row[idxMes] ?? '0', 10),
       año:         parseInt(row[idxAño] ?? '0', 10),
       presupuesto: parseFloat((row[idxPres] ?? '0').replace(/[.$\s]/g, '').replace(',', '.')) || 0,
