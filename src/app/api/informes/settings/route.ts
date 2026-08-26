@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+    // Acepta un objeto parcial, pero el cliente (AutomationPanel) siempre
+    // manda los dos campos juntos — evita que dos toggles casi simultáneos
+    // se pisen entre sí en el lectura-mezcla-escritura de setReportSettings.
     const patch: Record<string, boolean> = {};
     if (typeof body?.weeklyEnabled === 'boolean') patch.weeklyEnabled = body.weeklyEnabled;
     if (typeof body?.monthlyEnabled === 'boolean') patch.monthlyEnabled = body.monthlyEnabled;

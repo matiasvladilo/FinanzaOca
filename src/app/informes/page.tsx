@@ -423,14 +423,21 @@ function AutomationPanel() {
     if (!settings || pending) return;
     const field = key === 'weekly' ? 'weeklyEnabled' : 'monthlyEnabled';
     const anterior = settings[field];
+    // Mandamos el objeto completo (no solo el campo que cambió) calculado
+    // acá, con el valor ya conocido del otro campo. Antes el servidor hacía
+    // lectura-mezcla-escritura por separado para cada request; si se tocaban
+    // los dos switches rápido, la segunda escritura podía pisar la primera
+    // con un valor leído antes de que esa primera terminara de guardar —
+    // eso era lo que hacía "imposible" dejar los dos apagados a la vez.
+    const siguiente = { ...settings, [field]: !anterior };
     setPending(key);
     setError(null);
-    setSettings({ ...settings, [field]: !anterior }); // optimista
+    setSettings(siguiente); // optimista
     try {
       const res = await fetch('/api/informes/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: !anterior }),
+        body: JSON.stringify(siguiente),
       });
       const data = await res.json();
       if (data.ok) setSettings(data.settings);
@@ -482,14 +489,14 @@ function AutomationPanel() {
                     role="switch"
                     aria-checked={activo}
                     aria-label={`${activo ? 'Desactivar' : 'Activar'} ${label.toLowerCase()}`}
-                    disabled={!settings || pending === key}
+                    disabled={!settings || !!pending}
                     onClick={() => toggle(key)}
-                    className="relative flex-shrink-0 w-10 h-6 rounded-full transition-colors disabled:opacity-50"
+                    className="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--card)]"
                     style={{ background: activo ? '#22C55E' : 'var(--border-2)' }}
                   >
                     <span
-                      className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
-                      style={{ transform: activo ? 'translateX(1.125rem)' : 'translateX(0.125rem)' }}
+                      className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-transform duration-200 ease-in-out"
+                      style={{ transform: activo ? 'translateX(1.25rem)' : 'translateX(0)' }}
                     />
                   </button>
                 </div>
