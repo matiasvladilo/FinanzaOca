@@ -161,6 +161,17 @@ body {
   background: transparent !important;
 }
 
+/* Recharts pone tabIndex=0 en el <svg> raíz de cada gráfico (accesibilidad
+   de sus tooltips) — un click adentro le da foco y el navegador dibuja su
+   outline default (naranja/dorado grueso en este entorno), un rectángulo
+   feo alrededor de TODO el gráfico que no tiene nada que ver con el diseño
+   de la app. Se saca acá, global, para que no vuelva a aparecer en ningún
+   gráfico nuevo. */
+.recharts-wrapper svg:focus,
+.recharts-surface:focus {
+  outline: none;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
