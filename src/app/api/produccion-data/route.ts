@@ -265,18 +265,23 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   return { orders, items: allItems, productCategoryMap, categoriasExcluidas, accountNameMap };
 }
 
+/** Minúsculas + sin tildes/diacríticos — "limon" y "limón" tienen que matchear igual. */
+function normalizarParaBusqueda(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
 /**
- * ¿"query" aparece en "nombre"? Substring simple, salvo que sea justo la
- * diferencia de un plural/singular en español (una "s" final de más o de
+ * ¿"query" aparece en "nombre"? Substring simple, sin distinguir mayúsculas
+ * ni tildes ("pie de limon" encuentra "Pie de Limón"), salvo que sea justo
+ * la diferencia de un plural/singular en español (una "s" final de más o de
  * menos) — "sopaipilla" tiene que encontrar "Sopaipillas" y viceversa, sin
  * que importe cuál de las dos formas haya quedado tipeada en ConectOca. No
- * es un fuzzy-match general (no corrige tildes, typos, sinónimos): es
- * puntual para ese caso, que es el que realmente aparece con nombres de
- * productos reales.
+ * es un fuzzy-match general (no corrige typos ni sinónimos): son los dos
+ * casos puntuales que realmente aparecen con nombres de productos reales.
  */
 function coincideNombreProducto(nombreReal: string, query: string): boolean {
-  const nombre = nombreReal.toLowerCase();
-  const q = query.toLowerCase().trim();
+  const nombre = normalizarParaBusqueda(nombreReal);
+  const q = normalizarParaBusqueda(query.trim());
   if (!q) return false;
   if (nombre.includes(q)) return true;
   const qAlterno = q.endsWith('s') ? q.slice(0, -1) : `${q}s`;
