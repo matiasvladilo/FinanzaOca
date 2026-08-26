@@ -5,6 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import LayoutShell from '@/components/layout/LayoutShell';
 import { ToastContainer } from '@/components/ui/Toast';
 import { ThemeProvider } from '@/providers/ThemeProvider';
+import AsistenteBubble from '@/components/asistente/AsistenteBubble';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </LayoutShell>
           <ToastContainer />
         </ThemeProvider>
+        <AsistenteBubble />
       </body>
     </html>
   );
