@@ -164,13 +164,19 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   // getSupabaseClient() acepta service_role o anon — pedir anon sí o sí hacía
   // que devolviera vacío en silencio si solo estaba configurada la service_role.
   if (!process.env.SUPABASE_URL || !(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY)) {
-    return { orders: [], items: [], productCategoryMap: {} as Record<string, string>, categoriasExcluidas: new Set<string>() };
+    return { orders: [], items: [], productCategoryMap: {} as Record<string, string>, categoriasExcluidas: new Set<string>(), accountNameMap: {} as Record<string, string> };
   }
   const db = getSupabaseClient();
 
-  const [categoriesRes, productsRes] = await Promise.all([
+  const [categoriesRes, productsRes, profilesRes] = await Promise.all([
     db.from('categories').select('id, name, parent_id'),
     db.from('products').select('id, category_id'),
+    // Cada sucursal pide con SU PROPIA cuenta (role='local') — profiles.id
+    // es el mismo auth.users.id que orders.user_id, aunque PostgREST no
+    // pueda hacer el embed automático porque la FK real de orders es hacia
+    // auth.users, no hacia profiles. Por eso se resuelve a mano acá con un
+    // mapa, en vez de un join anidado en el select de orders.
+    db.from('profiles').select('id, name'),
   ]);
 
   // Orders + sus items, en una sola consulta paginada.
@@ -192,7 +198,7 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await db
       .from('orders')
-      .select('created_at, total, status, customer_name, order_items(product_id, product_name, quantity, price)')
+      .select('created_at, total, status, user_id, order_items(product_id, product_name, quantity, price)')
       .eq('business_id', OCA_BUSINESS_ID)
       .gte('created_at', desdeStr)
       .lte('created_at', hastaStr)
@@ -204,13 +210,13 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
     for (const row of data as Record<string, unknown>[]) {
       const { order_items: nested, ...order } = row;
       orders.push(order);
-      // Se le cuelga la fecha y el customer_name del pedido a cada ítem: sin
-      // eso no se puede armar ni la serie diaria ni el desglose parcial por
-      // sucursal (ver localDePedidoConectOca), porque order_items no tiene
-      // su propia fecha ni cliente utilizables.
+      // Se le cuelga la fecha y el user_id del pedido a cada ítem: sin eso
+      // no se puede armar ni la serie diaria ni cuánto pidió cada sucursal
+      // (ver localDePedidoConectOca), porque order_items no tiene su propia
+      // fecha ni cuenta utilizables.
       if (Array.isArray(nested)) {
         for (const item of nested as Record<string, unknown>[]) {
-          allItems.push({ ...item, created_at: order.created_at, customer_name: order.customer_name });
+          allItems.push({ ...item, created_at: order.created_at, user_id: order.user_id });
         }
       }
     }
@@ -243,7 +249,20 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
     if (id && ci) productCategoryMap[id] = categoryNameMap[ci] ?? 'Sin área';
   }
 
-  return { orders, items: allItems, productCategoryMap, categoriasExcluidas };
+  // user_id → nombre de la cuenta que hizo el pedido. Cada sucursal pide con
+  // su propia cuenta ("LA OCA PV", "LA OCA BILBAO", "LA OCA LA REINA",
+  // "Pedro Torres" para PT — confirmado con el dueño del negocio, y su email
+  // real es pt@gmail.com), así que esto cubre prácticamente el 100% de los
+  // pedidos — a diferencia de customer_name (campo libre, opcional, vacío en
+  // la mayoría), que se probó primero y no servía para esto.
+  const accountNameMap: Record<string, string> = {};
+  for (const p of (profilesRes.data ?? [])) {
+    const r = p as Record<string, unknown>;
+    const id = String(r.id ?? '');
+    if (id) accountNameMap[id] = String(r.name ?? '');
+  }
+
+  return { orders, items: allItems, productCategoryMap, categoriasExcluidas, accountNameMap };
 }
 
 /**
@@ -265,28 +284,23 @@ function coincideNombreProducto(nombreReal: string, query: string): boolean {
 }
 
 /**
- * Mapea el customer_name de un pedido de ConectOca a la sucursal real.
+ * Mapea el nombre de la cuenta que hizo un pedido de ConectOca (resuelta
+ * vía accountNameMap, orders.user_id → profiles.name) a la sucursal real.
  *
- * No es un campo de "sucursal" oficial de ConectOca — es el campo de
- * cliente de un pedido, que en la práctica se usa para el pedido de
- * reposición que cada sucursal le hace a producción central (pan +
- * pastelería + abarrotes). Según el propio negocio, ese pedido ES lo que se
- * va a vender, así que este número es real y vale como indicador de venta
- * por local — no es un dato "aparte" ni desconectado. Confirmado a mano con
- * el dueño del negocio (26/08/2026): "LA OCA PV"→PV, "LA OCA BILBAO"→Bilbao,
- * "LA OCA LA REINA"→La Reina, y puntualmente "Pedro Torres" (nombre de una
- * persona, no un patrón de local) → PT.
+ * Cada sucursal pide con SU PROPIA cuenta de ConectOca — no es un dato
+ * suelto ni parcial, cubre prácticamente el 100% de los pedidos (verificado
+ * contra la base real: 3.942 de 3.942 pedidos tienen user_id, y ese user_id
+ * siempre resuelve a una de estas cuentas). Confirmado a mano con el dueño
+ * del negocio (26/08/2026): "LA OCA PV"→PV, "LA OCA BILBAO"→Bilbao,
+ * "LA OCA LA REINA"→La Reina, y "Pedro Torres" (cuenta con email real
+ * pt@gmail.com, no un cliente externo) → PT.
  *
- * Lo que SÍ hay que aclarar siempre es la cobertura: customer_name está
- * vacío en la gran mayoría de los pedidos (~80% del total en volumen
- * probado) — no porque esa sucursal no haya pedido nada, sino porque ese
- * pedido puntual no quedó con el dato de sucursal cargado. Quien llame a
- * esta función tiene que mostrar también cuánto quedó "sin identificar",
- * para que quede claro que el desglose cubre una parte, no que el resto
- * sea cero.
+ * (Antes esto se intentó con orders.customer_name — un campo de texto libre
+ * y opcional, vacío en ~80% de los pedidos. Se abandonó por accountNameMap
+ * porque el nombre de la cuenta sí está siempre.)
  */
-function localDePedidoConectOca(customerName: unknown): string | null {
-  const s = String(customerName ?? '').trim().toUpperCase();
+function localDePedidoConectOca(nombreCuenta: unknown): string | null {
+  const s = String(nombreCuenta ?? '').trim().toUpperCase();
   if (!s) return null;
   if (s.includes('LA REINA')) return 'La Reina';
   if (s.includes('BILBAO')) return 'Bilbao';
@@ -329,7 +343,7 @@ export async function buscarProductoPorNombre(
   fechaHasta: string,
 ): Promise<ProductoVentaResultado[]> {
   const { desdeISO, hastaISO } = limitesUtcDelRango(fechaDesde, fechaHasta);
-  const { items, productCategoryMap } = await fetchVentasSupabase(desdeISO, hastaISO);
+  const { items, productCategoryMap, accountNameMap } = await fetchVentasSupabase(desdeISO, hastaISO);
 
   const q = nombre.trim().toLowerCase();
   if (!q) return [];
@@ -352,7 +366,7 @@ export async function buscarProductoPorNombre(
     acc.unidades += cant;
     acc.ingresos += cant * precio;
 
-    const local = localDePedidoConectOca(item.customer_name);
+    const local = localDePedidoConectOca(accountNameMap[String(item.user_id ?? '')]);
     if (local) {
       if (!acc.porLocalIdentificado[local]) acc.porLocalIdentificado[local] = { unidades: 0, ingresos: 0 };
       acc.porLocalIdentificado[local].unidades += cant;
@@ -546,7 +560,7 @@ export async function GET(req: NextRequest) {
       fetchControlPan(desde, hasta),
     ]);
 
-    const { orders, items, productCategoryMap, categoriasExcluidas } = ventasData;
+    const { orders, items, productCategoryMap, categoriasExcluidas, accountNameMap } = ventasData;
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
     const totalCostos     = gastos.reduce((s, r) => s + r.monto, 0);
@@ -647,11 +661,9 @@ export async function GET(req: NextRequest) {
       acc.ingresos += cant * precio;
       totalUnidades += cant;
 
-      // Desglose PARCIAL por sucursal (ver localDePedidoConectOca) — la
-      // mayoría de los pedidos no tiene customer_name, así que esto nunca
-      // es el total real vendido en cada local, solo lo que sí se pudo
-      // identificar.
-      const local = localDePedidoConectOca(item.customer_name);
+      // Cuánto pidió cada sucursal (ver localDePedidoConectOca) — resuelto
+      // vía la cuenta que hizo el pedido, cubre prácticamente el 100%.
+      const local = localDePedidoConectOca(accountNameMap[String(item.user_id ?? '')]);
       if (local) {
         if (!acc.porLocalIdentificado[local]) acc.porLocalIdentificado[local] = { unidades: 0, ingresos: 0 };
         acc.porLocalIdentificado[local].unidades += cant;

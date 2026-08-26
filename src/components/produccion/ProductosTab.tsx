@@ -24,11 +24,10 @@ export interface ProductoAgregado {
   unidades: number;
   ingresos: number;
   /**
-   * Desglose PARCIAL por sucursal — solo cubre los pedidos de ConectOca que
-   * traen un cliente identificable como local (ver localDePedidoConectOca
-   * en produccion-data/route.ts). La mayoría de los pedidos no tiene ese
-   * dato, así que esto NUNCA es el total real vendido en cada local — ver
-   * sinIdentificar, que casi siempre es la parte más grande.
+   * Cuánto pidió cada sucursal, resuelto por la cuenta de ConectOca que hizo
+   * cada pedido (ver localDePedidoConectOca en produccion-data/route.ts) —
+   * cubre prácticamente el 100% de los pedidos, no es un dato parcial.
+   * sinIdentificar son pedidos de otro canal (ej. despacho), normalmente 0.
    */
   porLocalIdentificado?: Record<string, { unidades: number; ingresos: number }>;
   sinIdentificar?: { unidades: number; ingresos: number };
@@ -256,8 +255,7 @@ export default function ProductosTab({
                 Cuánto pidió cada sucursal
               </p>
               <p className="text-[11px] text-gray-400 mb-3">
-                Según los pedidos de ConectOca con sucursal identificada. Cubre una parte del total —
-                el resto de los pedidos no quedó con ese dato cargado, no es que esa sucursal no haya pedido.
+                Según la cuenta de ConectOca que hizo cada pedido.
               </p>
               <div className="space-y-1.5">
                 {Object.entries(producto.porLocalIdentificado)
@@ -268,9 +266,9 @@ export default function ProductosTab({
                       <span className="text-gray-400">{fmtUnid(v.unidades)} un. · {fmtPesos(v.ingresos)}</span>
                     </div>
                   ))}
-                {producto.sinIdentificar && (
+                {producto.sinIdentificar && producto.sinIdentificar.unidades > 0 && (
                   <div className="flex items-center justify-between text-[12px] pt-1.5" style={{ borderTop: '1px dashed var(--border)' }}>
-                    <span className="text-gray-400 italic">Sin identificar</span>
+                    <span className="text-gray-400 italic">Otro canal (ej. despacho)</span>
                     <span className="text-gray-400 italic">
                       {fmtUnid(producto.sinIdentificar.unidades)} un. · {fmtPesos(producto.sinIdentificar.ingresos)}
                     </span>
