@@ -9,7 +9,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth-api';
 import { getReportSettings, setReportSettings } from '@/lib/report-settings';
 
+// force-dynamic + no-store: este valor lo puede cambiar cualquier admin en
+// cualquier momento y el cron lo lee para decidir si manda el correo o no —
+// una respuesta cacheada (por el navegador, un proxy, o el CDN de Netlify)
+// mostraría "activo" después de haberlo apagado. Confirmado en vivo: sin
+// esto, un fetch() sin cache-busting podía devolver el valor de antes del
+// último cambio.
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
@@ -19,7 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   const settings = await getReportSettings();
-  return NextResponse.json({ ok: true, settings });
+  return NextResponse.json({ ok: true, settings }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req: NextRequest) {

@@ -413,7 +413,7 @@ function AutomationPanel() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/informes/settings')
+    fetch('/api/informes/settings', { cache: 'no-store' })
       .then(r => r.json())
       .then(data => { if (data.ok) setSettings(data.settings); })
       .catch(() => setError('No se pudo cargar la configuración'));
