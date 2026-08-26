@@ -411,6 +411,11 @@ function AutomationPanel() {
   const [settings, setSettings] = useState<{ weeklyEnabled: boolean; monthlyEnabled: boolean } | null>(null);
   const [pending, setPending] = useState<'weekly' | 'monthly' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Lock sincrónico aparte del estado: `pending` (state) recién bloquea el
+  // botón después de que React re-renderiza, así que dos toggles disparados
+  // en el mismo tick (antes de ese re-render) podían colarse los dos y pisarse
+  // entre sí. Un ref se lee/escribe al instante, sin esperar un ciclo de React.
+  const enVueloRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/informes/settings', { cache: 'no-store' })
@@ -420,7 +425,8 @@ function AutomationPanel() {
   }, []);
 
   async function toggle(key: 'weekly' | 'monthly') {
-    if (!settings || pending) return;
+    if (!settings || enVueloRef.current) return;
+    enVueloRef.current = true;
     const field = key === 'weekly' ? 'weeklyEnabled' : 'monthlyEnabled';
     const anterior = settings[field];
     // Mandamos el objeto completo (no solo el campo que cambió) calculado
@@ -447,6 +453,7 @@ function AutomationPanel() {
       setError('No se pudo guardar el cambio');
     } finally {
       setPending(null);
+      enVueloRef.current = false;
     }
   }
 
