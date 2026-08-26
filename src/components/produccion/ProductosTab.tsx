@@ -253,11 +253,11 @@ export default function ProductosTab({
           {producto.porLocalIdentificado && Object.keys(producto.porLocalIdentificado).length > 0 && (
             <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
               <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-1">
-                Por sucursal (parcial)
+                Cuánto pidió cada sucursal
               </p>
               <p className="text-[11px] text-gray-400 mb-3">
-                Solo cuenta los pedidos de ConectOca con cliente identificado — la mayoría de los pedidos
-                no lo tiene, así que esto NO es el total real vendido en cada local.
+                Según los pedidos de ConectOca con sucursal identificada. Cubre una parte del total —
+                el resto de los pedidos no quedó con ese dato cargado, no es que esa sucursal no haya pedido.
               </p>
               <div className="space-y-1.5">
                 {Object.entries(producto.porLocalIdentificado)

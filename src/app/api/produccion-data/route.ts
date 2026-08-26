@@ -267,20 +267,23 @@ function coincideNombreProducto(nombreReal: string, query: string): boolean {
 /**
  * Mapea el customer_name de un pedido de ConectOca a la sucursal real.
  *
- * OJO: esto NO es un campo de "sucursal" oficial de ConectOca — es el campo
- * de cliente de un pedido, que en la práctica se usa para pedidos
- * mayoristas/de reposición HACIA las sucursales (compran el mismo mix de
- * pan + pastelería + abarrotes que un local pediría para reponer stock, no
- * el ticket de un cliente comprando en el mostrador). Confirmado a mano con
+ * No es un campo de "sucursal" oficial de ConectOca — es el campo de
+ * cliente de un pedido, que en la práctica se usa para el pedido de
+ * reposición que cada sucursal le hace a producción central (pan +
+ * pastelería + abarrotes). Según el propio negocio, ese pedido ES lo que se
+ * va a vender, así que este número es real y vale como indicador de venta
+ * por local — no es un dato "aparte" ni desconectado. Confirmado a mano con
  * el dueño del negocio (26/08/2026): "LA OCA PV"→PV, "LA OCA BILBAO"→Bilbao,
  * "LA OCA LA REINA"→La Reina, y puntualmente "Pedro Torres" (nombre de una
  * persona, no un patrón de local) → PT.
  *
- * customer_name está vacío en la gran mayoría de los pedidos (~80% del
- * total en volumen probado) — cualquier desglose que use esto es SIEMPRE
- * parcial, nunca el total real vendido en cada local. Quien llame a esta
- * función tiene que mostrar también cuánto quedó "sin identificar", nunca
- * presentar el desglose como si fuera completo.
+ * Lo que SÍ hay que aclarar siempre es la cobertura: customer_name está
+ * vacío en la gran mayoría de los pedidos (~80% del total en volumen
+ * probado) — no porque esa sucursal no haya pedido nada, sino porque ese
+ * pedido puntual no quedó con el dato de sucursal cargado. Quien llame a
+ * esta función tiene que mostrar también cuánto quedó "sin identificar",
+ * para que quede claro que el desglose cubre una parte, no que el resto
+ * sea cero.
  */
 function localDePedidoConectOca(customerName: unknown): string | null {
   const s = String(customerName ?? '').trim().toUpperCase();
@@ -297,9 +300,9 @@ export interface ProductoVentaResultado {
   categoria: string;
   unidades: number;
   ingresos: number;
-  /** Desglose PARCIAL por sucursal — solo los pedidos con customer_name identificable (ver localDePedidoConectOca). */
+  /** Cuánto pidió cada sucursal — solo los pedidos con customer_name identificable (ver localDePedidoConectOca). Cubre una parte del total, no todo. */
   porLocalIdentificado: Record<string, { unidades: number; ingresos: number }>;
-  /** El resto: pedidos sin customer_name, o con uno que no matchea ninguna sucursal conocida. Casi siempre es la mayor parte del total. */
+  /** El resto: pedidos sin customer_name, o con uno que no matchea ninguna sucursal conocida — no significa que esa venta no haya pasado, solo que no quedó con sucursal cargada. Casi siempre es la mayor parte del total. */
   sinIdentificar: { unidades: number; ingresos: number };
 }
 
@@ -317,7 +320,8 @@ export interface ProductoVentaResultado {
  * el ranking de Producción, no para ocultar el dato si se pide directo.
  *
  * Incluye porLocalIdentificado/sinIdentificar (ver localDePedidoConectOca) —
- * un desglose PARCIAL por sucursal, nunca el total completo de cada local.
+ * cuánto pidió cada sucursal, sobre la parte de los pedidos que sí tiene
+ * ese dato cargado (no el 100%, ver sinIdentificar).
  */
 export async function buscarProductoPorNombre(
   nombre: string,
