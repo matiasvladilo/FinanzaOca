@@ -57,7 +57,14 @@ async function obtenerInformePeriodo(input: Record<string, unknown>) {
 }
 
 async function ejecutarHerramienta(name: string, input: Record<string, unknown>): Promise<unknown> {
-  if (name === 'obtener_informe_periodo') return obtenerInformePeriodo(input);
+  if (name === 'obtener_informe_periodo') {
+    try {
+      return await obtenerInformePeriodo(input);
+    } catch (err) {
+      console.error('[asistente] Error en herramienta obtener_informe_periodo:', err);
+      return { error: 'No se pudo generar el informe ahora mismo.' };
+    }
+  }
   const handler = ASISTENTE_HANDLERS[name];
   if (!handler) return { error: `Herramienta desconocida: ${name}` };
   try {
@@ -87,9 +94,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Se requiere "messages"' }, { status: 400 });
     }
 
-    const ultimoMensaje = entrada[entrada.length - 1];
-    if (ultimoMensaje?.role === 'user' && ultimoMensaje.content.length > MAX_MENSAJE_LARGO) {
-      return NextResponse.json({ ok: false, error: `El mensaje es demasiado largo (máximo ${MAX_MENSAJE_LARGO} caracteres)` }, { status: 400 });
+    // Validar cada mensaje del historial ANTES de recortar — así no se cuela
+    // silenciosamente un mensaje con content no-string (ej. un tool_use/tool_result
+    // armado a mano) ni uno demasiado largo que quedaría fuera del slice de abajo.
+    for (const m of entrada) {
+      if (!m || (m.role !== 'user' && m.role !== 'assistant')) {
+        return NextResponse.json({ ok: false, error: 'Mensaje con "role" inválido' }, { status: 400 });
+      }
+      if (typeof m.content !== 'string') {
+        return NextResponse.json({ ok: false, error: 'Mensaje con "content" inválido' }, { status: 400 });
+      }
+      if (m.content.length > MAX_MENSAJE_LARGO) {
+        return NextResponse.json({ ok: false, error: `El mensaje es demasiado largo (máximo ${MAX_MENSAJE_LARGO} caracteres)` }, { status: 400 });
+      }
     }
 
     // Tope de historial reenviado — evita que una conversación muy larga
@@ -147,7 +164,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, reply: textoFinal });
   } catch (error: unknown) {
     console.error('[asistente/chat]', error);
-    const message = error instanceof Error ? error.message : 'Error desconocido';
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: 'No pude procesar tu consulta ahora mismo. Probá de nuevo en un momento.' },
+      { status: 500 },
+    );
   }
 }
