@@ -105,6 +105,7 @@ export default function AsistenteChat({ onClose }: { onClose: () => void }) {
         <button
           onClick={enviar}
           disabled={cargando || !input.trim()}
+          aria-label="Enviar mensaje"
           className="w-9 h-9 flex items-center justify-center rounded-full bg-blue-600 text-white disabled:opacity-40"
         >
           <Send className="w-4 h-4" />
