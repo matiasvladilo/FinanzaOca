@@ -192,7 +192,7 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await db
       .from('orders')
-      .select('created_at, total, status, order_items(product_id, product_name, quantity, price)')
+      .select('created_at, total, status, customer_name, order_items(product_id, product_name, quantity, price)')
       .eq('business_id', OCA_BUSINESS_ID)
       .gte('created_at', desdeStr)
       .lte('created_at', hastaStr)
@@ -204,12 +204,13 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
     for (const row of data as Record<string, unknown>[]) {
       const { order_items: nested, ...order } = row;
       orders.push(order);
-      // Se le cuelga la fecha del pedido a cada ítem: sin eso no se puede
-      // armar la serie de "cuánto se vendió de X día a día", porque
-      // order_items no tiene su propia fecha utilizable.
+      // Se le cuelga la fecha y el customer_name del pedido a cada ítem: sin
+      // eso no se puede armar ni la serie diaria ni el desglose parcial por
+      // sucursal (ver localDePedidoConectOca), porque order_items no tiene
+      // su propia fecha ni cliente utilizables.
       if (Array.isArray(nested)) {
         for (const item of nested as Record<string, unknown>[]) {
-          allItems.push({ ...item, created_at: order.created_at });
+          allItems.push({ ...item, created_at: order.created_at, customer_name: order.customer_name });
         }
       }
     }
@@ -264,6 +265,45 @@ function coincideNombreProducto(nombreReal: string, query: string): boolean {
 }
 
 /**
+ * Mapea el customer_name de un pedido de ConectOca a la sucursal real.
+ *
+ * OJO: esto NO es un campo de "sucursal" oficial de ConectOca — es el campo
+ * de cliente de un pedido, que en la práctica se usa para pedidos
+ * mayoristas/de reposición HACIA las sucursales (compran el mismo mix de
+ * pan + pastelería + abarrotes que un local pediría para reponer stock, no
+ * el ticket de un cliente comprando en el mostrador). Confirmado a mano con
+ * el dueño del negocio (26/08/2026): "LA OCA PV"→PV, "LA OCA BILBAO"→Bilbao,
+ * "LA OCA LA REINA"→La Reina, y puntualmente "Pedro Torres" (nombre de una
+ * persona, no un patrón de local) → PT.
+ *
+ * customer_name está vacío en la gran mayoría de los pedidos (~80% del
+ * total en volumen probado) — cualquier desglose que use esto es SIEMPRE
+ * parcial, nunca el total real vendido en cada local. Quien llame a esta
+ * función tiene que mostrar también cuánto quedó "sin identificar", nunca
+ * presentar el desglose como si fuera completo.
+ */
+function localDePedidoConectOca(customerName: unknown): string | null {
+  const s = String(customerName ?? '').trim().toUpperCase();
+  if (!s) return null;
+  if (s.includes('LA REINA')) return 'La Reina';
+  if (s.includes('BILBAO')) return 'Bilbao';
+  if (s === 'PEDRO TORRES') return 'PT';
+  if (s.includes('PV')) return 'PV';
+  return null;
+}
+
+export interface ProductoVentaResultado {
+  nombre: string;
+  categoria: string;
+  unidades: number;
+  ingresos: number;
+  /** Desglose PARCIAL por sucursal — solo los pedidos con customer_name identificable (ver localDePedidoConectOca). */
+  porLocalIdentificado: Record<string, { unidades: number; ingresos: number }>;
+  /** El resto: pedidos sin customer_name, o con uno que no matchea ninguna sucursal conocida. Casi siempre es la mayor parte del total. */
+  sinIdentificar: { unidades: number; ingresos: number };
+}
+
+/**
  * Busca un producto por nombre (substring, sin distinguir mayúsculas ni
  * singular/plural — ver coincideNombreProducto) en TODO el catálogo de
  * ConectOca del período — a diferencia de topProductos, que se corta en los
@@ -276,25 +316,21 @@ function coincideNombreProducto(nombreReal: string, query: string): boolean {
  * sin importar en qué categoría cayó — la exclusión es para no mezclarlo con
  * el ranking de Producción, no para ocultar el dato si se pide directo.
  *
- * OJO — límite real de los datos, no de esta función: ConectOca no registra
- * a qué sucursal física (La Reina/PV/PT/Bilbao) pertenece cada venta, todas
- * comparten el mismo business_id acá. El resultado es siempre el total
- * combinado de todas las sucursales — no hay forma de desglosarlo por local
- * con este dataset. (El system prompt del asistente ya sabe esto y lo avisa
- * en vez de inventar un desglose que no existe.)
+ * Incluye porLocalIdentificado/sinIdentificar (ver localDePedidoConectOca) —
+ * un desglose PARCIAL por sucursal, nunca el total completo de cada local.
  */
 export async function buscarProductoPorNombre(
   nombre: string,
   fechaDesde: string,
   fechaHasta: string,
-): Promise<Array<{ nombre: string; categoria: string; unidades: number; ingresos: number }>> {
+): Promise<ProductoVentaResultado[]> {
   const { desdeISO, hastaISO } = limitesUtcDelRango(fechaDesde, fechaHasta);
   const { items, productCategoryMap } = await fetchVentasSupabase(desdeISO, hastaISO);
 
   const q = nombre.trim().toLowerCase();
   if (!q) return [];
 
-  const porProducto: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
+  const porProducto: Record<string, ProductoVentaResultado> = {};
   for (const item of items) {
     const productName = String(item.product_name ?? '');
     if (!coincideNombreProducto(productName, q)) continue;
@@ -302,9 +338,25 @@ export async function buscarProductoPorNombre(
     const categoria = productCategoryMap[productId] ?? 'Sin área';
     const cant   = Number(item.quantity ?? 0);
     const precio = Number(item.price ?? 0);
-    if (!porProducto[productName]) porProducto[productName] = { nombre: productName, categoria, unidades: 0, ingresos: 0 };
-    porProducto[productName].unidades += cant;
-    porProducto[productName].ingresos += cant * precio;
+    if (!porProducto[productName]) {
+      porProducto[productName] = {
+        nombre: productName, categoria, unidades: 0, ingresos: 0,
+        porLocalIdentificado: {}, sinIdentificar: { unidades: 0, ingresos: 0 },
+      };
+    }
+    const acc = porProducto[productName];
+    acc.unidades += cant;
+    acc.ingresos += cant * precio;
+
+    const local = localDePedidoConectOca(item.customer_name);
+    if (local) {
+      if (!acc.porLocalIdentificado[local]) acc.porLocalIdentificado[local] = { unidades: 0, ingresos: 0 };
+      acc.porLocalIdentificado[local].unidades += cant;
+      acc.porLocalIdentificado[local].ingresos += cant * precio;
+    } else {
+      acc.sinIdentificar.unidades += cant;
+      acc.sinIdentificar.ingresos += cant * precio;
+    }
   }
 
   return Object.values(porProducto).sort((a, b) => b.ingresos - a.ingresos);
@@ -567,7 +619,7 @@ export async function GET(req: NextRequest) {
       .map(([key, v]) => ({ key, mes: getMesLabel(v.mes, v.anio), monto: v.monto }));
 
     // ── Top productos (Supabase order_items) ─────────────────────────────────
-    const prodMap: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
+    const prodMap: Record<string, ProductoVentaResultado> = {};
     // Serie diaria por producto, para poder responder "cuánto se vendió de X".
     // Sparse a propósito: sólo los días con venta. Medido sobre el histórico
     // completo son ~7.800 celdas (~245 KB); acotado a un mes, ~35 KB.
@@ -580,10 +632,30 @@ export async function GET(req: NextRequest) {
       const productId = String(item.product_id ?? '');
       const categoria = productCategoryMap[productId] ?? 'Sin área';
       if (categoriasExcluidas.has(categoria)) continue;
-      if (!prodMap[nombre]) prodMap[nombre] = { nombre, categoria, unidades: 0, ingresos: 0 };
-      prodMap[nombre].unidades += cant;
-      prodMap[nombre].ingresos += cant * precio;
+      if (!prodMap[nombre]) {
+        prodMap[nombre] = {
+          nombre, categoria, unidades: 0, ingresos: 0,
+          porLocalIdentificado: {}, sinIdentificar: { unidades: 0, ingresos: 0 },
+        };
+      }
+      const acc = prodMap[nombre];
+      acc.unidades += cant;
+      acc.ingresos += cant * precio;
       totalUnidades += cant;
+
+      // Desglose PARCIAL por sucursal (ver localDePedidoConectOca) — la
+      // mayoría de los pedidos no tiene customer_name, así que esto nunca
+      // es el total real vendido en cada local, solo lo que sí se pudo
+      // identificar.
+      const local = localDePedidoConectOca(item.customer_name);
+      if (local) {
+        if (!acc.porLocalIdentificado[local]) acc.porLocalIdentificado[local] = { unidades: 0, ingresos: 0 };
+        acc.porLocalIdentificado[local].unidades += cant;
+        acc.porLocalIdentificado[local].ingresos += cant * precio;
+      } else {
+        acc.sinIdentificar.unidades += cant;
+        acc.sinIdentificar.ingresos += cant * precio;
+      }
 
       const dia = String(item.created_at ?? '').slice(0, 10);
       if (dia) {

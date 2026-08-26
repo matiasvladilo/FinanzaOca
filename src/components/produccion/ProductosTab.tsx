@@ -23,6 +23,15 @@ export interface ProductoAgregado {
   categoria: string;
   unidades: number;
   ingresos: number;
+  /**
+   * Desglose PARCIAL por sucursal — solo cubre los pedidos de ConectOca que
+   * traen un cliente identificable como local (ver localDePedidoConectOca
+   * en produccion-data/route.ts). La mayoría de los pedidos no tiene ese
+   * dato, así que esto NUNCA es el total real vendido en cada local — ver
+   * sinIdentificar, que casi siempre es la parte más grande.
+   */
+  porLocalIdentificado?: Record<string, { unidades: number; ingresos: number }>;
+  sinIdentificar?: { unidades: number; ingresos: number };
 }
 /** { "Marraqueta": { "2026-08-14": { unidades, ingresos } } } — sparse */
 export type ProductosPorDia = Record<string, Record<string, { unidades: number; ingresos: number }>>;
@@ -239,6 +248,36 @@ export default function ProductosTab({
             </div>
           ) : (
             <p className="text-[12px] text-gray-400">Sin ventas de este producto en el período.</p>
+          )}
+
+          {producto.porLocalIdentificado && Object.keys(producto.porLocalIdentificado).length > 0 && (
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+              <p className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-1">
+                Por sucursal (parcial)
+              </p>
+              <p className="text-[11px] text-gray-400 mb-3">
+                Solo cuenta los pedidos de ConectOca con cliente identificado — la mayoría de los pedidos
+                no lo tiene, así que esto NO es el total real vendido en cada local.
+              </p>
+              <div className="space-y-1.5">
+                {Object.entries(producto.porLocalIdentificado)
+                  .sort(([, a], [, b]) => b.unidades - a.unidades)
+                  .map(([local, v]) => (
+                    <div key={local} className="flex items-center justify-between text-[12px]">
+                      <span style={{ color: 'var(--text)' }}>{local}</span>
+                      <span className="text-gray-400">{fmtUnid(v.unidades)} un. · {fmtPesos(v.ingresos)}</span>
+                    </div>
+                  ))}
+                {producto.sinIdentificar && (
+                  <div className="flex items-center justify-between text-[12px] pt-1.5" style={{ borderTop: '1px dashed var(--border)' }}>
+                    <span className="text-gray-400 italic">Sin identificar</span>
+                    <span className="text-gray-400 italic">
+                      {fmtUnid(producto.sinIdentificar.unidades)} un. · {fmtPesos(producto.sinIdentificar.ingresos)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}
