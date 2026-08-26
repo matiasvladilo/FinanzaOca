@@ -58,6 +58,26 @@ interface SendEmailResponse {
   messageId?: string;
 }
 
+// ── Hora real de Chile, para el doble disparo de netlify.toml ───────────────
+//
+// netlify.toml programa semanal/mensual DOS VECES (12:00 y 13:00 UTC) porque
+// el cron de Netlify es una hora UTC fija y no sabe de husos horarios ni de
+// horario de verano — Chile continental cambia entre UTC-3 (verano,
+// aprox. septiembre-abril) y UTC-4 (invierno, aprox. abril-septiembre) sin
+// que ese cron se entere. En vez de hardcodear las fechas de cambio de
+// horario (que además el propio Chile modificó más de una vez en los
+// últimos años), se le pregunta a Intl la hora real en America/Santiago en
+// el momento exacto de cada disparo, y se procesa solo el que caiga a las
+// 9 en punto — el otro se descarta en silencio, no es un error.
+function horaLocalChile(): number {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Santiago',
+    hour: 'numeric',
+    hour12: false,
+  });
+  return parseInt(formatter.format(new Date()), 10) % 24;
+}
+
 // ── Cálculo de rango de fechas según tipo de cron ────────────────────────────
 
 function buildCronDateRange(type: CronType): DateRange {
@@ -152,6 +172,17 @@ export async function GET(req: NextRequest) {
       if (!enabled) {
         console.log(`[cron] Informe ${type} desactivado desde la configuración — no se envía`);
         return NextResponse.json({ ok: true, skipped: true, reason: 'Desactivado por configuración', type });
+      }
+
+      // 2.6. netlify.toml dispara esto dos veces (12:00 y 13:00 UTC) para
+      // cubrir invierno y verano en Chile sin hardcodear fechas de DST —
+      // ver el comentario de horaLocalChile(). Solo se procesa el disparo
+      // que cae justo a las 9 de la mañana real en Chile; el otro se
+      // descarta acá mismo, en silencio (no es una falla del cron).
+      const hora = horaLocalChile();
+      if (hora !== 9) {
+        console.log(`[cron] Disparo de "${type}" a las ${hora}:00 hora Chile — no son las 9:00, se descarta (el otro horario programado se encarga)`);
+        return NextResponse.json({ ok: true, skipped: true, reason: `No es la hora correcta en Chile (${hora}:00, se espera 9:00)`, type });
       }
     }
 

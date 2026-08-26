@@ -1,7 +1,13 @@
 /**
  * Netlify Scheduled Function — Informe Semanal
  *
- * Corre todos los martes a las 09:00 hora Chile (12:00 UTC).
+ * Corre DOS VECES todos los martes: 12:00 y 13:00 UTC. Netlify no ajusta el
+ * cron por huso horario/DST, y Chile cambia entre UTC-3 (verano) y UTC-4
+ * (invierno) — un cron fijo a una sola hora UTC queda mal una parte del año.
+ * /api/informes/cron calcula la hora real de Chile en cada disparo (con
+ * Intl, no con fechas de corte hardcodeadas) y descarta en silencio el que
+ * no caiga justo a las 9:00 — el otro se encarga.
+ *
  * Reporta los últimos 7 días completos (hasta ayer inclusive) — no omite
  * fin de semana ni el lunes.
  *
@@ -13,7 +19,7 @@
  */
 
 export const config = {
-  schedule: '0 12 * * 2', // 09:00 CLT (UTC-3) los martes
+  schedule: '0 12,13 * * 2', // 09:00 hora Chile, sea invierno o verano — ver /api/informes/cron
 };
 
 export default async (_req: Request): Promise<Response> => {

@@ -17,14 +17,21 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Informe semanal — martes a las 09:00 hora Chile (UTC-3 → 12:00 UTC)
+# Informe semanal — siempre a las 09:00 hora Chile, los martes.
+# Netlify programa el cron en UTC fijo y no ajusta por huso horario/DST, y
+# Chile cambia entre UTC-3 (verano) y UTC-4 (invierno) sin que el cron se
+# entere — por eso se dispara DOS VECES (12:00 y 13:00 UTC, una para cada
+# posible huso horario) y /api/informes/cron descarta en silencio el
+# disparo que no cae justo a las 9:00 hora Chile real en ese momento
+# (calculada con Intl, no con fechas de corte hardcodeadas).
 # Cubre los últimos 7 días completos (hasta ayer), sin omitir fin de semana ni lunes
 [[scheduled_functions]]
   name = "report-weekly"
-  cron = "0 12 * * 2"
+  cron = "0 12,13 * * 2"
 
-# Informe mensual — día 1 de cada mes a las 09:00 hora Chile (UTC-3 → 12:00 UTC)
+# Informe mensual — siempre a las 09:00 hora Chile, el día 1 de cada mes.
+# Mismo mecanismo de doble disparo que el semanal, ver comentario arriba.
 # Cubre el mes anterior completo
 [[scheduled_functions]]
   name = "report-monthly"
-  cron = "0 12 1 * *"
+  cron = "0 12,13 1 * *"
