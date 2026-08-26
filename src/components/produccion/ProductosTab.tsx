@@ -13,10 +13,11 @@
 
 import { useMemo, useState } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { Search, Package, X, Download, ChevronUp, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
+import { getSucursalColor, sortSucursales } from '@/config/sucursales';
 
 export interface ProductoAgregado {
   nombre: string;
@@ -32,8 +33,13 @@ export interface ProductoAgregado {
   porLocalIdentificado?: Record<string, { unidades: number; ingresos: number }>;
   sinIdentificar?: { unidades: number; ingresos: number };
 }
-/** { "Marraqueta": { "2026-08-14": { unidades, ingresos } } } — sparse */
-export type ProductosPorDia = Record<string, Record<string, { unidades: number; ingresos: number }>>;
+/** { "Marraqueta": { "2026-08-14": { unidades, ingresos, porLocal } } } — sparse */
+export type ProductosPorDia = Record<string, Record<string, {
+  unidades: number;
+  ingresos: number;
+  /** Mismo desglose que porLocalIdentificado, pero día por día — para el gráfico. */
+  porLocal: Record<string, { unidades: number; ingresos: number }>;
+}>>;
 
 const fmtPesos = (n: number) => `$${Math.round(n).toLocaleString('es-CL')}`;
 const fmtUnid  = (n: number) =>
@@ -116,20 +122,31 @@ export default function ProductosTab({
   const serie = useMemo(() => {
     if (!producto) return [];
     const dias = productosPorDia[producto.nombre] ?? {};
-    const acc: Record<string, { unidades: number; ingresos: number }> = {};
+    const acc: Record<string, { unidades: number; ingresos: number; porLocal: Record<string, number> }> = {};
     for (const [dia, v] of Object.entries(dias)) {
       const clave = agruparPorMes ? dia.slice(0, 7) : dia;
-      if (!acc[clave]) acc[clave] = { unidades: 0, ingresos: 0 };
+      if (!acc[clave]) acc[clave] = { unidades: 0, ingresos: 0, porLocal: {} };
       acc[clave].unidades += v.unidades;
       acc[clave].ingresos += v.ingresos;
+      for (const [local, lv] of Object.entries(v.porLocal ?? {})) {
+        acc[clave].porLocal[local] = (acc[clave].porLocal[local] ?? 0) + lv.unidades;
+      }
     }
     return Object.entries(acc)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([clave, v]) => ({
         etiqueta: agruparPorMes ? clave : clave.slice(8), // "2026-08" | "14"
-        ...v,
+        unidades: v.unidades,
+        ingresos: v.ingresos,
+        ...v.porLocal, // "La Reina": 123, "PV": 45, ... — una key por local, para las barras apiladas
       }));
   }, [producto, productosPorDia, agruparPorMes]);
+
+  /** Qué locales tiene este producto — orden y colores de src/config/sucursales.ts. */
+  const localesEnSerie = useMemo(
+    () => sortSucursales(Object.keys(producto?.porLocalIdentificado ?? {})),
+    [producto],
+  );
 
   const kpis = [
     { label: 'Unidades vendidas', valor: fmtUnid(totalUnidades),                                   nota: periodoLabel },
@@ -237,11 +254,35 @@ export default function ProductosTab({
                   <XAxis dataKey="etiqueta" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                   <Tooltip
+                    cursor={false}
                     contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12 }}
-                    formatter={(v) => [fmtUnid(Number(v ?? 0)), 'Unidades'] as [string, string]}
+                    formatter={(v, name) => [fmtUnid(Number(v ?? 0)), String(name)] as [string, string]}
                     labelFormatter={l => agruparPorMes ? `Mes ${l}` : `Día ${l}`}
                   />
-                  <Bar dataKey="unidades" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                  {localesEnSerie.length > 0 ? (
+                    <>
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      {localesEnSerie.map(local => (
+                        // Sin stackId: una barra vertical por local, lado a lado
+                        // (no apiladas en una sola). cursor={false} arriba saca
+                        // el rectángulo de fondo que Recharts pinta por default
+                        // al pasar el mouse; activeBar deja que solo la barra
+                        // puntual reaccione (más opaca), más prolijo.
+                        <Bar
+                          key={local}
+                          dataKey={local}
+                          name={local}
+                          fill={getSucursalColor(local)}
+                          radius={[4, 4, 0, 0]}
+                          activeBar={{ fillOpacity: 0.75 }}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    // Producto sin ningún pedido con sucursal identificada (raro, ver
+                    // sinIdentificar) — se muestra igual el total combinado.
+                    <Bar dataKey="unidades" name="Unidades" fill="#3B82F6" radius={[4, 4, 0, 0]} activeBar={{ fillOpacity: 0.75 }} />
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>

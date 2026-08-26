@@ -643,10 +643,15 @@ export async function GET(req: NextRequest) {
 
     // ── Top productos (Supabase order_items) ─────────────────────────────────
     const prodMap: Record<string, ProductoVentaResultado> = {};
-    // Serie diaria por producto, para poder responder "cuánto se vendió de X".
-    // Sparse a propósito: sólo los días con venta. Medido sobre el histórico
-    // completo son ~7.800 celdas (~245 KB); acotado a un mes, ~35 KB.
-    const porDia: Record<string, Record<string, { unidades: number; ingresos: number }>> = {};
+    // Serie diaria por producto, para poder responder "cuánto se vendió de X"
+    // y graficar el desglose por sucursal día a día. Sparse a propósito: sólo
+    // los días con venta. Medido sobre el histórico completo son ~7.800
+    // celdas (~245 KB); acotado a un mes, ~35 KB (porLocal le suma poco
+    // porque son a lo sumo 4 claves por día).
+    const porDia: Record<string, Record<string, {
+      unidades: number; ingresos: number;
+      porLocal: Record<string, { unidades: number; ingresos: number }>;
+    }>> = {};
     let totalUnidades = 0;
     for (const item of items) {
       const nombre    = String(item.product_name ?? '(sin nombre)');
@@ -681,9 +686,15 @@ export async function GET(req: NextRequest) {
       const dia = String(item.created_at ?? '').slice(0, 10);
       if (dia) {
         if (!porDia[nombre]) porDia[nombre] = {};
-        if (!porDia[nombre][dia]) porDia[nombre][dia] = { unidades: 0, ingresos: 0 };
-        porDia[nombre][dia].unidades += cant;
-        porDia[nombre][dia].ingresos += cant * precio;
+        if (!porDia[nombre][dia]) porDia[nombre][dia] = { unidades: 0, ingresos: 0, porLocal: {} };
+        const d = porDia[nombre][dia];
+        d.unidades += cant;
+        d.ingresos += cant * precio;
+        if (local) {
+          if (!d.porLocal[local]) d.porLocal[local] = { unidades: 0, ingresos: 0 };
+          d.porLocal[local].unidades += cant;
+          d.porLocal[local].ingresos += cant * precio;
+        }
       }
     }
     // Lista completa, ordenada por unidades. `topProductos` se mantiene como los
