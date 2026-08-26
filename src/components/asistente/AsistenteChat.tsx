@@ -1,20 +1,23 @@
 'use client';
 
 /**
- * Panel de chat del asistente virtual. Historial efímero: vive en el estado
- * de este componente, se pierde si se cierra/recarga la página a propósito
- * (ver spec — no hay persistencia en esta primera versión).
+ * Panel de chat del asistente virtual. Historial efímero pero NO por
+ * componente: los mensajes viven en el estado de AsistenteBubble (el padre,
+ * que no se desmonta al cerrar el panel), así que cerrar y volver a abrir
+ * mantiene la conversación. Recargar la página sí la borra — es memoria de
+ * React, no hay persistencia en disco/localStorage a propósito (ver spec).
+ * El único borrado explícito es el botón de basurero.
  *
- * La burbuja ahora se puede arrastrar a cualquier parte de la pantalla (ver
+ * La burbuja se puede arrastrar a cualquier parte de la pantalla (ver
  * AsistenteBubble), así que este panel ya no puede vivir fijo en
  * bottom-24/right-6 — se ancla dinámicamente cerca de donde esté la burbuja
  * en ese momento, abriendo para el lado que tenga espacio.
  */
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { Send, Trash2, X } from 'lucide-react';
 
-interface Mensaje {
+export interface Mensaje {
   role: 'user' | 'assistant';
   content: string;
 }
@@ -42,8 +45,14 @@ function calcularPosicionPanel(anchor: { x: number; y: number }, bubbleSize: num
   return { top, left };
 }
 
-export default function AsistenteChat({ onClose, anchor }: { onClose: () => void; anchor: { x: number; y: number } }) {
-  const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+export default function AsistenteChat({
+  onClose, anchor, mensajes, setMensajes,
+}: {
+  onClose: () => void;
+  anchor: { x: number; y: number };
+  mensajes: Mensaje[];
+  setMensajes: Dispatch<SetStateAction<Mensaje[]>>;
+}) {
   const [input, setInput] = useState('');
   const [cargando, setCargando] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);

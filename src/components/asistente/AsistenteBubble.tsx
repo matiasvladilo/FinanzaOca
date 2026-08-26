@@ -15,7 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { getClientSession } from '@/lib/session-client';
-import AsistenteChat from './AsistenteChat';
+import AsistenteChat, { type Mensaje } from './AsistenteChat';
 
 const BUBBLE_SIZE = 56; // w-14 h-14
 const EDGE_MARGIN = 24; // separación inicial de los bordes (igual al bottom-6/right-6 de antes)
@@ -46,6 +46,11 @@ export default function AsistenteBubble() {
   const [abierto, setAbierto] = useState(false);
   const [esOscuro, setEsOscuro] = useState(false);
   const [pos, setPos] = useState<Pos | null>(null);
+  // La conversación vive acá, no en AsistenteChat: este componente no se
+  // desmonta al cerrar el panel (solo cambia `abierto`), así que cerrar y
+  // volver a abrir mantiene el historial. Se pierde recién con un reload
+  // real de la página (memoria de React) o con el botón de basurero.
+  const [mensajes, setMensajes] = useState<Mensaje[]>([]);
 
   // Estado del arrastre en refs — no necesitan re-render por sí mismos, solo
   // la posición (pos) sí. wasDragged sobrevive un tick extra porque el click
@@ -138,7 +143,14 @@ export default function AsistenteBubble() {
 
   return (
     <>
-      {abierto && pos && <AsistenteChat onClose={() => setAbierto(false)} anchor={pos} />}
+      {abierto && pos && (
+        <AsistenteChat
+          onClose={() => setAbierto(false)}
+          anchor={pos}
+          mensajes={mensajes}
+          setMensajes={setMensajes}
+        />
+      )}
       <button
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
