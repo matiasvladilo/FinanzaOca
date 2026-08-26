@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import { requireAuth } from '@/lib/auth-api';
-import { SYSTEM_PROMPT } from '@/lib/asistente/prompt';
+import { buildSystemPrompt } from '@/lib/asistente/prompt';
 import { ASISTENTE_TOOLS } from '@/lib/asistente/tools';
 import { ASISTENTE_HANDLERS } from '@/lib/asistente/handlers';
 import { normalizeLocalName } from '@/lib/data/parsers';
@@ -116,6 +116,7 @@ export async function POST(req: NextRequest) {
 
     const client = new Anthropic({ apiKey });
     const messages: MessageParam[] = historial.map(m => ({ role: m.role, content: m.content }));
+    const systemPrompt = buildSystemPrompt(); // fecha de hoy fijada una vez por request
 
     let iteraciones = 0;
     let textoFinal = '';
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
       const response = await client.messages.create({
         model: 'claude-sonnet-5',
         max_tokens: 8000,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages,
         tools: ASISTENTE_TOOLS,
       });

@@ -246,16 +246,42 @@ export async function fetchVentasSupabase(desdeStr: string, hastaStr: string) {
 }
 
 /**
- * Busca un producto por nombre (substring, sin distinguir mayúsculas) en TODO
- * el catálogo de ConectOca del período — a diferencia de topProductos, que se
- * corta en los primeros 15 por volumen. La usa el asistente virtual para
- * preguntas tipo "qué porcentaje de venta son las sopaipillas", donde el
- * producto puede no estar entre los más vendidos.
+ * ¿"query" aparece en "nombre"? Substring simple, salvo que sea justo la
+ * diferencia de un plural/singular en español (una "s" final de más o de
+ * menos) — "sopaipilla" tiene que encontrar "Sopaipillas" y viceversa, sin
+ * que importe cuál de las dos formas haya quedado tipeada en ConectOca. No
+ * es un fuzzy-match general (no corrige tildes, typos, sinónimos): es
+ * puntual para ese caso, que es el que realmente aparece con nombres de
+ * productos reales.
+ */
+function coincideNombreProducto(nombreReal: string, query: string): boolean {
+  const nombre = nombreReal.toLowerCase();
+  const q = query.toLowerCase().trim();
+  if (!q) return false;
+  if (nombre.includes(q)) return true;
+  const qAlterno = q.endsWith('s') ? q.slice(0, -1) : `${q}s`;
+  return nombre.includes(qAlterno);
+}
+
+/**
+ * Busca un producto por nombre (substring, sin distinguir mayúsculas ni
+ * singular/plural — ver coincideNombreProducto) en TODO el catálogo de
+ * ConectOca del período — a diferencia de topProductos, que se corta en los
+ * primeros 15 por volumen. La usa el asistente virtual para preguntas tipo
+ * "qué porcentaje de venta son las sopaipillas", donde el producto puede no
+ * estar entre los más vendidos.
  *
  * A propósito NO excluye la familia Distribuidora (categoriasExcluidas): si
  * preguntan puntualmente por un producto, la respuesta tiene que ser real
  * sin importar en qué categoría cayó — la exclusión es para no mezclarlo con
  * el ranking de Producción, no para ocultar el dato si se pide directo.
+ *
+ * OJO — límite real de los datos, no de esta función: ConectOca no registra
+ * a qué sucursal física (La Reina/PV/PT/Bilbao) pertenece cada venta, todas
+ * comparten el mismo business_id acá. El resultado es siempre el total
+ * combinado de todas las sucursales — no hay forma de desglosarlo por local
+ * con este dataset. (El system prompt del asistente ya sabe esto y lo avisa
+ * en vez de inventar un desglose que no existe.)
  */
 export async function buscarProductoPorNombre(
   nombre: string,
@@ -271,7 +297,7 @@ export async function buscarProductoPorNombre(
   const porProducto: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
   for (const item of items) {
     const productName = String(item.product_name ?? '');
-    if (!productName.toLowerCase().includes(q)) continue;
+    if (!coincideNombreProducto(productName, q)) continue;
     const productId = String(item.product_id ?? '');
     const categoria = productCategoryMap[productId] ?? 'Sin área';
     const cant   = Number(item.quantity ?? 0);

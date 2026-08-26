@@ -54,7 +54,7 @@ export const ASISTENTE_TOOLS: Tool[] = [
   },
   {
     name: 'buscar_producto_venta',
-    description: 'Busca un producto específico por nombre en TODO el catálogo de ventas de ConectOca (Producción) — no solo el top 15 más vendido. Usar para preguntas sobre un producto puntual, incluida su participación porcentual sobre el total (para eso, llamar también a obtener_informe_periodo del mismo rango y calcular el % vos mismo).',
+    description: 'Busca un producto específico por nombre en TODO el catálogo de ventas de ConectOca (Producción) — no solo el top 15 más vendido. Usar para preguntas sobre un producto puntual, incluida su participación porcentual sobre el total (para eso, llamar también a obtener_informe_periodo del mismo rango y calcular el % vos mismo). LIMITACIÓN REAL DEL DATO: ConectOca no registra a qué sucursal (La Reina/PV/PT/Bilbao) pertenece cada venta — el resultado es siempre el total combinado de todas las sucursales juntas, no se puede pedir ni desglosar por local. Si te preguntan por un producto EN una sucursal específica o comparando sucursales entre sí, avisá esa limitación en vez de inventar un desglose.',
     input_schema: {
       type: 'object',
       properties: {
