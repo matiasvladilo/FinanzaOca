@@ -2,7 +2,11 @@
  * Netlify Scheduled Function — Informe Semanal
  *
  * Corre todos los martes a las 09:00 hora Chile (12:00 UTC).
- * Reporta lunes a viernes de la semana anterior.
+ * Reporta los últimos 7 días completos (hasta ayer inclusive) — no omite
+ * fin de semana ni el lunes.
+ *
+ * Respeta el interruptor de /api/informes/settings: si el semanal está
+ * desactivado, /api/informes/cron devuelve ok sin mandar nada.
  *
  * Vars requeridas en Netlify Dashboard:
  *   CRON_SECRET, NEXT_PUBLIC_BASE_URL

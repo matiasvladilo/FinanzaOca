@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { toLocalISODate } from '@/lib/date-utils';
+import { getReportSettings } from '@/lib/report-settings';
 
 // Forzar runtime Node (no Edge) y más tiempo de ejecución: esta ruta orquesta
 // generate + ai-analysis + 2 envíos de Resend en cadena, y el default de
@@ -73,17 +74,20 @@ function buildCronDateRange(type: CronType): DateRange {
     }
 
     case 'weekly': {
-      // Semana anterior completa: lunes–domingo
-      const dayOfWeek = today.getDay(); // 0=Dom, 1=Lun, ..., 6=Sab
-      const daysToLastMonday = dayOfWeek === 0 ? 13 : dayOfWeek + 6;
-      const daysToLastSunday = dayOfWeek === 0 ? 7 : dayOfWeek;
-
-      const lastMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysToLastMonday);
-      const lastSunday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysToLastSunday);
+      // Últimos 7 días completos, terminando ayer (el cron corre los martes
+      // 9:00 — "hoy" todavía no cerró caja, así que el corte real es ayer).
+      // Antes esto calculaba lunes-domingo "de la semana pasada" con lógica
+      // de día-de-semana, lo que en la práctica dejaba afuera el lunes más
+      // reciente (quedaba para el informe de la semana siguiente). Una
+      // ventana simple de "últimos 7 días" no omite nada: cubre exactamente
+      // desde el martes anterior hasta el lunes de ayer, sin saltar fin de
+      // semana ni el lunes.
+      const ayer = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+      const hace7dias = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7);
 
       return {
-        fechaDesde: toLocalISODate(lastMonday),
-        fechaHasta: toLocalISODate(lastSunday),
+        fechaDesde: toLocalISODate(hace7dias),
+        fechaHasta: toLocalISODate(ayer),
       };
     }
 
@@ -138,6 +142,17 @@ export async function GET(req: NextRequest) {
         { ok: false, error: `Tipo inválido: "${type}". Use daily, weekly o monthly.` },
         { status: 400 },
       );
+    }
+
+    // 2.5. Respetar el interruptor real de encendido/apagado (solo aplica a
+    // semanal/mensual — diario no tiene cron programado, per netlify.toml).
+    if (type === 'weekly' || type === 'monthly') {
+      const settings = await getReportSettings();
+      const enabled = type === 'weekly' ? settings.weeklyEnabled : settings.monthlyEnabled;
+      if (!enabled) {
+        console.log(`[cron] Informe ${type} desactivado desde la configuración — no se envía`);
+        return NextResponse.json({ ok: true, skipped: true, reason: 'Desactivado por configuración', type });
+      }
     }
 
     // 3. Leer destinatarios desde variables de entorno

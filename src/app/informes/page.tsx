@@ -390,23 +390,58 @@ function EmailModal({
 // ── Automation Panel ───────────────────────────────────────────────────────────
 
 /**
- * Lo que realmente está programado — no viene de ningún API, es una
- * descripción de lo que hoy dice netlify.toml. Cambiar esto de verdad
- * significa editar netlify.toml y volver a desplegar; no hay ningún botón
- * en esta app que pueda tocar el cron desde el navegador.
+ * Cuándo corre cada informe — eso sí viene fijo de netlify.toml (cambiarlo
+ * de verdad significa editar el cron ahí y volver a desplegar). Lo que SÍ es
+ * un control real acá es si ese envío programado efectivamente manda el
+ * correo o no: el toggle lee/escribe /api/informes/settings, que el propio
+ * cron consulta antes de generar y enviar nada (ver /api/informes/cron).
  *
  * Antes este panel tenía checkboxes que sólo escribían a localStorage — ni
- * siquiera se releían al recargar la página, así que tildar/destildar "Diario"
- * no encendía ni apagaba nada real. Se reemplaza por un estado, no un control.
+ * siquiera se releían al recargar la página, así que tildar/destildar no
+ * encendía ni apagaba nada real. Ahora el toggle es la fuente de verdad que
+ * el backend realmente respeta.
  */
 const AUTOMATIZACION_REAL = [
-  { key: 'weekly',  label: 'Informe semanal', activo: true,  detalle: 'Martes 9:00 (hora Chile) · lunes a viernes de la semana anterior' },
-  { key: 'monthly', label: 'Informe mensual', activo: true,  detalle: 'Día 1 de cada mes, 9:00 (hora Chile) · mes anterior completo' },
-  { key: 'daily',   label: 'Informe diario',  activo: false, detalle: 'No hay ningún cron programado — el botón "Enviar" de arriba es la única forma de mandarlo hoy' },
-] as const;
+  { key: 'weekly' as const,  label: 'Informe semanal', detalle: 'Martes 9:00 (hora Chile) · últimos 7 días, hasta el día anterior' },
+  { key: 'monthly' as const, label: 'Informe mensual', detalle: 'Día 1 de cada mes, 9:00 (hora Chile) · mes anterior completo' },
+];
 
 function AutomationPanel() {
   const [expanded, setExpanded] = useState(false);
+  const [settings, setSettings] = useState<{ weeklyEnabled: boolean; monthlyEnabled: boolean } | null>(null);
+  const [pending, setPending] = useState<'weekly' | 'monthly' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/informes/settings')
+      .then(r => r.json())
+      .then(data => { if (data.ok) setSettings(data.settings); })
+      .catch(() => setError('No se pudo cargar la configuración'));
+  }, []);
+
+  async function toggle(key: 'weekly' | 'monthly') {
+    if (!settings || pending) return;
+    const field = key === 'weekly' ? 'weeklyEnabled' : 'monthlyEnabled';
+    const anterior = settings[field];
+    setPending(key);
+    setError(null);
+    setSettings({ ...settings, [field]: !anterior }); // optimista
+    try {
+      const res = await fetch('/api/informes/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: !anterior }),
+      });
+      const data = await res.json();
+      if (data.ok) setSettings(data.settings);
+      else { setSettings(s => s && ({ ...s, [field]: anterior })); setError('No se pudo guardar el cambio'); }
+    } catch {
+      setSettings(s => s && ({ ...s, [field]: anterior }));
+      setError('No se pudo guardar el cambio');
+    } finally {
+      setPending(null);
+    }
+  }
 
   return (
     <div
@@ -427,31 +462,42 @@ function AutomationPanel() {
       {expanded && (
         <div className="px-5 pb-5 border-t" style={{ borderColor: 'var(--border)' }}>
           <p className="text-xs mt-4 mb-4" style={{ color: 'var(--text-2)' }}>
-            Esto es lo que corre hoy en el servidor. Para cambiarlo hay que editar{' '}
-            <code className="text-[11px]" style={{ color: 'var(--text-2)' }}>netlify.toml</code> y volver a desplegar —
-            no es algo que se prenda o apague desde acá.
+            El horario de cada envío está fijo en el servidor. Lo que sí podés prender o apagar acá
+            es si ese envío programado manda el correo o no.
           </p>
 
-          <div className="space-y-3 mb-4">
-            {AUTOMATIZACION_REAL.map(({ key, label, activo, detalle }) => (
-              <div key={key} className="flex items-start gap-3">
-                {activo
-                  ? <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0 text-green-500" />
-                  : <Minus className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />}
-                <div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
-                    {label} <span style={{ color: activo ? '#22C55E' : 'var(--text-3)' }}>· {activo ? 'activo' : 'no configurado'}</span>
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--text-3)' }}>{detalle}</p>
+          <div className="space-y-4">
+            {AUTOMATIZACION_REAL.map(({ key, label, detalle }) => {
+              const field = key === 'weekly' ? 'weeklyEnabled' : 'monthlyEnabled';
+              const activo = settings?.[field] ?? true;
+              return (
+                <div key={key} className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                      {label} <span style={{ color: activo ? '#22C55E' : 'var(--text-3)' }}>· {activo ? 'activo' : 'desactivado'}</span>
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-3)' }}>{detalle}</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={activo}
+                    aria-label={`${activo ? 'Desactivar' : 'Activar'} ${label.toLowerCase()}`}
+                    disabled={!settings || pending === key}
+                    onClick={() => toggle(key)}
+                    className="relative flex-shrink-0 w-10 h-6 rounded-full transition-colors disabled:opacity-50"
+                    style={{ background: activo ? '#22C55E' : 'var(--border-2)' }}
+                  >
+                    <span
+                      className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                      style={{ transform: activo ? 'translateX(1.125rem)' : 'translateX(0.125rem)' }}
+                    />
+                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          <div className="rounded-lg p-3" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
-            <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-2)' }}>Endpoint que dispara cada envío:</p>
-            <code className="text-xs" style={{ color: 'var(--text-3)' }}>GET /api/informes/cron?type=daily|weekly|monthly&secret=CRON_SECRET</code>
-          </div>
+          {error && <p className="text-xs mt-3" style={{ color: '#EF4444' }}>{error}</p>}
         </div>
       )}
     </div>

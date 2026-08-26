@@ -18,7 +18,7 @@
   node_bundler = "esbuild"
 
 # Informe semanal — martes a las 09:00 hora Chile (UTC-3 → 12:00 UTC)
-# Cubre lunes a viernes de la semana anterior
+# Cubre los últimos 7 días completos (hasta ayer), sin omitir fin de semana ni lunes
 [[scheduled_functions]]
   name = "report-weekly"
   cron = "0 12 * * 2"
