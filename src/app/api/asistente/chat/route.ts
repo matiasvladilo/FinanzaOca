@@ -13,6 +13,7 @@ import { requireAuth } from '@/lib/auth-api';
 import { SYSTEM_PROMPT } from '@/lib/asistente/prompt';
 import { ASISTENTE_TOOLS } from '@/lib/asistente/tools';
 import { ASISTENTE_HANDLERS } from '@/lib/asistente/handlers';
+import { normalizeLocalName } from '@/lib/data/parsers';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -30,7 +31,7 @@ const MAX_HISTORIAL_MENSAJES = 20;
 async function obtenerInformePeriodo(input: Record<string, unknown>) {
   const fechaDesde = String(input.fechaDesde ?? '');
   const fechaHasta = String(input.fechaHasta ?? '');
-  const sucursal = String(input.sucursal ?? '');
+  const sucursal = normalizeLocalName(String(input.sucursal ?? ''));
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   const cronSecret = process.env.CRON_SECRET;
   if (!baseUrl || !cronSecret) {
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
       iteraciones++;
       const response = await client.messages.create({
         model: 'claude-sonnet-5',
-        max_tokens: 1500,
+        max_tokens: 8000,
         system: SYSTEM_PROMPT,
         messages,
         tools: ASISTENTE_TOOLS,
@@ -134,6 +135,9 @@ export async function POST(req: NextRequest) {
       textoFinal = textBlocks.map(b => (b as { text: string }).text).join('\n').trim();
 
       if (toolUses.length === 0 || response.stop_reason !== 'tool_use') {
+        if (response.stop_reason === 'max_tokens' && !textoFinal) {
+          console.warn(`[asistente] ${auth.user.username} → corte por max_tokens sin texto final (iteración ${iteraciones})`);
+        }
         break;
       }
 

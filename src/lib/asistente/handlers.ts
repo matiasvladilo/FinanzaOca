@@ -13,7 +13,7 @@ import { fetchVentasData } from '@/app/api/ventas/route';
 import { buscarProductoPorNombre } from '@/app/api/produccion-data/route';
 import { fetchGastoFijoForReport, fetchGastoIndirectoForReport } from '@/lib/gasto-fijo';
 import { fetchPresupuesto } from '@/app/api/presupuesto/route';
-import { normalizeProveedorName } from '@/lib/data/parsers';
+import { normalizeProveedorName, normalizeLocalName, claveAgrupacion } from '@/lib/data/parsers';
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
@@ -21,15 +21,15 @@ function str(v: unknown): string {
 
 async function buscarMerma(input: Record<string, unknown>) {
   const producto = str(input.producto).toLowerCase();
-  const tipo = str(input.tipo).toLowerCase();
-  const local = str(input.local);
+  const tipo = claveAgrupacion(str(input.tipo));
+  const local = normalizeLocalName(str(input.local));
   const mesDesde = str(input.mesDesde);
   const mesHasta = str(input.mesHasta);
 
   const todos = await fetchMermaHistoricoCompleto();
   const filtrados = todos.filter(r => {
     if (producto && !r.producto.toLowerCase().includes(producto)) return false;
-    if (tipo && r.tipo.toLowerCase() !== tipo) return false;
+    if (tipo && claveAgrupacion(r.tipo) !== tipo) return false;
     if (local && r.local !== local) return false;
     if (mesDesde && r.mesKey < mesDesde) return false;
     if (mesHasta && r.mesKey > mesHasta) return false;
@@ -87,7 +87,7 @@ async function buscarGastoProveedor(input: Record<string, unknown>) {
 }
 
 async function obtenerPresupuesto(input: Record<string, unknown>) {
-  const local = str(input.local);
+  const local = normalizeLocalName(str(input.local));
   const mesDesde = str(input.mesDesde);
   const mesHasta = str(input.mesHasta);
 
