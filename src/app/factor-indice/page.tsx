@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
   Download, ChevronDown,
-  CheckCircle2, AlertTriangle, TrendingDown, TrendingUp, X,
+  CheckCircle2, AlertTriangle, X,
   GitCompare,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -15,6 +15,7 @@ import Header from '@/components/layout/Header';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import SucursalFilter from '@/components/ui/SucursalFilter';
+import FactorGauge from '@/components/factor-indice/FactorGauge';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { hoyISOChile } from '@/lib/date-utils';
@@ -491,100 +492,45 @@ export default function FactorIndicePage() {
           />
         )}
 
-        {/* ── Hero: Factor Índice ──────────────────────────────────────────────
-             Antes este número (y su inverso, "Margen Bruto") aparecían tres
-             veces en la pantalla: acá, en la tarjeta "Comparación Ventas vs
-             Gastos" y en la línea de referencia del gráfico. Se muestra una
-             sola vez, grande, como titular — todo lo demás es apoyo. */}
-        <div className="rounded-2xl p-6 sm:p-8 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-            <div>
-              <p className="text-[11px] font-bold tracking-widest uppercase mb-1" style={{ color: 'var(--text-3)' }}>
-                Factor Índice{mesSeleccionado ? ` · ${mesLabel(mesSeleccionado)}` : ''}
-              </p>
-              <div className="flex items-end gap-3 flex-wrap">
-                <p className="text-[52px] sm:text-[64px] font-black leading-none"
-                  style={{ color: loading ? 'var(--text-3)' : isOpt ? 'var(--text)' : '#EF4444' }}>
-                  {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
-                </p>
-                {factorGlobal !== null && !loading && (
-                  // Neutro a propósito: el número de arriba y el badge "EN RIESGO" ya
-                  // dicen que hay un problema — repetir el rojo acá era la misma
-                  // alarma por tercera vez en la misma tarjeta.
-                  <div className="flex items-center gap-1.5 pb-2" style={{ color: 'var(--text-3)' }}>
-                    {isOpt ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-                    <span className="text-[13px] font-bold">
-                      {isOpt ? 'Bajo umbral' : 'Sobre umbral'}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <p className="text-[11px] mt-2" style={{ color: 'var(--text-3)' }}>
-                (Gastos / Ventas) × 100 · objetivo &lt;60%
-                {sucSel.length > 0 && sucSel.length < allSucs.length
-                  ? <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
-                  : <span className="ml-1">· sin Producción</span>}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
+        {/* ── KPIs: Factor Índice (gauge) + Ventas + Gastos ──────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="rounded-2xl p-4 flex flex-col items-center text-center gap-1"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: 'var(--text-3)' }}>
+              Factor Índice{mesSeleccionado ? ` · ${mesLabel(mesSeleccionado)}` : ''}
+            </p>
+            <FactorGauge value={loading ? null : factorGlobal} optimized={isOpt} loading={loading} />
+            <p className="text-[24px] font-black leading-none -mt-2"
+              style={{ color: loading ? 'var(--text-3)' : isOpt ? 'var(--text)' : '#EF4444' }}>
+              {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
+            </p>
+            {factorGlobal !== null && !loading && (
               <div className={clsx(
-                'inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold',
-                loading ? 'border-gray-300 text-gray-400' :
-                  isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
+                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold',
+                isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
               )}>
-                {isOpt ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                {loading ? '…' : isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
+                {isOpt ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                {isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
               </div>
-              <button onClick={() => setShowModal(true)}
-                className="py-1.5 px-3 rounded-xl text-[12px] font-semibold transition-all"
-                style={{ border: '1.5px solid var(--border-2)', color: 'var(--text-2)' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
-                Ver Detalle
-              </button>
-            </div>
+            )}
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+              (Gastos / Ventas) × 100 · objetivo &lt;60%
+              {sucSel.length > 0 && sucSel.length < allSucs.length
+                ? <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
+                : <span className="ml-1">· sin Producción</span>}
+            </p>
           </div>
 
-          {factorGlobal !== null && (
-            <div className="mb-6">
-              <div className="flex justify-between text-[10px] mb-1.5" style={{ color: 'var(--text-3)' }}>
-                <span>0%</span><span className="font-semibold" style={{ color: 'var(--text-2)' }}>umbral 60%</span><span>100%</span>
-              </div>
-              {/* Relleno siempre neutro: la barra muestra magnitud (qué tan cerca del
-                  100% está), no un segundo semáforo — el rojo ya lo dijo el número. */}
-              <div className="w-full rounded-full h-2.5 relative" style={{ background: 'var(--hover)' }}>
-                <div className="h-2.5 rounded-full transition-all duration-700"
-                  style={{ width: `${Math.min(factorGlobal, 100)}%`, background: 'var(--active-text)' }} />
-                <div className="absolute top-0 w-0.5 h-2.5" style={{ left: '60%', background: 'var(--text-3)' }} />
-              </div>
-            </div>
-          )}
+          <div className="rounded-2xl p-5 flex flex-col justify-center gap-2"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <span className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Ventas Brutas</span>
+            <span className="text-[24px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalVentas)}</span>
+          </div>
 
-          {/* Ventas / gastos — el detalle que explica el número de arriba, sin repetirlo */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Ventas Brutas</span>
-                <span className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalVentas)}</span>
-              </div>
-              <div className="w-full rounded-full h-2" style={{ background: 'var(--hover)' }}>
-                <div className="h-2 rounded-full" style={{ width: '100%', background: 'var(--active-text)' }} />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Gastos Operacionales</span>
-                <span className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalGastos)}</span>
-              </div>
-              {/* Mismo tono que "Ventas Brutas": es una magnitud, no un estado —
-                  el estado ya está dicho arriba, una vez. */}
-              <div className="w-full rounded-full h-2" style={{ background: 'var(--hover)' }}>
-                <div className="h-2 rounded-full transition-all duration-700" style={{
-                  background: 'var(--active-text)',
-                  width: totalVentas > 0 ? `${Math.min((totalGastos / totalVentas) * 100, 100)}%` : '0%',
-                }} />
-              </div>
-            </div>
+          <div className="rounded-2xl p-5 flex flex-col justify-center gap-2"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <span className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Gastos Operacionales</span>
+            <span className="text-[24px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalGastos)}</span>
           </div>
         </div>
 
@@ -672,6 +618,13 @@ export default function FactorIndicePage() {
                   </button>
                 ))}
               </div>
+              <button onClick={() => setShowModal(true)}
+                className="py-1.5 px-3 rounded-xl text-[12px] font-semibold transition-all"
+                style={{ border: '1.5px solid var(--border-2)', color: 'var(--text-2)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
+                Ver Detalle
+              </button>
               {zoomRange && (
                 <button
                   onClick={() => setZoomRange(null)}
