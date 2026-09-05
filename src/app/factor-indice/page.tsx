@@ -406,19 +406,6 @@ export default function FactorIndicePage() {
             allLabel="Todos los meses"
           />
 
-          {/* Modo toggle */}
-          <div className="flex items-center rounded-full p-1 gap-1" style={{ background: 'var(--hover)' }}>
-            {(['semana', 'dia'] as Modo[]).map(m => (
-              <button key={m} onClick={() => setModo(m)}
-                className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-all"
-                style={modo === m
-                  ? { background: 'var(--card)', color: 'var(--text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
-                  : { color: 'var(--text-3)' }}>
-                {m === 'semana' ? 'Por Semana' : 'Por Día'}
-              </button>
-            ))}
-          </div>
-
           {/* Sucursal filter */}
           <SucursalFilter
             sucursales={allSucs}
@@ -438,13 +425,10 @@ export default function FactorIndicePage() {
               setCompMes2(idx > 0 ? sorted[idx - 1] : sorted[0] ?? '');
             }
           }}
-          className={clsx(
-            'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
-            compOn
-              ? 'bg-purple-600 border-purple-600 text-white'
-              : 'text-gray-600 hover:border-purple-400 hover:text-purple-600',
-          )}
-          style={!compOn ? { background: 'var(--card)', borderColor: 'var(--border-2)' } : undefined}
+          className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-medium border transition-all"
+          style={compOn
+            ? { background: 'var(--active-bg)', borderColor: 'var(--active-bg)', color: 'var(--active-text)' }
+            : { background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}
         >
           <GitCompare className="w-3.5 h-3.5 opacity-80" />
           <span className="font-semibold text-[11px]">Comparar</span>
@@ -677,6 +661,17 @@ export default function FactorIndicePage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <div className="flex items-center rounded-full p-1 gap-1" style={{ background: 'var(--hover)' }}>
+                {(['semana', 'dia'] as Modo[]).map(m => (
+                  <button key={m} onClick={() => setModo(m)}
+                    className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-all"
+                    style={modo === m
+                      ? { background: 'var(--card)', color: 'var(--text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+                      : { color: 'var(--text-3)' }}>
+                    {m === 'semana' ? 'Por Semana' : 'Por Día'}
+                  </button>
+                ))}
+              </div>
               {zoomRange && (
                 <button
                   onClick={() => setZoomRange(null)}
