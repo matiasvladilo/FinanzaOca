@@ -3,8 +3,10 @@ export const ASSISTANT_SCOPE_REPLY = 'Solo respondo consultas sobre datos de Fin
 export type AssistantInputClassification = { allowed: true } | { allowed: false }
 
 const SUSPICIOUS_INPUT_PATTERNS = [
+  /\b(?:ignora|omite|desobedece|elude)\b(?:\s+\w+){0,7}\s+(?:instrucciones|indicaciones|reglas)\b/,
   /\b(?:ignora|omite|desobedece|elude)\b(?:\s+\w+){0,7}\s+(?:instrucciones|indicaciones|reglas)\b(?:\s+\w+){0,11}\s+(?:prompt|mensaje\s+del\s+sistema|instrucciones\s+del\s+sistema)\b/,
   /\b(?:borra|elimina|destruye)\b(?:\s+\w+){0,7}\s+(?:base\s+de\s+datos|database|bd)\b/,
+  /\b(?:drop\s+table|delete\s+from|truncate\s+table|alter\s+table|insert\s+into|update\s+\w+)\b/,
   /\b(?:ejecuta|corre|lanza)\b(?:\s+\w+){0,3}\s+(?:drop\s+table|delete\s+from|truncate\s+table|alter\s+table|insert\s+into|update\s+\w+)\b/,
   /\b(?:omite|salta|elude|evade|bypassea)\b(?:\s+\w+){0,5}\s+(?:autorizaciones?|permisos|controles\s+de\s+acceso)\b/,
   /\b(?:accede|ingresa|entra)\b(?:\s+\w+){0,5}\s+sin\s+(?:autorizacion|permiso)\b/,
@@ -17,6 +19,7 @@ function normalizeInput(input: string): string {
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
