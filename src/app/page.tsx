@@ -71,6 +71,13 @@ export default function DashboardPage() {
   // sucursal". Aparte de produccionSummary porque ese solo cubre el período filtrado.
   const [produccionPorMes, setProduccionPorMes] = useState<Record<string, number>>({});
 
+  // Total de sucursales disponibles (de Cierre de Caja) — se calcula temprano
+  // porque `computed`, `computedDateRange`, `computedComp` y el efecto de
+  // fetch de producción/distribuidora lo necesitan para tratar "las 4
+  // sucursales elegidas a mano" igual que "Todas" (array vacío): mismo total,
+  // mismo resultado, sin importar cómo llegó el usuario ahí.
+  const totalSucursales = useMemo(() => Object.keys(ccData?.porLocal ?? {}).length, [ccData]);
+
   // Aplicar restricción de local si el rol es 'local'
   useEffect(() => {
     const localRestriccion = getLocalRestriction();
@@ -142,7 +149,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (filters.sucursales.length > 0) {
+    // Elegir las 4 sucursales a mano equivale a no filtrar (mismo total que
+    // "Todas"): en ambos casos hay que traer producción/distribuidora.
+    const filtroActivo = filters.sucursales.length > 0 && filters.sucursales.length < totalSucursales;
+    if (filtroActivo) {
       return;
     }
 
@@ -192,7 +202,7 @@ export default function DashboardPage() {
       });
 
     return () => { cancelled = true; };
-  }, [filters.sucursales, modoFiltro, mesFiltro, fechaDesde, fechaHasta]);
+  }, [filters.sucursales, modoFiltro, mesFiltro, fechaDesde, fechaHasta, totalSucursales]);
 
   // Cierra el date picker al hacer click fuera
   useEffect(() => {
@@ -230,7 +240,10 @@ export default function DashboardPage() {
     }
 
     const sucursales = filters.sucursales;
-    const filtroActivo = sucursales.length > 0;
+    // Elegir las 4 sucursales a mano equivale a "Todas" (array vacío): mismo
+    // total pre-agregado, sin caer al camino que suma por sucursal y pierde
+    // producción/distribuidora.
+    const filtroActivo = sucursales.length > 0 && sucursales.length < totalSucursales;
     const hasMes = !!mesFiltro;
 
     let ventasPorLocal: Record<string, number> = {};
@@ -314,14 +327,14 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursales, mesFiltro, produccionSummary, distribuidoraGastos]);
+  }, [ccData, vData, filters.sucursales, mesFiltro, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
     if (modoFiltro !== 'dia' || (!fechaDesde && !fechaHasta)) return null;
     if (!ccData?.ok) return null;
     const sucursales = filters.sucursales;
-    const filtroActivo = sucursales.length > 0;
+    const filtroActivo = sucursales.length > 0 && sucursales.length < totalSucursales;
     const dias     = (ccData as any).registrosDiarios ?? [];
     const gastosDias = vData?.registrosDiariosGastos ?? [];
 
@@ -372,7 +385,7 @@ export default function DashboardPage() {
       topSucursal: distribucion[0] ?? null,
       medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
     };
-  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, produccionSummary, distribuidoraGastos]);
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
   const activeData = computedDateRange ?? computed;
@@ -384,7 +397,7 @@ export default function DashboardPage() {
     const gastosPorMes = vData?.gastosPorMes ?? {};
     const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
     const sucursales = filters.sucursales;
-    const filtroActivo = sucursales.length > 0;
+    const filtroActivo = sucursales.length > 0 && sucursales.length < totalSucursales;
 
     let totalVentas = 0;
     for (const local of Object.keys(porLocal)) {
@@ -396,7 +409,7 @@ export default function DashboardPage() {
       : sucursales.reduce((s, suc) => s + (gastosPorMesSucursal[suc]?.[mesComp] ?? 0), 0);
 
     return { totalVentas, totalGastos };
-  }, [ccData, vData, mesComp, compOn, compareType, filters.sucursales]);
+  }, [ccData, vData, mesComp, compOn, compareType, filters.sucursales, totalSucursales]);
 
   // ── Comparación de locales (mismo período) ────────────────────────────────
   const computedCompLocal = useMemo(() => {

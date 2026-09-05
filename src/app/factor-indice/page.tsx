@@ -20,6 +20,7 @@ import RiskStrip from '@/components/factor-indice/RiskStrip';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { hoyISOChile } from '@/lib/date-utils';
+import { getLocalRestriction } from '@/lib/session-client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const MESES_FULL: Record<string, string> = {
@@ -182,6 +183,10 @@ export default function FactorIndicePage() {
   const [compOn, setCompOn]   = useState(false);
   const [compMes2, setCompMes2] = useState('');
 
+  // Restricción de sucursal para rol 'local' — mismo patrón que Ventas: null
+  // si el usuario puede ver todos los locales, o el nombre exacto del suyo.
+  const localRestriccion = getLocalRestriction();
+
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
@@ -230,7 +235,8 @@ export default function FactorIndicePage() {
       gastosSS[r.sucursal][k] = (gastosSS[r.sucursal][k] ?? 0) + r.monto;
     }
 
-    const allSucs = [...new Set([...Object.keys(ventasSS), ...Object.keys(gastosSS)])].sort();
+    const allSucsRaw = [...new Set([...Object.keys(ventasSS), ...Object.keys(gastosSS)])].sort();
+    const allSucs = localRestriccion ? allSucsRaw.filter(s => s === localRestriccion) : allSucsRaw;
 
     // Collect all time keys from ventas
     const keySet = new Set<string>();
@@ -255,12 +261,7 @@ export default function FactorIndicePage() {
     });
 
     return { indice50Data: rows, allSucs };
-  }, [cierreCajaData, ventasData, mesSeleccionado, modo]);
-
-  // ── Init selection ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (allSucs.length > 0 && sucSel.length === 0) setSucSel(allSucs);
-  }, [allSucs]); // eslint-disable-line
+  }, [cierreCajaData, ventasData, mesSeleccionado, modo, localRestriccion]);
 
   const sucursalesVisibles = sucSel.length > 0 ? sucSel : allSucs;
 
@@ -406,6 +407,7 @@ export default function FactorIndicePage() {
             sucursales={allSucs}
             selected={sucSel}
             onChange={setSucSel}
+            disabled={!!localRestriccion}
           />
         </div>
 
@@ -591,13 +593,13 @@ export default function FactorIndicePage() {
 
         {/* Chart — full width */}
         <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div className="flex items-start justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
             <div>
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>
                 Índice 60 por {modo === 'semana' ? 'Semana' : 'Día'}
               </h3>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
-                (Gastos / Ventas) × 100 · punto verde ≤60% · rojo &gt;60% · sólo los 4 locales, sin Producción
+                (Gastos / Ventas) × 100 · un color por local · franja de riesgo abajo · sólo los 4 locales, sin Producción
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -653,7 +655,7 @@ export default function FactorIndicePage() {
                 </div>
               )}
               {!zoomRange && indice50Data.length > 1 && (
-                <div style={{ textAlign: 'center', marginBottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.03em' }}>
+                <div className="hidden sm:block" style={{ textAlign: 'center', marginBottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.03em' }}>
                   Usá la rueda del mouse sobre el gráfico para hacer zoom
                 </div>
               )}
