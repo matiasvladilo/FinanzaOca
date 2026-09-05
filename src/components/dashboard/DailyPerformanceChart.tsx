@@ -1,6 +1,7 @@
 'use client';
 
 import { memo } from 'react';
+import { BarChart3, Activity } from 'lucide-react';
 import {
   BarChart, Bar,
   LineChart, Line,
@@ -16,11 +17,17 @@ interface SucursalSerie {
 interface Props {
   data: DailyData[] | Record<string, any>[];
   chartType?: 'bar' | 'line';
+  onChartTypeChange?: (chartType: 'bar' | 'line') => void;
   loading?: boolean;
   error?: string | null;
   accentColor?: string;
   sucursalSeries?: SucursalSerie[];
 }
+
+const CHART_TYPE_META = {
+  bar:  { icon: BarChart3, label: 'Ver como barras' },
+  line: { icon: Activity,  label: 'Ver como línea' },
+} as const;
 
 const formatYAxis = (value: number) => {
   if (value >= 1_000_000) return '$' + (value / 1_000_000).toFixed(1) + 'M';
@@ -47,7 +54,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-function DailyPerformanceChart({ data, chartType = 'bar', loading, error, accentColor = '#2563EB', sucursalSeries = [] }: Props) {
+function DailyPerformanceChart({ data, chartType = 'bar', onChartTypeChange, loading, error, accentColor = '#2563EB', sucursalSeries = [] }: Props) {
   const isMultiSucursal = sucursalSeries.length > 0;
   const chartContent = () => {
     if (loading) return <div className="h-[200px] sm:h-[260px] bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />;
@@ -130,12 +137,26 @@ function DailyPerformanceChart({ data, chartType = 'bar', loading, error, accent
             {isMultiSucursal ? 'Ventas por sucursal seleccionada' : 'Desde Cierre de Caja y Facturas'}
           </p>
         </div>
-        <span className={'text-[10px] font-bold px-2.5 py-1 rounded-full ' + (chartType === 'bar'
-          ? 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
-          : 'bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
-        )}>
-          {chartType === 'bar' ? 'BARRAS' : 'LINEA'}
-        </span>
+        <div className="flex items-center rounded-full p-0.5 gap-0.5 shrink-0" style={{ background: 'var(--hover)' }}>
+          {(['bar', 'line'] as const).map(t => {
+            const { icon: Icon, label } = CHART_TYPE_META[t];
+            return (
+              <button key={t}
+                onClick={() => onChartTypeChange?.(t)}
+                title={label}
+                aria-label={label}
+                aria-pressed={chartType === t}
+                disabled={!onChartTypeChange}
+                className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full transition-all duration-150 disabled:opacity-60"
+                style={chartType === t
+                  ? { background: 'var(--card)', color: 'var(--active-text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+                  : { color: 'var(--text-3)' }}
+              >
+                <Icon className="w-3.5 h-3.5" />
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="h-[200px] sm:h-[260px]">
         {chartContent()}

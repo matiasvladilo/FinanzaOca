@@ -172,6 +172,12 @@ body {
   outline: none;
 }
 
+/* Barra de carga sutil (KPIs) — franja que recorre el track, estilo LATAM */
+@keyframes topbar-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

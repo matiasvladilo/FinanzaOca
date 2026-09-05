@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MapPin, Download, ChevronDown, Sun, Moon, Sparkles } from 'lucide-react';
-import clsx from 'clsx';
+import { MapPin, ChevronDown, Sun, Moon, Sparkles } from 'lucide-react';
 import type { DashboardFilters } from '@/types';
 import { useTheme } from '@/providers/ThemeProvider';
 import { getClientSession } from '@/lib/session-client';
@@ -10,7 +9,6 @@ import { getClientSession } from '@/lib/session-client';
 interface HeaderProps {
   filters: DashboardFilters;
   onFiltersChange: (filters: DashboardFilters) => void;
-  onExport?: () => void;
   sucursalesDisponibles?: string[];
 }
 
@@ -20,7 +18,7 @@ const THEME_META = {
   dracula: { icon: <Sparkles className="w-4 h-4" />, label: 'Dracula',   next: 'Claro'   },
 } as const;
 
-export default function Header({ filters, onFiltersChange, onExport, sucursalesDisponibles }: HeaderProps) {
+export default function Header({ filters, onFiltersChange, sucursalesDisponibles }: HeaderProps) {
   const [sucursalOpen, setSucursalOpen] = useState(false);
   const [isLocalRole, setIsLocalRole] = useState(false);
   const { theme, cycle } = useTheme();
@@ -32,9 +30,6 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
 
   const SUCURSALES = sucursalesDisponibles ?? ['Todas'];
   const meta = THEME_META[theme];
-
-  const setVista = (vista: 'overview' | 'granular') =>
-    onFiltersChange({ ...filters, vista });
 
   const setSucursal = (sucursal: string) => {
     onFiltersChange({ ...filters, sucursal });
@@ -51,21 +46,6 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
       </h1>
 
       <div className="flex items-center gap-1 sm:gap-3">
-        {/* View Toggle */}
-        <div className="flex items-center rounded-full p-1 gap-0.5 sm:gap-1" style={{ background: 'var(--hover)' }}>
-          {(['overview', 'granular'] as const).map(v => (
-            <button key={v}
-              onClick={() => setVista(v)}
-              className={clsx('px-2 sm:px-4 py-1.5 rounded-full text-[11px] sm:text-[12px] font-medium transition-all duration-150')}
-              style={filters.vista === v
-                ? { background: 'var(--card)', color: 'var(--text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
-                : { color: 'var(--text-3)' }}
-            >
-              {v === 'overview' ? 'Overview' : 'Granular'}
-            </button>
-          ))}
-        </div>
-
         {/* Sucursal Selector */}
         {isLocalRole ? (
           <div className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-full text-[12px] border"
@@ -112,16 +92,6 @@ export default function Header({ filters, onFiltersChange, onExport, sucursalesD
           className="w-9 h-9 flex items-center justify-center rounded-full border transition-all hover:border-[var(--active-text)] hover:text-[var(--active-text)]"
           style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-3)' }}>
           {meta.icon}
-        </button>
-
-        {/* Export */}
-        <button onClick={onExport}
-          className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-[12px] font-semibold transition-colors shadow-sm"
-          style={{ background: 'var(--active-text)', color: '#ffffff' }}
-          onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
-          onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
-          <Download className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Exportar</span>
         </button>
       </div>
     </header>

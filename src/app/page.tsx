@@ -11,16 +11,14 @@ import ResumenSucursales from '@/components/dashboard/ResumenSucursales';
 import PaymentBreakdown from '@/components/dashboard/PaymentBreakdown';
 import KPICard from '@/components/kpis/KPICard';
 import Skeleton from '@/components/ui/Skeleton';
-import InsightsPanel from '@/components/insights/InsightsPanel';
+import TopProgressBar from '@/components/ui/TopProgressBar';
 import type { DashboardFilters } from '@/types';
 import { getLocalRestriction } from '@/lib/session-client';
 import type { CierreCajaResponse, VentasResponse } from '@/types/api';
 import { toast } from '@/components/ui/Toast';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
-import { exportToCSV } from '@/lib/csv-export';
 import { getSucursalColor, getSucursalConfig, sortSucursales } from '@/config/sucursales';
-import { computeTrendInsights, computeMarginInsight } from '@/lib/analytics/trends';
-import { computeRankingInsights } from '@/lib/analytics/rankings';
+import { hoyISOChile } from '@/lib/date-utils';
 
 const MESES_SHORT = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const MESES_FULL: Record<string, string> = {
@@ -35,12 +33,6 @@ function formatCLPInt(v: number) {
 function mesLabel(key: string) {
   const [anio, mes] = key.split('-');
   return (MESES_FULL[mes] ?? mes) + ' ' + anio;
-}
-
-function getPreviousMonthKey(key: string): string {
-  const [anio, mes] = key.split('-').map(Number);
-  const prev = mes === 1 ? { anio: anio - 1, mes: 12 } : { anio, mes: mes - 1 };
-  return `${prev.anio}-${String(prev.mes).padStart(2, '0')}`;
 }
 
 const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucursal: 'Todas', vista: 'overview' };
@@ -206,8 +198,13 @@ export default function DashboardPage() {
     const registrosDiarios = vData?.registrosDiariosGastos ?? [];
     const gastosPorSucursal: Record<string, { gastos: number }> = {};
     if (mesFiltro && registrosDiarios.length > 0) {
+      // registrosDiariosGastos viene sin filtrar del server — cortar "hasta
+      // hoy" para que este desglose por sucursal sume lo mismo que
+      // gastosPorMes (ya corregido en /api/ventas), y no vuelva a inflar el
+      // mes en curso con facturas de días que todavía no pasaron.
+      const hoyISO = hoyISOChile();
       for (const r of registrosDiarios) {
-        if (!r.fecha || r.fecha.slice(0, 7) !== mesFiltro) continue;
+        if (!r.fecha || r.fecha.slice(0, 7) !== mesFiltro || r.fecha > hoyISO) continue;
         if (!gastosPorSucursal[r.sucursal]) gastosPorSucursal[r.sucursal] = { gastos: 0 };
         gastosPorSucursal[r.sucursal].gastos += r.monto;
       }
@@ -402,34 +399,6 @@ export default function DashboardPage() {
     return { dataA: getData(localA), dataB: getData(localB) };
   }, [ccData, vData, compOn, compareType, localA, localB, mesFiltro]);
 
-  // ── Insights automáticos (memoizados) ────────────────────────────────────
-  const insights = useMemo(() => {
-    if (!ccData?.ok || !mesFiltro) return [];
-    const { porLocalMes, porLocal } = ccData;
-    const prevKey = getPreviousMonthKey(mesFiltro);
-
-    const trendLocales = Object.keys(porLocal).map(nombre => ({
-      nombre,
-      ventasMesActual:   porLocalMes[nombre]?.[mesFiltro]?.ventas ?? 0,
-      ventasMesAnterior: porLocalMes[nombre]?.[prevKey]?.ventas   ?? 0,
-    }));
-
-    const rankingLocales = Object.keys(porLocal).map(nombre => ({
-      nombre,
-      ventas: porLocalMes[nombre]?.[mesFiltro]?.ventas ?? 0,
-    }));
-
-    const marginInsight = computed
-      ? computeMarginInsight(computed.totalVentas, computed.totalGastos, mesFiltro)
-      : null;
-
-    return [
-      ...computeRankingInsights(rankingLocales, mesFiltro),
-      ...computeTrendInsights(trendLocales, mesFiltro),
-      ...(marginInsight ? [marginInsight] : []),
-    ];
-  }, [ccData, mesFiltro, computed]);
-
   // ── Datos del gráfico por sucursal seleccionada (multi-compare) ──────────
   const sucursalSeriesConfig = useMemo(() => {
     return selectedSucursales.map(nombre => ({
@@ -490,20 +459,6 @@ export default function DashboardPage() {
     return ['Todas', ...sortSucursales(Object.keys(ccData.porLocal))];
   }, [ccData]);
 
-  const handleExport = () => {
-    if (!computed) return;
-    exportToCSV(
-      computed.distribucion.map(d => ({
-        Sucursal:         d.nombre,
-        Ventas:           d.valor,
-        Gastos:           computed.gastosPorSucursal[d.nombre]?.gastos ?? 0,
-        'Participacion %': d.porcentaje + '%',
-      })),
-      'dashboard_' + (mesFiltro || 'completo')
-    );
-    toast('Reporte exportado');
-  };
-
   const periodoLabel = modoFiltro === 'dia' && (fechaDesde || fechaHasta)
     ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
     : mesFiltro ? mesLabel(mesFiltro) : 'Acumulado';
@@ -520,7 +475,6 @@ export default function DashboardPage() {
       <Header
         filters={filters}
         onFiltersChange={setFilters}
-        onExport={handleExport}
         sucursalesDisponibles={sucursalesDisponibles}
       />
 
@@ -721,6 +675,8 @@ export default function DashboardPage() {
         )}
 
         {/* ── KPI Cards (2 cols mobile, 4 cols desktop) ───────────────────── */}
+        <div>
+        <TopProgressBar active={loading} />
         {loading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
             {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28" />)}
@@ -767,6 +723,7 @@ export default function DashboardPage() {
             />
           </div>
         )}
+        </div>
 
         {/* ── Gráfico principal + distribución (1 col mobile, 3 cols desktop) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-5">
@@ -774,6 +731,7 @@ export default function DashboardPage() {
             <DailyPerformanceChart
               data={sucursalChartData ?? (activeData?.realChartData ?? [])}
               chartType={filters.vista === 'granular' ? 'line' : 'bar'}
+              onChartTypeChange={(t) => setFilters(f => ({ ...f, vista: t === 'line' ? 'granular' : 'overview' }))}
               loading={loading}
               accentColor={filters.sucursal !== 'Todas' ? getSucursalConfig(filters.sucursal).color : '#2563EB'}
               sucursalSeries={sucursalSeriesConfig}
@@ -811,9 +769,6 @@ export default function DashboardPage() {
             />
           </div>
         </div>
-
-        {/* ── Insights automáticos ────────────────────────────────────────── */}
-        <InsightsPanel insights={insights} loading={loading} />
 
       </main>
     </div>

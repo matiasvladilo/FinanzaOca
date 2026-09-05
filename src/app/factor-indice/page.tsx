@@ -16,6 +16,7 @@ import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { useTheme } from '@/providers/ThemeProvider';
+import { hoyISOChile } from '@/lib/date-utils';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const MESES_FULL: Record<string, string> = {
@@ -215,7 +216,12 @@ export default function FactorIndicePage() {
       return { indice50Data: [], allSucs: [] };
 
     const diasCaja:   any[] = cierreCajaData.registrosDiarios  ?? [];
-    const diasGastos: any[] = ventasData?.registrosDiariosGastos ?? [];
+    // registrosDiariosGastos viene sin filtrar del server (informes/asistente
+    // lo necesitan completo) — acá sí hay que cortar "hasta hoy": si no, la
+    // semana en curso ya suma facturas con vencimiento en días que todavía no
+    // pasaron, contra ventas de caja que sólo existen para días reales.
+    const hoyISO = hoyISOChile();
+    const diasGastos: any[] = (ventasData?.registrosDiariosGastos ?? []).filter((r: any) => r.fecha <= hoyISO);
 
     const ventasSS: Record<string, Record<string, number>> = {};
     const gastosSS: Record<string, Record<string, number>> = {};

@@ -143,6 +143,25 @@ export function isoWeekMonday(isoDate: string): string {
 const TZ_NEGOCIO = 'America/Santiago';
 
 /**
+ * Fecha de HOY en formato YYYY-MM-DD, hora de Chile (America/Santiago).
+ *
+ * No usar `new Date().toISOString().slice(0,10)` para esto — da la fecha en
+ * UTC, que en Chile (UTC-3/UTC-4) puede ser un día distinto según la hora
+ * del día. Se usa para no contar como "ya gastado" facturas con fecha
+ * emitida futura dentro del mes en curso (ver `fetchVentasRaw` en
+ * api/ventas/route.ts).
+ */
+export function hoyISOChile(): string {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ_NEGOCIO,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const p: Record<string, string> = {};
+  for (const x of partes) if (x.type !== 'literal') p[x.type] = x.value;
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+/**
  * Minutos que `tz` va adelantada respecto de UTC en ese instante.
  * Chile alterna entre −240 y −180 con el horario de verano, así que no se puede
  * hardcodear el offset.

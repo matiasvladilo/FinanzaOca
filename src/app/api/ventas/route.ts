@@ -12,8 +12,9 @@ import { readSheet, getLocalesConfig } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, getMesLabel, findHeader, normalizeProveedorName } from '@/lib/data/parsers';
 import { withCacheSWR } from '@/lib/data/cache';
 import { requireAuth } from '@/lib/auth-api';
+import { hoyISOChile } from '@/lib/date-utils';
 
-const CACHE_KEY = 'ventas-v13';
+const CACHE_KEY = 'ventas-v14';
 
 /**
  * Factura que quedó fuera de los totales porque su fecha de vencimiento
@@ -149,9 +150,22 @@ async function fetchVentasRaw() {
 
   if (registros.length === 0) return null;
 
-  // Gastos = TODAS las filas de facturas (el sheet suma GASTO+INGRESO sin filtrar por tipo)
-  const gastos   = registros; // todas las filas
-  const ingresos = registros.filter(r => r.tipo === 'INGRESO');
+  const HOY_ISO = hoyISOChile();
+
+  // Gastos = TODAS las filas de facturas (el sheet suma GASTO+INGRESO sin filtrar por tipo).
+  //
+  // `gastos` excluye facturas con FECHA EMITIDA futura — proveedores como el
+  // arriendo o servicios ya quedan cargados en la planilla con su fecha de
+  // vencimiento del mes completo desde el día 1, aunque falten semanas para
+  // que "pasen". Sin este corte, el mes en curso suma sus gastos completos
+  // contra sólo los días de venta que ya ocurrieron (la caja no tiene
+  // "ventas futuras"), e infla el Factor Índice / Margen Neto de forma
+  // irreal (ej. 376% en vez de ~97% el día 4 de un mes de 30).
+  // `registrosDiariosGastos` (más abajo) sigue sin filtrar: informes y el
+  // asistente ya cortan por su propio rango de fechas explícito.
+  const gastosCrudo = registros; // todas las filas, sin filtrar — para registrosDiariosGastos
+  const gastos       = registros.filter(r => r.fecha <= HOY_ISO);
+  const ingresos      = gastos.filter(r => r.tipo === 'INGRESO');
   const totalGastos   = gastos.reduce((s, r) => s + r.monto, 0);
   const totalIngresos = ingresos.reduce((s, r) => s + r.monto, 0);
 
@@ -159,7 +173,7 @@ async function fetchVentasRaw() {
 
   // ── Por mes ─────────────────────────────────────────────────────────────
   const porMes: Record<string, { mes: number; anio: number; ventas: number; gastos: number }> = {};
-  for (const r of registros) {
+  for (const r of gastos) {
     if (r.anio > ANIO_ACTUAL) continue; // descartar fechas futuras
     const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
     if (!porMes[key]) porMes[key] = { mes: r.mes, anio: r.anio, ventas: 0, gastos: 0 };
@@ -175,7 +189,7 @@ async function fetchVentasRaw() {
 
   // ── Por sucursal ────────────────────────────────────────────────────────
   const porSucursal: Record<string, { ventas: number; gastos: number; transacciones: number }> = {};
-  for (const r of registros) {
+  for (const r of gastos) {
     if (!porSucursal[r.sucursal]) porSucursal[r.sucursal] = { ventas: 0, gastos: 0, transacciones: 0 };
     porSucursal[r.sucursal].gastos += r.monto; // total facturas (GASTO+INGRESO)
     porSucursal[r.sucursal].transacciones++;
@@ -183,7 +197,7 @@ async function fetchVentasRaw() {
 
   // ── Gastos por mes + sucursal (para filtrar gráfico por local) ───────────
   const gastosPorMesSucursal: Record<string, Record<string, number>> = {};
-  for (const r of registros) {
+  for (const r of gastos) {
     if (r.anio > ANIO_ACTUAL) continue;
     const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
     if (!gastosPorMesSucursal[r.sucursal]) gastosPorMesSucursal[r.sucursal] = {};
@@ -210,7 +224,7 @@ async function fetchVentasRaw() {
     porMedioPago[r.medioPago] = (porMedioPago[r.medioPago] ?? 0) + r.monto;
   }
 
-  const registrosDiariosGastos = gastos
+  const registrosDiariosGastos = gastosCrudo
     .filter(r => r.fecha)
     .map(r => ({
       fecha: r.fecha,
