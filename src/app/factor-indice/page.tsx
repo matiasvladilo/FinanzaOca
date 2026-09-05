@@ -727,7 +727,7 @@ export default function FactorIndicePage() {
                     <div key={d.semana} className="rounded-xl p-3"
                       style={{ border: '1px solid var(--border)', background: 'var(--hover)' }}>
                       <p className="text-[12px] font-bold mb-2" style={{ color: 'var(--text-2)' }}>{d.semana}</p>
-                      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(sucursalesVisibles.length, 4)}, 1fr)` }}>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {sucursalesVisibles.map((s, i) => {
                           const ventas = d[`__ventas_${s}`] ?? 0;
                           const gastos = d[`__gastos_${s}`] ?? 0;
