@@ -58,17 +58,15 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     : v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`;
   return (
     <div style={{
-      background: 'rgba(10,14,28,0.92)',
-      backdropFilter: 'blur(16px)',
-      WebkitBackdropFilter: 'blur(16px)',
-      border: '1px solid rgba(255,255,255,0.08)',
+      background: 'var(--card)',
+      border: '1px solid var(--border)',
       borderRadius: 12,
-      boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+      boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
       padding: '10px 14px',
       minWidth: 185,
       fontSize: 12,
     }}>
-      <p style={{ fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.07)', letterSpacing: '-0.01em' }}>
+      <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)', letterSpacing: '-0.01em' }}>
         {label}
       </p>
       {payload.map((p: any) => {
@@ -82,14 +80,13 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                 width: 8, height: 8, borderRadius: '50%',
                 background: p.color,
                 display: 'inline-block', flexShrink: 0,
-                boxShadow: `0 0 6px ${p.color}88`,
               }} />
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{p.dataKey}</span>
+              <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{p.dataKey}</span>
               <span style={{
                 marginLeft: 'auto',
                 fontWeight: 800,
                 fontSize: 13,
-                color: isRisk ? '#f87171' : '#4ade80',
+                color: isRisk ? '#ef4444' : '#22c55e',
                 letterSpacing: '-0.02em',
               }}>
                 {p.value}%
@@ -97,22 +94,22 @@ const CustomTooltip = ({ active, payload, label }: any) => {
               <span style={{
                 fontSize: 9, fontWeight: 700,
                 padding: '2px 5px', borderRadius: 20,
-                background: isRisk ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-                color: isRisk ? '#f87171' : '#4ade80',
+                background: isRisk ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
+                color: isRisk ? '#ef4444' : '#22c55e',
               }}>
                 {isRisk ? 'RIESGO' : 'OK'}
               </span>
             </div>
             {ventas != null && (
-              <div style={{ paddingLeft: 16, fontSize: 10, color: 'rgba(255,255,255,0.35)', display: 'flex', gap: 10 }}>
-                <span><span style={{ color: '#60a5fa' }}>V:</span> {fmtMoney(ventas)}</span>
-                <span><span style={{ color: '#f87171' }}>G:</span> {fmtMoney(gastos)}</span>
+              <div style={{ paddingLeft: 16, fontSize: 10, color: 'var(--text-3)', display: 'flex', gap: 10 }}>
+                <span><span style={{ color: '#3b82f6' }}>V:</span> {fmtMoney(ventas)}</span>
+                <span><span style={{ color: '#ef4444' }}>G:</span> {fmtMoney(gastos)}</span>
               </div>
             )}
           </div>
         );
       })}
-      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-3)' }}>
         Verde ≤60% · Rojo &gt;60%
       </div>
     </div>
