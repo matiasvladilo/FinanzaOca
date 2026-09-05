@@ -16,6 +16,7 @@ import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import SucursalFilter from '@/components/ui/SucursalFilter';
 import FactorGauge from '@/components/factor-indice/FactorGauge';
+import RiskStrip from '@/components/factor-indice/RiskStrip';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { hoyISOChile } from '@/lib/date-utils';
@@ -45,13 +46,9 @@ const headerFiltersStub = { fechaInicio: '', fechaFin: '', sucursales: [], vista
 
 // ── Chart sub-components ──────────────────────────────────────────────────────
 const CustomDot = (props: any) => {
-  const { cx, cy, value } = props;
+  const { cx, cy, value, stroke } = props;
   if (cx == null || cy == null || value == null) return null;
-  return (
-    <circle cx={cx} cy={cy} r={5}
-      fill={value <= 60 ? '#22C55E' : '#EF4444'}
-      stroke="#fff" strokeWidth={2} />
-  );
+  return <circle cx={cx} cy={cy} r={4} fill={stroke} stroke="#fff" strokeWidth={2} />;
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -636,14 +633,6 @@ export default function FactorIndicePage() {
                   Restablecer zoom
                 </button>
               )}
-              <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤60%
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;60%
-                </span>
-              </div>
             </div>
           </div>
 
@@ -711,6 +700,7 @@ export default function FactorIndicePage() {
                   ))}
                 </LineChart>
               </ResponsiveContainer>
+              <RiskStrip data={visibleChartData} sucursales={sucursalesVisibles} />
             </div>
           )}
         </div>
