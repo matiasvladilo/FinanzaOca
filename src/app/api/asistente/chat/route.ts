@@ -13,6 +13,7 @@ import { requireAuth } from '@/lib/auth-api';
 import { buildSystemPrompt } from '@/lib/asistente/prompt';
 import { ASISTENTE_TOOLS } from '@/lib/asistente/tools';
 import { ASISTENTE_HANDLERS } from '@/lib/asistente/handlers';
+import { ASSISTANT_SCOPE_REPLY, classifyAssistantInput } from '@/lib/asistente/security';
 import { normalizeLocalName } from '@/lib/data/parsers';
 
 export const runtime = 'nodejs';
@@ -108,6 +109,11 @@ export async function POST(req: NextRequest) {
       if (m.content.length > MAX_MENSAJE_LARGO) {
         return NextResponse.json({ ok: false, error: `El mensaje es demasiado largo (máximo ${MAX_MENSAJE_LARGO} caracteres)` }, { status: 400 });
       }
+    }
+
+    const latestUserMessage = [...entrada].reverse().find((m) => m.role === 'user');
+    if (latestUserMessage && !classifyAssistantInput(latestUserMessage.content).allowed) {
+      return NextResponse.json({ ok: true, reply: ASSISTANT_SCOPE_REPLY });
     }
 
     // Tope de historial reenviado — evita que una conversación muy larga
