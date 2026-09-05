@@ -8,11 +8,12 @@ import {
 import {
   Download, Bell, ChevronDown,
   CheckCircle2, AlertTriangle, TrendingDown, TrendingUp, X,
-  Sun, Moon, Sparkles, Check, GitCompare,
+  Sun, Moon, Sparkles, GitCompare,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
+import SucursalFilter from '@/components/ui/SucursalFilter';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { useTheme } from '@/providers/ThemeProvider';
@@ -185,7 +186,6 @@ export default function FactorIndicePage() {
   const [alertasAbiertas, setAlertasAbiertas] = useState(false);
   const [mesSeleccionado, setMes]   = useState('');
   const [modo, setModo]             = useState<Modo>('semana');
-  const [sucOpen, setSucOpen]       = useState(false);
   const [sucSel, setSucSel]         = useState<string[]>([]);   // vacío = todas
   const [cierreCajaData, setCCData] = useState<any>(null);
   const [ventasData, setVData]      = useState<any>(null);
@@ -388,9 +388,6 @@ export default function FactorIndicePage() {
     toast('Reporte exportado correctamente');
   };
 
-  const toggleSuc = (s: string) =>
-    setSucSel(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
@@ -443,66 +440,12 @@ export default function FactorIndicePage() {
             ))}
           </div>
 
-          {/* Sucursal multi-select */}
-          <div className="relative">
-            <button onClick={() => setSucOpen(!sucOpen)}
-              className="flex items-center gap-2 rounded-full px-4 py-2 text-[12px] transition-colors"
-              style={{ border: '1px solid var(--border-2)', background: 'var(--card)', color: 'var(--text-2)' }}>
-              <span style={{ color: 'var(--text-3)' }} className="font-medium">Local:</span>
-              <span className="font-semibold">
-                {sucSel.length === 0 || sucSel.length === allSucs.length
-                  ? 'Todos'
-                  : sucSel.length === 1
-                    ? sucSel[0]
-                    : `${sucSel.length} seleccionados`}
-              </span>
-              <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
-            </button>
-            {sucOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setSucOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg z-50 min-w-[180px] py-1"
-                  style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                  {/* All option */}
-                  <button
-                    onClick={() => setSucSel(allSucs)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] transition-colors"
-                    style={{ color: 'var(--text-2)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                    <span className={clsx(
-                      'w-4 h-4 rounded flex items-center justify-center border',
-                      sucSel.length === allSucs.length ? 'bg-blue-500 border-blue-500' : ''
-                    )} style={sucSel.length !== allSucs.length ? { borderColor: 'var(--border-2)' } : {}}>
-                      {sucSel.length === allSucs.length && <Check className="w-3 h-3 text-white" />}
-                    </span>
-                    <span className="font-semibold">Todos</span>
-                  </button>
-                  <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-                  {allSucs.map((s, i) => (
-                    <button key={s} onClick={() => toggleSuc(s)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] transition-colors"
-                      style={{ color: 'var(--text-2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                      <span className={clsx(
-                        'w-4 h-4 rounded flex items-center justify-center border',
-                        sucSel.includes(s) ? 'border-transparent' : ''
-                      )} style={sucSel.includes(s)
-                        ? { backgroundColor: getSucColor(s, i), borderColor: 'transparent' }
-                        : { borderColor: 'var(--border-2)' }}>
-                        {sucSel.includes(s) && <Check className="w-3 h-3 text-white" />}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getSucColor(s, i) }} />
-                        {s}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          {/* Sucursal filter */}
+          <SucursalFilter
+            sucursales={allSucs}
+            selected={sucSel}
+            onChange={setSucSel}
+          />
         </div>
 
         {/* Toggle comparación */}
