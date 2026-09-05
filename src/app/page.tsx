@@ -84,7 +84,19 @@ export default function DashboardPage() {
   useEffect(() => {
     const localRestriccion = getLocalRestriction();
     if (localRestriccion) return; // no restaurar sessionStorage si hay restricción de local
-    setFilters(ssGetJSON('dash_filters', defaultFilters));
+    const restored = ssGetJSON('dash_filters', defaultFilters);
+    // Compatibilidad hacia atrás: tabs que quedaron abiertas desde antes de este
+    // cambio pueden tener persistido el shape viejo (`sucursal: string`, sin
+    // `sucursales`). Forzar `sucursales` a array evita un crash aguas abajo
+    // (computed/computedDateRange/computedComp leen `.length`); no se intenta
+    // migrar el valor viejo, cae a "Todas" (array vacío).
+    setFilters({
+      ...defaultFilters,
+      ...restored,
+      sucursales: Array.isArray((restored as { sucursales?: unknown }).sucursales)
+        ? (restored as DashboardFilters).sucursales
+        : [],
+    });
     setMesFiltro(ssGet('dash_mesFiltro', ''));
     setFechaDesde(ssGet('dash_fechaDesde', ''));
     setFechaHasta(ssGet('dash_fechaHasta', ''));
