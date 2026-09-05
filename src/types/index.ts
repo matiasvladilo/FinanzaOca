@@ -41,6 +41,7 @@ export interface EficienciaOperacional {
 export interface DashboardFilters {
   fechaInicio: string;
   fechaFin: string;
-  sucursal: Sucursal;
+  /** Vacío = todas las sucursales (sin filtro). */
+  sucursales: Sucursal[];
   vista: 'overview' | 'granular';
 }
