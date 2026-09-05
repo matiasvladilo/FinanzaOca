@@ -6,17 +6,17 @@ import {
   Tooltip, ReferenceLine, ResponsiveContainer, Legend,
 } from 'recharts';
 import {
-  Download, Bell, ChevronDown,
+  Download, ChevronDown,
   CheckCircle2, AlertTriangle, TrendingDown, TrendingUp, X,
-  Sun, Moon, Sparkles, GitCompare,
+  GitCompare,
 } from 'lucide-react';
 import clsx from 'clsx';
+import Header from '@/components/layout/Header';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import SucursalFilter from '@/components/ui/SucursalFilter';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
-import { useTheme } from '@/providers/ThemeProvider';
 import { hoyISOChile } from '@/lib/date-utils';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,11 +40,7 @@ function getSucColor(suc: string, i: number) {
   return SUC_COLORS[suc] ?? ['#6366F1', '#EC4899', '#14B8A6', '#F97316'][i % 4];
 }
 
-const THEME_META = {
-  light:   { icon: <Moon      className="w-4 h-4" />, next: 'Oscuro'  },
-  dark:    { icon: <Sun       className="w-4 h-4" />, next: 'Dracula' },
-  dracula: { icon: <Sparkles  className="w-4 h-4" />, next: 'Claro'   },
-} as const;
+const headerFiltersStub = { fechaInicio: '', fechaFin: '', sucursales: [], vista: 'overview' as const };
 
 // ── Chart sub-components ──────────────────────────────────────────────────────
 const CustomDot = (props: any) => {
@@ -174,9 +170,6 @@ function calcularAlertas(
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function FactorIndicePage() {
-  const { theme, cycle } = useTheme();
-  const themeMeta = THEME_META[theme];
-
   // Reconocer/descartar una alerta es sólo de esta sesión — no hay backend
   // para persistirlo, y no correspondería fingir que sí. Se guarda por `key`
   // (sucursal+período), no por índice de array, para que sobreviva a que la
@@ -392,25 +385,11 @@ export default function FactorIndicePage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
 
-      {/* ── Header ── */}
-      <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30 transition-colors"
-        style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
-        <h1 className="text-[16px] sm:text-[18px] font-bold" style={{ color: 'var(--text)' }}>Factor Índice Overview</h1>
-        <div className="flex items-center gap-2">
-          <button className="relative p-2 transition-colors" style={{ color: 'var(--text-3)' }}>
-            <Bell className="w-4 h-4" />
-            {activeAlerts > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
-          </button>
-          {/* Theme toggle */}
-          <button onClick={cycle} title={`Cambiar a ${themeMeta.next}`}
-            className="w-9 h-9 flex items-center justify-center rounded-full border transition-all"
-            style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-3)' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'; }}>
-            {themeMeta.icon}
-          </button>
-        </div>
-      </header>
+      <Header
+        filters={headerFiltersStub}
+        onFiltersChange={() => {}}
+        title="Factor Índice"
+      />
 
       {/* ── Subheader filters ── */}
       <div className="flex flex-wrap items-center justify-between px-3 sm:px-6 py-3 gap-2 sm:gap-3 transition-colors"
