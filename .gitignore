@@ -29,3 +29,6 @@ tsconfig.tsbuildinfo
 
 # Brainstorming visual companion (local scratch, no compartir)
 .superpowers/
+
+# Worktrees locales de desarrollo
+.worktrees/
