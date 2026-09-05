@@ -17,6 +17,8 @@ import Image from 'next/image';
 import { getClientSession } from '@/lib/session-client';
 import AsistenteChat, { type Mensaje } from './AsistenteChat';
 
+type ChatView = 'closed' | 'panel' | 'immersive';
+
 const BUBBLE_SIZE = 56; // w-14 h-14
 const EDGE_MARGIN = 24; // separación inicial de los bordes (igual al bottom-6/right-6 de antes)
 const VIEWPORT_MARGIN = 8; // margen mínimo permitido contra cualquier borde al arrastrar
@@ -43,7 +45,7 @@ function posicionPorDefecto(): Pos {
 
 export default function AsistenteBubble() {
   const [esAdmin, setEsAdmin] = useState(false);
-  const [abierto, setAbierto] = useState(false);
+  const [vista, setVista] = useState<ChatView>('closed');
   const [esOscuro, setEsOscuro] = useState(false);
   const [pos, setPos] = useState<Pos | null>(null);
   // La conversación vive acá, no en AsistenteChat: este componente no se
@@ -51,6 +53,7 @@ export default function AsistenteBubble() {
   // volver a abrir mantiene el historial. Se pierde recién con un reload
   // real de la página (memoria de React) o con el botón de basurero.
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [borrador, setBorrador] = useState('');
 
   // Estado del arrastre en refs — no necesitan re-render por sí mismos, solo
   // la posición (pos) sí. wasDragged sobrevive un tick extra porque el click
@@ -136,28 +139,33 @@ export default function AsistenteBubble() {
       wasDragged.current = false; // consumido — el próximo click sí cuenta
       return;
     }
-    setAbierto(o => !o);
+    setVista(v => v === 'closed' ? 'panel' : 'closed');
   }, []);
 
   if (!esAdmin) return null;
 
   return (
     <>
-      {abierto && pos && (
+      {vista !== 'closed' && pos && (
         <AsistenteChat
-          onClose={() => setAbierto(false)}
+          view={vista}
+          onClose={() => setVista('closed')}
+          onEnterImmersive={() => setVista('immersive')}
+          onMinimize={() => setVista('panel')}
           anchor={pos}
           mensajes={mensajes}
           setMensajes={setMensajes}
+          input={borrador}
+          setInput={setBorrador}
         />
       )}
-      <button
+      {vista !== 'immersive' && <button
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onClick={handleClick}
-        aria-label={abierto ? 'Cerrar asistente' : 'Abrir asistente (se puede arrastrar)'}
+        aria-label={vista === 'closed' ? 'Abrir asistente (se puede arrastrar)' : 'Cerrar asistente'}
         title="Arrastrame para moverme"
         className="fixed z-50 w-14 h-14 rounded-full shadow-xl overflow-hidden border-2 border-white hover:scale-105 transition-transform touch-none select-none cursor-grab active:cursor-grabbing"
         style={pos ? { left: pos.x, top: pos.y } : { right: EDGE_MARGIN, bottom: EDGE_MARGIN }}
@@ -170,7 +178,7 @@ export default function AsistenteBubble() {
           className="w-full h-full object-cover pointer-events-none"
           draggable={false}
         />
-      </button>
+      </button>}
     </>
   );
 }

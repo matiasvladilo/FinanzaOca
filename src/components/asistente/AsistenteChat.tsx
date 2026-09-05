@@ -15,7 +15,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react';
-import { Send, Trash2, X } from 'lucide-react';
+import { Maximize2, Minimize2, Send, Trash2, X } from 'lucide-react';
 
 export interface Mensaje {
   role: 'user' | 'assistant';
@@ -46,14 +46,18 @@ function calcularPosicionPanel(anchor: { x: number; y: number }, bubbleSize: num
 }
 
 export default function AsistenteChat({
-  onClose, anchor, mensajes, setMensajes,
+  view, onClose, onEnterImmersive, onMinimize, anchor, mensajes, setMensajes, input, setInput,
 }: {
+  view: 'panel' | 'immersive';
   onClose: () => void;
+  onEnterImmersive: () => void;
+  onMinimize: () => void;
   anchor: { x: number; y: number };
   mensajes: Mensaje[];
   setMensajes: Dispatch<SetStateAction<Mensaje[]>>;
+  input: string;
+  setInput: Dispatch<SetStateAction<string>>;
 }) {
-  const [input, setInput] = useState('');
   const [cargando, setCargando] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +78,15 @@ export default function AsistenteChat({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [mensajes, cargando]);
+
+  useEffect(() => {
+    if (view !== 'immersive') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onMinimize();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [view, onMinimize]);
 
   async function enviar() {
     const texto = input.trim();
@@ -100,20 +113,31 @@ export default function AsistenteChat({
 
   return (
     <div
-      className="fixed z-50 w-[360px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[70vh] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden"
-      style={{ top: posicion.top, left: posicion.left }}
+      className={view === 'immersive'
+        ? 'fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-950'
+        : 'fixed z-50 w-[360px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[70vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden'}
+      style={view === 'panel' ? { top: posicion.top, left: posicion.left } : undefined}
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <p className="text-[13px] font-bold text-gray-900">Asistente FinanzasOca</p>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+        <p className="text-[13px] font-bold text-gray-900 dark:text-gray-100">Asistente FinanzasOca</p>
         <div className="flex items-center gap-1">
+          {view === 'panel' ? (
+            <button onClick={onEnterImmersive} aria-label="Pantalla completa" title="Pantalla completa" className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400">
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <button onClick={onMinimize} aria-label="Minimizar" title="Minimizar" className="px-2 py-1 text-[12px] font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 flex items-center gap-1">
+              <Minimize2 className="w-3.5 h-3.5" /> Minimizar
+            </button>
+          )}
           <button
             onClick={() => setMensajes([])}
             title="Limpiar conversación"
-            className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500"
+            className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={onClose} title="Cerrar" className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-500">
+          <button onClick={onClose} title="Cerrar" className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400">
             <X className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -121,7 +145,7 @@ export default function AsistenteChat({
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {mensajes.length === 0 && (
-          <p className="text-[12px] text-gray-400 text-center mt-8">
+          <p className="text-[12px] text-gray-400 dark:text-gray-500 text-center mt-8">
             Preguntame sobre ventas, gastos, merma, producción o proveedores.
             <br />Ej.: &ldquo;¿Cuánto gastó La Reina en agosto?&rdquo;
           </p>
@@ -130,7 +154,7 @@ export default function AsistenteChat({
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
               className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] whitespace-pre-wrap ${
-                m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'
+                m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100'
               }`}
             >
               {m.content}
@@ -139,14 +163,14 @@ export default function AsistenteChat({
         ))}
         {cargando && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-400 rounded-2xl px-3 py-2 text-[13px]">
+            <div className="bg-gray-100 dark:bg-gray-800 text-gray-400 rounded-2xl px-3 py-2 text-[13px]">
               Pensando…
             </div>
           </div>
         )}
       </div>
 
-      <div className="p-3 border-t border-gray-100 flex items-center gap-2">
+      <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
         <input
           type="text"
           value={input}
@@ -154,7 +178,7 @@ export default function AsistenteChat({
           onKeyDown={e => { if (e.key === 'Enter') enviar(); }}
           placeholder="Escribí tu pregunta…"
           disabled={cargando}
-          className="flex-1 text-[13px] border border-gray-200 rounded-full px-3.5 py-2 outline-none focus:border-blue-400"
+          className="flex-1 text-[13px] border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-full px-3.5 py-2 outline-none focus:border-blue-400"
         />
         <button
           onClick={enviar}
