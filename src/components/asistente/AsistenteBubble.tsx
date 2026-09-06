@@ -61,6 +61,8 @@ export default function AsistenteBubble() {
   // ahí si lo que pasó fue un arrastre, no un click real.
   const dragRef = useRef<{ startPointer: Pos; startPos: Pos; moved: number } | null>(null);
   const wasDragged = useRef(false);
+  const bubbleRef = useRef<HTMLButtonElement>(null);
+  const restoreBubbleFocus = useRef(false);
 
   useEffect(() => {
     setEsAdmin(getClientSession()?.role === 'admin');
@@ -98,6 +100,13 @@ export default function AsistenteBubble() {
       window.removeEventListener('resize', onResize);
     };
   }, []);
+
+  useEffect(() => {
+    if (vista === 'closed' && restoreBubbleFocus.current) {
+      bubbleRef.current?.focus();
+      restoreBubbleFocus.current = false;
+    }
+  }, [vista]);
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     if (!pos) return;
@@ -142,6 +151,11 @@ export default function AsistenteBubble() {
     setVista(v => v === 'closed' ? 'panel' : 'closed');
   }, []);
 
+  const closeChat = useCallback(() => {
+    restoreBubbleFocus.current = true;
+    setVista('closed');
+  }, []);
+
   if (!esAdmin) return null;
 
   return (
@@ -149,7 +163,7 @@ export default function AsistenteBubble() {
       {vista !== 'closed' && pos && (
         <AsistenteChat
           view={vista}
-          onClose={() => setVista('closed')}
+          onClose={closeChat}
           onEnterImmersive={() => setVista('immersive')}
           onMinimize={() => setVista('panel')}
           anchor={pos}
@@ -160,6 +174,7 @@ export default function AsistenteBubble() {
         />
       )}
       {vista !== 'immersive' && <button
+        ref={bubbleRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

@@ -74,3 +74,14 @@ test('opens immersive chat as a modal dialog and restores focus after Escape', a
   await user.keyboard('{Escape}')
   expect(screen.getByRole('button', { name: /pantalla completa/i })).toHaveFocus()
 })
+
+test('restores focus to the bubble when immersive chat closes', async () => {
+  const user = userEvent.setup()
+  render(<ChatHarness />)
+
+  await user.click(screen.getByRole('button', { name: /abrir asistente/i }))
+  await user.click(screen.getByRole('button', { name: /pantalla completa/i }))
+  await user.click(screen.getByRole('button', { name: /^cerrar$/i }))
+
+  expect(screen.getByRole('button', { name: /abrir asistente/i })).toHaveFocus()
+})
