@@ -24,7 +24,7 @@ import { parseMonto, parseFecha, getMesLabel, findHeader, agruparMontosPorTexto 
 import { getSupabaseClient } from '@/lib/supabase';
 import { getControlPanClient } from '@/lib/supabase-controlpan';
 import { requireAuth } from '@/lib/auth-api';
-import { limitesUtcDelRango, ultimoDiaDelMes } from '@/lib/date-utils';
+import { limitesUtcDelRango, ultimoDiaDelMes, hoyISOChile } from '@/lib/date-utils';
 
 /**
  * Rango para consultar ConectOca.
@@ -565,10 +565,14 @@ export async function GET(req: NextRequest) {
       fetchControlPan(desde, hasta),
     ]);
 
+    const HOY_ISO = hoyISOChile();
+    const gastosFinDeMes = gastos;
+    const gastosHastaHoy = gastos.filter(r => r.fecha <= HOY_ISO);
+
     const { orders, items, productCategoryMap, categoriasExcluidas, accountNameMap } = ventasData;
 
     // ── KPIs ─────────────────────────────────────────────────────────────────
-    const totalCostos     = gastos.reduce((s, r) => s + r.monto, 0);
+    const totalCostos     = gastosHastaHoy.reduce((s, r) => s + r.monto, 0);
     const totalMerma      = mermaData.reduce((s, r) => s + r.monto, 0);
     // Ventas ConectOca: orders.total como base confiable, menos la parte de
     // Distribuidora (bebidas y el resto de sus subcategorías, calculada por ítems)
@@ -619,7 +623,7 @@ export async function GET(req: NextRequest) {
 
     // ── Gastos por mes (Facturas) ─────────────────────────────────────────────
     const gastosMesMap: Record<string, { mes: number; anio: number; monto: number }> = {};
-    for (const r of gastos) {
+    for (const r of gastosHastaHoy) {
       if (!r.mes || !r.anio) continue;
       const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
       if (!gastosMesMap[key]) gastosMesMap[key] = { mes: r.mes, anio: r.anio, monto: 0 };
@@ -730,12 +734,32 @@ export async function GET(req: NextRequest) {
 
     // Locales únicos presentes en la planilla de producción
     const localesSet = new Set<string>();
-    for (const r of gastos)    if (r.local) localesSet.add(r.local);
+    for (const r of gastosHastaHoy)    if (r.local) localesSet.add(r.local);
     for (const r of mermaData) if (r.local) localesSet.add(r.local);
     const locales = ['Todos', ...[...localesSet].sort()];
 
     // ── Top proveedores (Facturas de producción) ──────────────────────────────
-    const topProveedoresProd = topProveedores(gastos);
+    const topProveedoresProd = topProveedores(gastosHastaHoy);
+
+    // ── Variante "mes completo" para el toggle Total/Hasta hoy ─────────────
+    const totalCostosFinDeMes  = gastosFinDeMes.reduce((s, r) => s + r.monto, 0);
+    const rentabilidadFinDeMes = totalVentas > 0
+      ? Math.round(((totalVentas - totalCostosFinDeMes - totalMerma) / totalVentas) * 100)
+      : 0;
+    const gastosMesMapFinDeMes: Record<string, { mes: number; anio: number; monto: number }> = {};
+    for (const r of gastosFinDeMes) {
+      if (!r.mes || !r.anio) continue;
+      const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
+      if (!gastosMesMapFinDeMes[key]) gastosMesMapFinDeMes[key] = { mes: r.mes, anio: r.anio, monto: 0 };
+      gastosMesMapFinDeMes[key].monto += r.monto;
+    }
+    const gastosPorMesFinDeMes = Object.entries(gastosMesMapFinDeMes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, v]) => ({ key, mes: getMesLabel(v.mes, v.anio), monto: v.monto }));
+    const finDeMes = {
+      kpi: { totalCostos: totalCostosFinDeMes, rentabilidad: rentabilidadFinDeMes },
+      gastosPorMes: gastosPorMesFinDeMes,
+    };
 
     return NextResponse.json({
       ok: true,
@@ -753,6 +777,7 @@ export async function GET(req: NextRequest) {
       locales,
       mesDesde,
       mesHasta,
+      finDeMes,
     });
 
   } catch (error: unknown) {
@@ -850,8 +875,11 @@ export async function fetchProduccionForReport(fechaDesde: string, fechaHasta: s
     const totalPedidos    = orders.length;
     const panExterno      = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.totalDeudaGenerada ?? 0) : 0;
     const deudaPendiente  = controlPanRes.status === 'fulfilled' ? (controlPanRes.value?.kpi.saldoPendiente ?? 0) : 0;
+    // fetchGastosFacturas ya no corta por hoy (ver gastos.ts) — este reporte
+    // no tiene toggle, así que preserva el comportamiento de siempre acá.
+    const HOY_ISO_REPORTE = hoyISOChile();
     const totalGastos     = gastosRes.status === 'fulfilled'
-      ? gastosRes.value.reduce((s, r) => s + r.monto, 0)
+      ? gastosRes.value.filter(r => r.fecha <= HOY_ISO_REPORTE).reduce((s, r) => s + r.monto, 0)
       : 0;
 
     const prodMap: Record<string, { nombre: string; categoria: string; unidades: number; ingresos: number }> = {};
