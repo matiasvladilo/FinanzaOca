@@ -17,6 +17,7 @@
 
 import { readSheet } from '@/lib/google-sheets';
 import { parseMonto, parseFecha, findHeader, normalizeProveedorName } from '@/lib/data/parsers';
+import { hoyISOChile } from '@/lib/date-utils';
 
 export interface GastoFactura {
   local: string;
@@ -79,6 +80,7 @@ export async function fetchGastosFacturas(
   };
 
   const filterLocal = local && local !== 'todos' && local !== 'Todos' ? local.toLowerCase() : null;
+  const hoyISO = hoyISOChile();
 
   const result: GastoFactura[] = [];
   for (const r of data) {
@@ -95,6 +97,13 @@ export async function fetchGastosFacturas(
     // Descartar filas sin fecha válida (igual que ventas)
     if (fp.anio < 2020) continue;
     if (!fp.date || fp.date < desde || fp.date > hasta) continue;
+
+    // Igual que /api/ventas: no contar como "ya gastado" facturas con fecha
+    // futura — esta planilla (Producción/Distribuidora) ya trae cargados
+    // gastos recurrentes con vencimiento de todo el mes desde el día 1, así
+    // que un rango "mes completo" sobre un mes en curso infla el total real
+    // (ver el mismo fix en src/app/api/ventas/route.ts).
+    if (fp.iso > hoyISO) continue;
 
     const localVal = r[idx.local] ?? '';
     if (filterLocal && localVal.toLowerCase() !== filterLocal) continue;
