@@ -22,7 +22,7 @@ El login fallará cerrado si falta configuración de Supabase, si el perfil no e
 
 Se utilizará una tabla `user_profiles` protegida por RLS, accesible desde servidor con una clave de servicio separada. Cada registro tendrá `auth_user_id`, `role`, `sucursal` opcional y email. Los valores de rol se validarán en servidor contra los cuatro roles existentes antes de emitir una sesión.
 
-El esquema definirá `auth_user_id` como único y referencia a `auth.users`, un `CHECK` para los roles permitidos y una restricción que requiera `sucursal` solo para el rol `local`. RLS denegará el acceso directo por defecto; las lecturas y escrituras administrativas serán exclusivamente server-side con `SUPABASE_SERVICE_ROLE_KEY`, que nunca llevará prefijo `NEXT_PUBLIC_`.
+El esquema definirá `auth_user_id` como único y referencia a `auth.users`, un `CHECK` para los roles permitidos y una restricción que requiera `sucursal` solo para el rol `local`. También incluirá `is_active` y `session_version`; el token HMAC incorporará la versión y cada solicitud autenticada comparará el perfil activo y su versión antes de autorizar. RLS denegará el acceso directo por defecto; las lecturas y escrituras administrativas serán exclusivamente server-side con `SUPABASE_SERVICE_ROLE_KEY`, que nunca llevará prefijo `NEXT_PUBLIC_`.
 
 La migración de usuarios y el restablecimiento de sus contraseñas se realizará fuera del repositorio, en Supabase. Ninguna contraseña ni secreto se añadirá al código, a archivos rastreados o a los logs.
 
@@ -36,7 +36,7 @@ Las cookies de sesión conservarán `HttpOnly`, `Secure` en producción, `SameSi
 
 El login tendrá un límite de intentos por IP y por identidad durante una ventana temporal definida, y devolverá una respuesta uniforme para usuario, contraseña o perfil inválidos. La configuración de límites de Supabase se documentará junto con el límite de aplicación.
 
-El despliegue rotará `SESSION_SECRET` tras migrar para invalidar todas las cookies HMAC emitidas con el sistema anterior. Un cambio de rol o desactivación de una cuenta tendrá que invalidar la sesión existente mediante una versión de sesión o comprobación de perfil en servidor. El rollback restaurará solo el código anterior temporalmente; nunca reintroducirá las contraseñas expuestas.
+El despliegue rotará `SESSION_SECRET` tras migrar para invalidar todas las cookies HMAC emitidas con el sistema anterior. La nueva clave se configurará en todas las instancias antes de habilitar el nuevo código y el cambio se desplegará de forma atómica; no se admitirán claves anterior/nueva en paralelo. Un cambio de rol o desactivación de una cuenta incrementará `session_version` o cambiará `is_active`, y la comprobación de perfil rechazará la sesión en la siguiente solicitud. El rollback restaurará solo el código anterior temporalmente; nunca reintroducirá las contraseñas expuestas.
 
 ## Flujo
 
