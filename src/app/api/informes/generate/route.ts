@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { toLocalDate, filterByDateRange, toLocalISODate, ultimoDiaDelMes } from '@/lib/date-utils';
+import { toLocalDate, filterByDateRange, toLocalISODate, ultimoDiaDelMes, hoyISOChile } from '@/lib/date-utils';
 import { normalizeProveedorName } from '@/lib/data/parsers';
 import { getDistribuidoraConfig } from '@/lib/google-sheets';
 import { fetchGastosFacturas, topProveedores } from '@/lib/data/gastos';
@@ -137,7 +137,11 @@ export async function fetchDistribuidoraForReport(
   if (!desde || !hasta) return null;
   hasta.setHours(23, 59, 59, 999);
 
-  const gastos = await fetchGastosFacturas(config.id, 'todos', desde, hasta);
+  // fetchGastosFacturas ya no corta por hoy (ver gastos.ts) — este reporte
+  // no tiene toggle, así que preserva el comportamiento de siempre acá.
+  const HOY_ISO = hoyISOChile();
+  const gastos = (await fetchGastosFacturas(config.id, 'todos', desde, hasta))
+    .filter(r => r.fecha <= HOY_ISO);
   return {
     gastoExterno: gastos.reduce((s, r) => s + r.monto, 0),
     facturas: gastos.length,
