@@ -10,7 +10,7 @@ import {
   ResponsiveContainer, LabelList, Cell,
 } from 'recharts';
 import {
-  Search, Bell, Calendar, ChevronDown, MapPin,
+  Search, Bell, Calendar, ChevronDown,
   Download, TrendingUp, TrendingDown,
   DollarSign, ShoppingCart,
   BarChart2, Receipt, Activity, LayoutGrid, GitCompare, Wallet,
@@ -22,6 +22,7 @@ import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { getSucursalColor } from '@/config/sucursales';
 import FacturasSinFecha, { type FacturaSinFecha } from '@/components/dashboard/FacturasSinFecha';
+import SucursalFilter from '@/components/ui/SucursalFilter';
 
 // ─── tipos ───────────────────────────────────────────────
 type Periodo = '7D' | '14D' | '30D';
@@ -82,7 +83,6 @@ type ChartRow = {
 type MultiChartRow = Record<string, string | number>;
 type LocalDef = { local: string; color: string; idx: number };
 type ProductionMonth = { ventas: number; gastos: number };
-const LOCAL_COLORS = ['#2563EB', '#10B981', '#D97706', '#7C3AED']; // La Reina azul, PV verde, PT naranjo, Bilbao morado
 const PRODUCCION_LOCAL = 'Producción';
 
 // ─── Tooltip custom ──────────────────────────────────────
@@ -566,10 +566,8 @@ function ProveedorModal({
 // ─── Página principal ─────────────────────────────────────
 export default function VentasPage() {
   const [localSel, setLocalSel] = useState<string[]>([]);
-  const [localOpen, setLocalOpen] = useState(false);
   const [metrica, setMetrica] = useState<Metrica>('ambos');
   const [tipoGrafico, setTipoGrafico] = useState<TipoGrafico>('barras');
-  const localRef = useRef<HTMLDivElement>(null);
   const dateRef  = useRef<HTMLDivElement>(null);
   // ── Estado raw desde Sheets ──────────────────────────────
   const [rawLocalMes, setRawLocalMes] = useState<Record<string, Record<string, MesSlice>>>({});
@@ -598,15 +596,6 @@ export default function VentasPage() {
   const [facturasSinFecha, setFacturasSinFecha] = useState<FacturaSinFecha[]>([]);
 
   // Cierra dropdowns al hacer click fuera
-  useEffect(() => {
-    if (!localOpen) return;
-    function handler(e: MouseEvent) {
-      if (localRef.current && !localRef.current.contains(e.target as Node)) setLocalOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [localOpen]);
-
   useEffect(() => {
     if (!dateOpen) return;
     function handler(e: MouseEvent) {
@@ -1317,70 +1306,13 @@ export default function VentasPage() {
             )}
           </div>
 
-          {/* Locales multi-select (hasta 2 para comparar) */}
-          <div className="relative" ref={localRef}>
-            <button
-              onClick={() => setLocalOpen(!localOpen)}
-              className={clsx(
-                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
-                localSel.length >= 2
-                  ? 'bg-purple-600 border-purple-600 text-white'
-                  : localSel.length === 1
-                    ? 'bg-blue-600 border-blue-600 text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
-              )}
-            >
-              <MapPin className="w-3.5 h-3.5 opacity-80" />
-              <span className="font-semibold text-[11px]">
-                {localSel.length === 0
-                  ? 'Todos los locales'
-                  : localSel.length === 1
-                    ? localSel[0]
-                    : localSel.length === 2
-                      ? `${localSel[0]} vs ${localSel[1]}`
-                      : `${localSel.length} locales`}
-              </span>
-              <ChevronDown className="w-3 h-3 opacity-70" />
-            </button>
-            {localOpen && (
-              <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-1.5 z-50 w-[240px] rounded-2xl shadow-xl overflow-hidden max-h-[60vh] overflow-y-auto"
-                style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-                  <p className="text-[11px] font-bold" style={{ color: 'var(--text)' }}>
-                    Seleccionar locales
-                    {localSel.length >= 2 && <span className="ml-1.5 text-purple-500">· Comparando</span>}
-                  </p>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>Seleccioná los locales a comparar</p>
-                </div>
-                {localSel.length > 0 && (
-                  <button onClick={() => setLocalSel([])}
-                    className="w-full text-left px-4 py-2 text-[11px] font-medium text-red-400 hover:text-red-600 transition-colors"
-                    style={{ borderBottom: '1px solid var(--border)' }}>
-                    Limpiar selección
-                  </button>
-                )}
-                {localesDisponibles.map(local => {
-                  const selIdx = localSel.indexOf(local);
-                  const selected = selIdx !== -1;
-                  const color = selected ? LOCAL_COLORS[selIdx % LOCAL_COLORS.length] : undefined;
-                  return (
-                    <button key={local}
-                      onClick={() => setLocalSel(prev => prev.includes(local) ? prev.filter(l => l !== local) : [...prev, local])}
-                      className="w-full text-left px-4 py-2.5 text-[12px] flex items-center gap-3 transition-colors hover:bg-gray-50/10"
-                    >
-                      <span className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 text-[10px] font-black border"
-                        style={selected
-                          ? { background: color, borderColor: color, color: '#fff' }
-                          : { borderColor: 'var(--border-2)' }}>
-                        {selected ? String.fromCharCode(65 + selIdx) : ''}
-                      </span>
-                      <span className="font-medium" style={{ color: selected ? color : 'var(--text)' }}>{local}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          {/* Locales filter */}
+          <SucursalFilter
+            sucursales={localesDisponibles}
+            selected={localSel}
+            onChange={setLocalSel}
+            disabled={!!localRestriccion}
+          />
 
           {/* Comparar por período (solo cuando no hay comparación de locales) */}
           {!isLocalComp && (

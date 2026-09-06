@@ -6,17 +6,21 @@ import {
   Tooltip, ReferenceLine, ResponsiveContainer, Legend,
 } from 'recharts';
 import {
-  Download, Bell, ChevronDown,
-  CheckCircle2, AlertTriangle, TrendingDown, TrendingUp, X,
-  Sun, Moon, Sparkles, Check, GitCompare,
+  Download, ChevronDown,
+  CheckCircle2, AlertTriangle, X,
+  GitCompare,
 } from 'lucide-react';
 import clsx from 'clsx';
+import Header from '@/components/layout/Header';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
+import SucursalFilter from '@/components/ui/SucursalFilter';
+import FactorGauge from '@/components/factor-indice/FactorGauge';
+import RiskStrip from '@/components/factor-indice/RiskStrip';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
-import { useTheme } from '@/providers/ThemeProvider';
 import { hoyISOChile } from '@/lib/date-utils';
+import { getLocalRestriction } from '@/lib/session-client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const MESES_FULL: Record<string, string> = {
@@ -39,21 +43,13 @@ function getSucColor(suc: string, i: number) {
   return SUC_COLORS[suc] ?? ['#6366F1', '#EC4899', '#14B8A6', '#F97316'][i % 4];
 }
 
-const THEME_META = {
-  light:   { icon: <Moon      className="w-4 h-4" />, next: 'Oscuro'  },
-  dark:    { icon: <Sun       className="w-4 h-4" />, next: 'Dracula' },
-  dracula: { icon: <Sparkles  className="w-4 h-4" />, next: 'Claro'   },
-} as const;
+const headerFiltersStub = { fechaInicio: '', fechaFin: '', sucursales: [], vista: 'overview' as const };
 
 // ── Chart sub-components ──────────────────────────────────────────────────────
 const CustomDot = (props: any) => {
-  const { cx, cy, value } = props;
+  const { cx, cy, value, stroke } = props;
   if (cx == null || cy == null || value == null) return null;
-  return (
-    <circle cx={cx} cy={cy} r={5}
-      fill={value <= 60 ? '#22C55E' : '#EF4444'}
-      stroke="#fff" strokeWidth={2} />
-  );
+  return <circle cx={cx} cy={cy} r={4} fill={stroke} stroke="#fff" strokeWidth={2} />;
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -63,17 +59,15 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     : v >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`;
   return (
     <div style={{
-      background: 'rgba(10,14,28,0.92)',
-      backdropFilter: 'blur(16px)',
-      WebkitBackdropFilter: 'blur(16px)',
-      border: '1px solid rgba(255,255,255,0.08)',
+      background: 'var(--card)',
+      border: '1px solid var(--border)',
       borderRadius: 12,
-      boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+      boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
       padding: '10px 14px',
       minWidth: 185,
       fontSize: 12,
     }}>
-      <p style={{ fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.07)', letterSpacing: '-0.01em' }}>
+      <p style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)', marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)', letterSpacing: '-0.01em' }}>
         {label}
       </p>
       {payload.map((p: any) => {
@@ -87,14 +81,13 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                 width: 8, height: 8, borderRadius: '50%',
                 background: p.color,
                 display: 'inline-block', flexShrink: 0,
-                boxShadow: `0 0 6px ${p.color}88`,
               }} />
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{p.dataKey}</span>
+              <span style={{ color: 'var(--text-3)', fontSize: 11 }}>{p.dataKey}</span>
               <span style={{
                 marginLeft: 'auto',
                 fontWeight: 800,
                 fontSize: 13,
-                color: isRisk ? '#f87171' : '#4ade80',
+                color: isRisk ? '#ef4444' : '#22c55e',
                 letterSpacing: '-0.02em',
               }}>
                 {p.value}%
@@ -102,22 +95,22 @@ const CustomTooltip = ({ active, payload, label }: any) => {
               <span style={{
                 fontSize: 9, fontWeight: 700,
                 padding: '2px 5px', borderRadius: 20,
-                background: isRisk ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
-                color: isRisk ? '#f87171' : '#4ade80',
+                background: isRisk ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
+                color: isRisk ? '#ef4444' : '#22c55e',
               }}>
                 {isRisk ? 'RIESGO' : 'OK'}
               </span>
             </div>
             {ventas != null && (
-              <div style={{ paddingLeft: 16, fontSize: 10, color: 'rgba(255,255,255,0.35)', display: 'flex', gap: 10 }}>
-                <span><span style={{ color: '#60a5fa' }}>V:</span> {fmtMoney(ventas)}</span>
-                <span><span style={{ color: '#f87171' }}>G:</span> {fmtMoney(gastos)}</span>
+              <div style={{ paddingLeft: 16, fontSize: 10, color: 'var(--text-3)', display: 'flex', gap: 10 }}>
+                <span><span style={{ color: '#3b82f6' }}>V:</span> {fmtMoney(ventas)}</span>
+                <span><span style={{ color: '#ef4444' }}>G:</span> {fmtMoney(gastos)}</span>
               </div>
             )}
           </div>
         );
       })}
-      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>
+      <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-3)' }}>
         Verde ≤60% · Rojo &gt;60%
       </div>
     </div>
@@ -173,9 +166,6 @@ function calcularAlertas(
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function FactorIndicePage() {
-  const { theme, cycle } = useTheme();
-  const themeMeta = THEME_META[theme];
-
   // Reconocer/descartar una alerta es sólo de esta sesión — no hay backend
   // para persistirlo, y no correspondería fingir que sí. Se guarda por `key`
   // (sucursal+período), no por índice de array, para que sobreviva a que la
@@ -185,7 +175,6 @@ export default function FactorIndicePage() {
   const [alertasAbiertas, setAlertasAbiertas] = useState(false);
   const [mesSeleccionado, setMes]   = useState('');
   const [modo, setModo]             = useState<Modo>('semana');
-  const [sucOpen, setSucOpen]       = useState(false);
   const [sucSel, setSucSel]         = useState<string[]>([]);   // vacío = todas
   const [cierreCajaData, setCCData] = useState<any>(null);
   const [ventasData, setVData]      = useState<any>(null);
@@ -193,6 +182,10 @@ export default function FactorIndicePage() {
   // ── Comparación ─────────────────────────────────────────────────────────
   const [compOn, setCompOn]   = useState(false);
   const [compMes2, setCompMes2] = useState('');
+
+  // Restricción de sucursal para rol 'local' — mismo patrón que Ventas: null
+  // si el usuario puede ver todos los locales, o el nombre exacto del suyo.
+  const localRestriccion = getLocalRestriction();
 
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -242,7 +235,8 @@ export default function FactorIndicePage() {
       gastosSS[r.sucursal][k] = (gastosSS[r.sucursal][k] ?? 0) + r.monto;
     }
 
-    const allSucs = [...new Set([...Object.keys(ventasSS), ...Object.keys(gastosSS)])].sort();
+    const allSucsRaw = [...new Set([...Object.keys(ventasSS), ...Object.keys(gastosSS)])].sort();
+    const allSucs = localRestriccion ? allSucsRaw.filter(s => s === localRestriccion) : allSucsRaw;
 
     // Collect all time keys from ventas
     const keySet = new Set<string>();
@@ -267,12 +261,7 @@ export default function FactorIndicePage() {
     });
 
     return { indice50Data: rows, allSucs };
-  }, [cierreCajaData, ventasData, mesSeleccionado, modo]);
-
-  // ── Init selection ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (allSucs.length > 0 && sucSel.length === 0) setSucSel(allSucs);
-  }, [allSucs]); // eslint-disable-line
+  }, [cierreCajaData, ventasData, mesSeleccionado, modo, localRestriccion]);
 
   const sucursalesVisibles = sucSel.length > 0 ? sucSel : allSucs;
 
@@ -388,32 +377,15 @@ export default function FactorIndicePage() {
     toast('Reporte exportado correctamente');
   };
 
-  const toggleSuc = (s: string) =>
-    setSucSel(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
 
-      {/* ── Header ── */}
-      <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30 transition-colors"
-        style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
-        <h1 className="text-[16px] sm:text-[18px] font-bold" style={{ color: 'var(--text)' }}>Factor Índice Overview</h1>
-        <div className="flex items-center gap-2">
-          <button className="relative p-2 transition-colors" style={{ color: 'var(--text-3)' }}>
-            <Bell className="w-4 h-4" />
-            {activeAlerts > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
-          </button>
-          {/* Theme toggle */}
-          <button onClick={cycle} title={`Cambiar a ${themeMeta.next}`}
-            className="w-9 h-9 flex items-center justify-center rounded-full border transition-all"
-            style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-3)' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-3)'; }}>
-            {themeMeta.icon}
-          </button>
-        </div>
-      </header>
+      <Header
+        filters={headerFiltersStub}
+        onFiltersChange={() => {}}
+        title="Factor Índice"
+      />
 
       {/* ── Subheader filters ── */}
       <div className="flex flex-wrap items-center justify-between px-3 sm:px-6 py-3 gap-2 sm:gap-3 transition-colors"
@@ -430,79 +402,13 @@ export default function FactorIndicePage() {
             allLabel="Todos los meses"
           />
 
-          {/* Modo toggle */}
-          <div className="flex items-center rounded-full p-1 gap-1" style={{ background: 'var(--hover)' }}>
-            {(['semana', 'dia'] as Modo[]).map(m => (
-              <button key={m} onClick={() => setModo(m)}
-                className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-all"
-                style={modo === m
-                  ? { background: 'var(--card)', color: 'var(--text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
-                  : { color: 'var(--text-3)' }}>
-                {m === 'semana' ? 'Por Semana' : 'Por Día'}
-              </button>
-            ))}
-          </div>
-
-          {/* Sucursal multi-select */}
-          <div className="relative">
-            <button onClick={() => setSucOpen(!sucOpen)}
-              className="flex items-center gap-2 rounded-full px-4 py-2 text-[12px] transition-colors"
-              style={{ border: '1px solid var(--border-2)', background: 'var(--card)', color: 'var(--text-2)' }}>
-              <span style={{ color: 'var(--text-3)' }} className="font-medium">Local:</span>
-              <span className="font-semibold">
-                {sucSel.length === 0 || sucSel.length === allSucs.length
-                  ? 'Todos'
-                  : sucSel.length === 1
-                    ? sucSel[0]
-                    : `${sucSel.length} seleccionados`}
-              </span>
-              <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
-            </button>
-            {sucOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setSucOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 rounded-xl shadow-lg z-50 min-w-[180px] py-1"
-                  style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                  {/* All option */}
-                  <button
-                    onClick={() => setSucSel(allSucs)}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] transition-colors"
-                    style={{ color: 'var(--text-2)' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                    <span className={clsx(
-                      'w-4 h-4 rounded flex items-center justify-center border',
-                      sucSel.length === allSucs.length ? 'bg-blue-500 border-blue-500' : ''
-                    )} style={sucSel.length !== allSucs.length ? { borderColor: 'var(--border-2)' } : {}}>
-                      {sucSel.length === allSucs.length && <Check className="w-3 h-3 text-white" />}
-                    </span>
-                    <span className="font-semibold">Todos</span>
-                  </button>
-                  <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-                  {allSucs.map((s, i) => (
-                    <button key={s} onClick={() => toggleSuc(s)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] transition-colors"
-                      style={{ color: 'var(--text-2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = '')}>
-                      <span className={clsx(
-                        'w-4 h-4 rounded flex items-center justify-center border',
-                        sucSel.includes(s) ? 'border-transparent' : ''
-                      )} style={sucSel.includes(s)
-                        ? { backgroundColor: getSucColor(s, i), borderColor: 'transparent' }
-                        : { borderColor: 'var(--border-2)' }}>
-                        {sucSel.includes(s) && <Check className="w-3 h-3 text-white" />}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getSucColor(s, i) }} />
-                        {s}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          {/* Sucursal filter */}
+          <SucursalFilter
+            sucursales={allSucs}
+            selected={sucSel}
+            onChange={setSucSel}
+            disabled={!!localRestriccion}
+          />
         </div>
 
         {/* Toggle comparación */}
@@ -516,13 +422,10 @@ export default function FactorIndicePage() {
               setCompMes2(idx > 0 ? sorted[idx - 1] : sorted[0] ?? '');
             }
           }}
-          className={clsx(
-            'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
-            compOn
-              ? 'bg-purple-600 border-purple-600 text-white'
-              : 'text-gray-600 hover:border-purple-400 hover:text-purple-600',
-          )}
-          style={!compOn ? { background: 'var(--card)', borderColor: 'var(--border-2)' } : undefined}
+          className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-medium border transition-all"
+          style={compOn
+            ? { background: 'var(--active-bg)', borderColor: 'var(--active-bg)', color: 'var(--active-text)' }
+            : { background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}
         >
           <GitCompare className="w-3.5 h-3.5 opacity-80" />
           <span className="font-semibold text-[11px]">Comparar</span>
@@ -585,100 +488,45 @@ export default function FactorIndicePage() {
           />
         )}
 
-        {/* ── Hero: Factor Índice ──────────────────────────────────────────────
-             Antes este número (y su inverso, "Margen Bruto") aparecían tres
-             veces en la pantalla: acá, en la tarjeta "Comparación Ventas vs
-             Gastos" y en la línea de referencia del gráfico. Se muestra una
-             sola vez, grande, como titular — todo lo demás es apoyo. */}
-        <div className="rounded-2xl p-6 sm:p-8 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-            <div>
-              <p className="text-[11px] font-bold tracking-widest uppercase mb-1" style={{ color: 'var(--text-3)' }}>
-                Factor Índice{mesSeleccionado ? ` · ${mesLabel(mesSeleccionado)}` : ''}
-              </p>
-              <div className="flex items-end gap-3 flex-wrap">
-                <p className="text-[52px] sm:text-[64px] font-black leading-none"
-                  style={{ color: loading ? 'var(--text-3)' : isOpt ? 'var(--text)' : '#EF4444' }}>
-                  {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
-                </p>
-                {factorGlobal !== null && !loading && (
-                  // Neutro a propósito: el número de arriba y el badge "EN RIESGO" ya
-                  // dicen que hay un problema — repetir el rojo acá era la misma
-                  // alarma por tercera vez en la misma tarjeta.
-                  <div className="flex items-center gap-1.5 pb-2" style={{ color: 'var(--text-3)' }}>
-                    {isOpt ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-                    <span className="text-[13px] font-bold">
-                      {isOpt ? 'Bajo umbral' : 'Sobre umbral'}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <p className="text-[11px] mt-2" style={{ color: 'var(--text-3)' }}>
-                (Gastos / Ventas) × 100 · objetivo &lt;60%
-                {sucSel.length > 0 && sucSel.length < allSucs.length
-                  ? <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
-                  : <span className="ml-1">· sin Producción</span>}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
+        {/* ── KPIs: Factor Índice (gauge) + Ventas + Gastos ──────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="rounded-2xl p-4 flex flex-col items-center text-center gap-1"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <p className="text-[10px] font-bold tracking-widest uppercase" style={{ color: 'var(--text-3)' }}>
+              Factor Índice{mesSeleccionado ? ` · ${mesLabel(mesSeleccionado)}` : ''}
+            </p>
+            <FactorGauge value={loading ? null : factorGlobal} optimized={isOpt} loading={loading} />
+            <p className="text-[24px] font-black leading-none -mt-2"
+              style={{ color: loading ? 'var(--text-3)' : isOpt ? 'var(--text)' : '#EF4444' }}>
+              {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
+            </p>
+            {factorGlobal !== null && !loading && (
               <div className={clsx(
-                'inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold',
-                loading ? 'border-gray-300 text-gray-400' :
-                  isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
+                'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold',
+                isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
               )}>
-                {isOpt ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                {loading ? '…' : isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
+                {isOpt ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                {isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
               </div>
-              <button onClick={() => setShowModal(true)}
-                className="py-1.5 px-3 rounded-xl text-[12px] font-semibold transition-all"
-                style={{ border: '1.5px solid var(--border-2)', color: 'var(--text-2)' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
-                Ver Detalle
-              </button>
-            </div>
+            )}
+            <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>
+              (Gastos / Ventas) × 100 · objetivo &lt;60%
+              {sucSel.length > 0 && sucSel.length < allSucs.length
+                ? <span className="ml-1" style={{ color: 'var(--active-text)' }}>· {sucSel.join(', ')}</span>
+                : <span className="ml-1">· sin Producción</span>}
+            </p>
           </div>
 
-          {factorGlobal !== null && (
-            <div className="mb-6">
-              <div className="flex justify-between text-[10px] mb-1.5" style={{ color: 'var(--text-3)' }}>
-                <span>0%</span><span className="font-semibold" style={{ color: 'var(--text-2)' }}>umbral 60%</span><span>100%</span>
-              </div>
-              {/* Relleno siempre neutro: la barra muestra magnitud (qué tan cerca del
-                  100% está), no un segundo semáforo — el rojo ya lo dijo el número. */}
-              <div className="w-full rounded-full h-2.5 relative" style={{ background: 'var(--hover)' }}>
-                <div className="h-2.5 rounded-full transition-all duration-700"
-                  style={{ width: `${Math.min(factorGlobal, 100)}%`, background: 'var(--active-text)' }} />
-                <div className="absolute top-0 w-0.5 h-2.5" style={{ left: '60%', background: 'var(--text-3)' }} />
-              </div>
-            </div>
-          )}
+          <div className="rounded-2xl p-5 flex flex-col justify-center gap-2"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <span className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Ventas Brutas</span>
+            <span className="text-[24px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalVentas)}</span>
+          </div>
 
-          {/* Ventas / gastos — el detalle que explica el número de arriba, sin repetirlo */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Ventas Brutas</span>
-                <span className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalVentas)}</span>
-              </div>
-              <div className="w-full rounded-full h-2" style={{ background: 'var(--hover)' }}>
-                <div className="h-2 rounded-full" style={{ width: '100%', background: 'var(--active-text)' }} />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[12px] font-medium" style={{ color: 'var(--text-3)' }}>Gastos Operacionales</span>
-                <span className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalGastos)}</span>
-              </div>
-              {/* Mismo tono que "Ventas Brutas": es una magnitud, no un estado —
-                  el estado ya está dicho arriba, una vez. */}
-              <div className="w-full rounded-full h-2" style={{ background: 'var(--hover)' }}>
-                <div className="h-2 rounded-full transition-all duration-700" style={{
-                  background: 'var(--active-text)',
-                  width: totalVentas > 0 ? `${Math.min((totalGastos / totalVentas) * 100, 100)}%` : '0%',
-                }} />
-              </div>
-            </div>
+          <div className="rounded-2xl p-5 flex flex-col justify-center gap-2"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+            <span className="text-[11px] font-medium" style={{ color: 'var(--text-3)' }}>Gastos Operacionales</span>
+            <span className="text-[24px] font-bold" style={{ color: 'var(--text)' }}>{loading ? '…' : fmt(totalGastos)}</span>
           </div>
         </div>
 
@@ -745,16 +593,34 @@ export default function FactorIndicePage() {
 
         {/* Chart — full width */}
         <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-          <div className="flex items-start justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
             <div>
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>
                 Índice 60 por {modo === 'semana' ? 'Semana' : 'Día'}
               </h3>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-3)' }}>
-                (Gastos / Ventas) × 100 · punto verde ≤60% · rojo &gt;60% · sólo los 4 locales, sin Producción
+                (Gastos / Ventas) × 100 · un color por local · franja de riesgo abajo · sólo los 4 locales, sin Producción
               </p>
             </div>
             <div className="flex items-center gap-3">
+              <div className="flex items-center rounded-full p-1 gap-1" style={{ background: 'var(--hover)' }}>
+                {(['semana', 'dia'] as Modo[]).map(m => (
+                  <button key={m} onClick={() => setModo(m)}
+                    className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-all"
+                    style={modo === m
+                      ? { background: 'var(--card)', color: 'var(--text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+                      : { color: 'var(--text-3)' }}>
+                    {m === 'semana' ? 'Por Semana' : 'Por Día'}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowModal(true)}
+                className="py-1.5 px-3 rounded-xl text-[12px] font-semibold transition-all"
+                style={{ border: '1.5px solid var(--border-2)', color: 'var(--text-2)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--active-text)'; (e.currentTarget as HTMLElement).style.color = 'var(--active-text)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-2)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-2)'; }}>
+                Ver Detalle
+              </button>
               {zoomRange && (
                 <button
                   onClick={() => setZoomRange(null)}
@@ -766,14 +632,6 @@ export default function FactorIndicePage() {
                   Restablecer zoom
                 </button>
               )}
-              <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />Eficiente ≤60%
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Riesgo &gt;60%
-                </span>
-              </div>
             </div>
           </div>
 
@@ -797,7 +655,7 @@ export default function FactorIndicePage() {
                 </div>
               )}
               {!zoomRange && indice50Data.length > 1 && (
-                <div style={{ textAlign: 'center', marginBottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.03em' }}>
+                <div className="hidden sm:block" style={{ textAlign: 'center', marginBottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.03em' }}>
                   Usá la rueda del mouse sobre el gráfico para hacer zoom
                 </div>
               )}
@@ -841,6 +699,7 @@ export default function FactorIndicePage() {
                   ))}
                 </LineChart>
               </ResponsiveContainer>
+              <RiskStrip data={visibleChartData} sucursales={sucursalesVisibles} />
             </div>
           )}
         </div>
@@ -870,7 +729,7 @@ export default function FactorIndicePage() {
                     <div key={d.semana} className="rounded-xl p-3"
                       style={{ border: '1px solid var(--border)', background: 'var(--hover)' }}>
                       <p className="text-[12px] font-bold mb-2" style={{ color: 'var(--text-2)' }}>{d.semana}</p>
-                      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(sucursalesVisibles.length, 4)}, 1fr)` }}>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {sucursalesVisibles.map((s, i) => {
                           const ventas = d[`__ventas_${s}`] ?? 0;
                           const gastos = d[`__gastos_${s}`] ?? 0;

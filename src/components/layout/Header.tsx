@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { MapPin, ChevronDown, Sun, Moon, Sparkles } from 'lucide-react';
+import { Sun, Moon, Sparkles } from 'lucide-react';
 import type { DashboardFilters } from '@/types';
 import { useTheme } from '@/providers/ThemeProvider';
-import { getClientSession } from '@/lib/session-client';
 
 interface HeaderProps {
   filters: DashboardFilters;
   onFiltersChange: (filters: DashboardFilters) => void;
-  sucursalesDisponibles?: string[];
+  title?: string;
 }
 
 const THEME_META = {
@@ -18,74 +16,19 @@ const THEME_META = {
   dracula: { icon: <Sparkles className="w-4 h-4" />, label: 'Dracula',   next: 'Claro'   },
 } as const;
 
-export default function Header({ filters, onFiltersChange, sucursalesDisponibles }: HeaderProps) {
-  const [sucursalOpen, setSucursalOpen] = useState(false);
-  const [isLocalRole, setIsLocalRole] = useState(false);
+export default function Header({ title = 'Data Analytics Desk' }: HeaderProps) {
   const { theme, cycle } = useTheme();
-
-  useEffect(() => {
-    const s = getClientSession();
-    setIsLocalRole(s?.role === 'local');
-  }, []);
-
-  const SUCURSALES = sucursalesDisponibles ?? ['Todas'];
   const meta = THEME_META[theme];
-
-  const setSucursal = (sucursal: string) => {
-    onFiltersChange({ ...filters, sucursal });
-    setSucursalOpen(false);
-  };
 
   return (
     <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b sticky top-0 z-30 transition-colors"
       style={{ background: 'var(--header-bg)', borderColor: 'var(--border)' }}>
 
       <h1 className="text-[14px] sm:text-[18px] font-bold tracking-tight shrink-0" style={{ color: 'var(--text)' }}>
-        <span className="sm:hidden">Analytics</span>
-        <span className="hidden sm:inline">Data Analytics Desk</span>
+        {title}
       </h1>
 
       <div className="flex items-center gap-1 sm:gap-3">
-        {/* Sucursal Selector */}
-        {isLocalRole ? (
-          <div className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-full text-[12px] border"
-            style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}>
-            <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--text-3)' }} />
-            <span>{filters.sucursal}</span>
-          </div>
-        ) : (
-          <div className="relative">
-            <button onClick={() => setSucursalOpen(!sucursalOpen)}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-2 rounded-full text-[12px] border transition-colors hover:border-[var(--active-text)]"
-              style={{ background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}>
-              <MapPin className="w-3.5 h-3.5" style={{ color: 'var(--text-3)' }} />
-              <span className="hidden sm:inline">{filters.sucursal === 'Todas' ? 'Todas las sucursales' : filters.sucursal}</span>
-              <span className="sm:hidden">{filters.sucursal === 'Todas' ? 'Todas' : filters.sucursal}</span>
-              <ChevronDown className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
-            </button>
-
-            {sucursalOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setSucursalOpen(false)} />
-                <div className="absolute right-0 top-full mt-1 rounded-xl shadow-lg overflow-hidden z-50 min-w-[180px] border"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}>
-                  {SUCURSALES.map((s) => (
-                    <button key={s} onClick={() => setSucursal(s)}
-                      className="w-full text-left px-4 py-2.5 text-[12px] transition-colors"
-                      style={filters.sucursal === s
-                        ? { color: 'var(--active-text)', background: 'var(--active-bg)', fontWeight: 600 }
-                        : { color: 'var(--text-2)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--hover)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = filters.sucursal === s ? 'var(--active-bg)' : '')}>
-                      {s === 'Todas' ? 'Todas las sucursales' : s}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
         {/* Theme toggle — cycles light → dark → dracula */}
         <button onClick={cycle}
           title={`Cambiar a ${meta.next}`}

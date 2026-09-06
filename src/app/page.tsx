@@ -12,6 +12,7 @@ import PaymentBreakdown from '@/components/dashboard/PaymentBreakdown';
 import KPICard from '@/components/kpis/KPICard';
 import Skeleton from '@/components/ui/Skeleton';
 import TopProgressBar from '@/components/ui/TopProgressBar';
+import SucursalFilter from '@/components/ui/SucursalFilter';
 import type { DashboardFilters } from '@/types';
 import { getLocalRestriction } from '@/lib/session-client';
 import type { CierreCajaResponse, VentasResponse } from '@/types/api';
@@ -35,7 +36,7 @@ function mesLabel(key: string) {
   return (MESES_FULL[mes] ?? mes) + ' ' + anio;
 }
 
-const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucursal: 'Todas', vista: 'overview' };
+const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucursales: [], vista: 'overview' };
 type ProductionSummary = { ventas: number; gastos: number };
 
 function ssGet(key: string, fallback: string): string {
@@ -54,6 +55,7 @@ export default function DashboardPage() {
   const [dateOpen, setDateOpen] = useState(false);
   const [mesComp, setMesComp]       = useState('');
   const [selectedSucursales, setSelectedSucursales] = useState<string[]>([]);
+  const [isLocalRole, setIsLocalRole] = useState(false);
   const [compOn, setCompOn]         = useState(false);
   const [compareType, setCompareType] = useState<'mes' | 'local'>('mes');
   const [localA, setLocalA]         = useState('');
@@ -69,11 +71,19 @@ export default function DashboardPage() {
   // sucursal". Aparte de produccionSummary porque ese solo cubre el período filtrado.
   const [produccionPorMes, setProduccionPorMes] = useState<Record<string, number>>({});
 
+  // Total de sucursales disponibles (de Cierre de Caja) — se calcula temprano
+  // porque `computed`, `computedDateRange`, `computedComp` y el efecto de
+  // fetch de producción/distribuidora lo necesitan para tratar "las 4
+  // sucursales elegidas a mano" igual que "Todas" (array vacío): mismo total,
+  // mismo resultado, sin importar cómo llegó el usuario ahí.
+  const totalSucursales = useMemo(() => Object.keys(ccData?.porLocal ?? {}).length, [ccData]);
+
   // Aplicar restricción de local si el rol es 'local'
   useEffect(() => {
     const localRestriccion = getLocalRestriction();
     if (localRestriccion) {
-      setFilters(f => ({ ...f, sucursal: localRestriccion }));
+      setIsLocalRole(true);
+      setFilters(f => ({ ...f, sucursales: [localRestriccion] }));
     }
   }, []);
 
@@ -81,7 +91,19 @@ export default function DashboardPage() {
   useEffect(() => {
     const localRestriccion = getLocalRestriction();
     if (localRestriccion) return; // no restaurar sessionStorage si hay restricción de local
-    setFilters(ssGetJSON('dash_filters', defaultFilters));
+    const restored = ssGetJSON('dash_filters', defaultFilters);
+    // Compatibilidad hacia atrás: tabs que quedaron abiertas desde antes de este
+    // cambio pueden tener persistido el shape viejo (`sucursal: string`, sin
+    // `sucursales`). Forzar `sucursales` a array evita un crash aguas abajo
+    // (computed/computedDateRange/computedComp leen `.length`); no se intenta
+    // migrar el valor viejo, cae a "Todas" (array vacío).
+    setFilters({
+      ...defaultFilters,
+      ...restored,
+      sucursales: Array.isArray((restored as { sucursales?: unknown }).sucursales)
+        ? (restored as DashboardFilters).sucursales
+        : [],
+    });
     setMesFiltro(ssGet('dash_mesFiltro', ''));
     setFechaDesde(ssGet('dash_fechaDesde', ''));
     setFechaHasta(ssGet('dash_fechaHasta', ''));
@@ -127,7 +149,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (filters.sucursal !== 'Todas') {
+    // Elegir las 4 sucursales a mano equivale a no filtrar (mismo total que
+    // "Todas"): en ambos casos hay que traer producción/distribuidora.
+    const filtroActivo = filters.sucursales.length > 0 && filters.sucursales.length < totalSucursales;
+    if (filtroActivo) {
       return;
     }
 
@@ -177,7 +202,7 @@ export default function DashboardPage() {
       });
 
     return () => { cancelled = true; };
-  }, [filters.sucursal, modoFiltro, mesFiltro, fechaDesde, fechaHasta]);
+  }, [filters.sucursales, modoFiltro, mesFiltro, fechaDesde, fechaHasta, totalSucursales]);
 
   // Cierra el date picker al hacer click fuera
   useEffect(() => {
@@ -214,8 +239,12 @@ export default function DashboardPage() {
       }
     }
 
-    const sucursal = filters.sucursal;
-    const hasMes   = !!mesFiltro;
+    const sucursales = filters.sucursales;
+    // Elegir las 4 sucursales a mano equivale a "Todas" (array vacío): mismo
+    // total pre-agregado, sin caer al camino que suma por sucursal y pierde
+    // producción/distribuidora.
+    const filtroActivo = sucursales.length > 0 && sucursales.length < totalSucursales;
+    const hasMes = !!mesFiltro;
 
     let ventasPorLocal: Record<string, number> = {};
     for (const local of Object.keys(porLocal)) {
@@ -223,8 +252,8 @@ export default function DashboardPage() {
         ? (porLocalMes[local]?.[mesFiltro]?.ventas ?? 0)
         : porLocal[local].ventas;
     }
-    if (sucursal !== 'Todas') {
-      ventasPorLocal = { [sucursal]: ventasPorLocal[sucursal] ?? 0 };
+    if (filtroActivo) {
+      ventasPorLocal = Object.fromEntries(sucursales.map(s => [s, ventasPorLocal[s] ?? 0]));
     } else if (produccionSummary && (produccionSummary.ventas > 0 || produccionSummary.gastos > 0)) {
       ventasPorLocal['Producción'] = produccionSummary.ventas;
       gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
@@ -232,7 +261,7 @@ export default function DashboardPage() {
 
     // Distribuidora entra como línea de gasto propia, sin ventas: las suyas se
     // cargan en ConectOca y ya están dentro de Producción.
-    if (sucursal === 'Todas' && distribuidoraGastos > 0) {
+    if (!filtroActivo && distribuidoraGastos > 0) {
       gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastos };
     }
 
@@ -240,15 +269,14 @@ export default function DashboardPage() {
 
     const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
     let totalGastos = 0;
-    if (sucursal === 'Todas') {
+    if (!filtroActivo) {
       totalGastos = hasMes ? (gastosPorMes[mesFiltro] ?? 0) : (vData?.kpi?.totalGastos ?? 0);
     } else if (hasMes) {
-      // Usar gastosPorMesSucursal del server (usa col "mes" del sheet — más preciso)
-      totalGastos = gastosPorMesSucursal[sucursal]?.[mesFiltro] ?? 0;
+      totalGastos = sucursales.reduce((s, suc) => s + (gastosPorMesSucursal[suc]?.[mesFiltro] ?? 0), 0);
     } else {
-      totalGastos = vData?.porSucursal?.[sucursal]?.gastos ?? 0;
+      totalGastos = sucursales.reduce((s, suc) => s + (vData?.porSucursal?.[suc]?.gastos ?? 0), 0);
     }
-    if (sucursal === 'Todas') totalGastos += (produccionSummary?.gastos ?? 0) + distribuidoraGastos;
+    if (!filtroActivo) totalGastos += (produccionSummary?.gastos ?? 0) + distribuidoraGastos;
 
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
 
@@ -263,12 +291,12 @@ export default function DashboardPage() {
 
     const realChartData = mesesDisponibles.map((key, i) => {
       const mes = parseInt(key.split('-')[1], 10);
-      const ventas = sucursal === 'Todas'
+      const ventas = !filtroActivo
         ? (chartData[i]?.ventas ?? 0)
-        : (porLocalMes[sucursal]?.[key]?.ventas ?? 0);
-      const gastos = sucursal === 'Todas'
+        : sucursales.reduce((s, suc) => s + (porLocalMes[suc]?.[key]?.ventas ?? 0), 0);
+      const gastos = !filtroActivo
         ? (gastosPorMes[key] ?? 0)
-        : (gastosPorMesSucursal[sucursal]?.[key] ?? 0);
+        : sucursales.reduce((s, suc) => s + (gastosPorMesSucursal[suc]?.[key] ?? 0), 0);
       return { dia: MESES_SHORT[mes] + ' ' + key.split('-')[0], ventas, gastos };
     });
 
@@ -277,11 +305,13 @@ export default function DashboardPage() {
       tarjeta:  ccData.kpi?.totalTarjeta  ?? 0,
       transf:   ccData.kpi?.totalTransf   ?? 0,
     };
-    const slice = (sucursal !== 'Todas' && hasMes)
-      ? porLocalMes[sucursal]?.[mesFiltro]
-      : (sucursal !== 'Todas' ? porLocal[sucursal] : null);
-    if (slice) {
-      medioPagoMontos = { efectivo: slice.efectivo, tarjeta: slice.tarjeta, transf: slice.transf };
+    if (filtroActivo) {
+      let ef = 0, tar = 0, tr = 0;
+      for (const suc of sucursales) {
+        const s = hasMes ? porLocalMes[suc]?.[mesFiltro] : porLocal[suc];
+        if (s) { ef += s.efectivo; tar += s.tarjeta; tr += s.transf; }
+      }
+      medioPagoMontos = { efectivo: ef, tarjeta: tar, transf: tr };
     } else if (hasMes) {
       let ef = 0, tar = 0, tr = 0;
       for (const local of Object.keys(porLocal)) {
@@ -297,13 +327,14 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursal, mesFiltro, produccionSummary, distribuidoraGastos]);
+  }, [ccData, vData, filters.sucursales, mesFiltro, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
     if (modoFiltro !== 'dia' || (!fechaDesde && !fechaHasta)) return null;
     if (!ccData?.ok) return null;
-    const sucursal = filters.sucursal;
+    const sucursales = filters.sucursales;
+    const filtroActivo = sucursales.length > 0 && sucursales.length < totalSucursales;
     const dias     = (ccData as any).registrosDiarios ?? [];
     const gastosDias = vData?.registrosDiariosGastos ?? [];
 
@@ -313,7 +344,7 @@ export default function DashboardPage() {
       if (!r.fecha) continue;
       if (fechaDesde && r.fecha < fechaDesde) continue;
       if (fechaHasta && r.fecha > fechaHasta) continue;
-      if (sucursal !== 'Todas' && r.local !== sucursal) continue;
+      if (filtroActivo && !sucursales.includes(r.local)) continue;
       ventasPorLocal[r.local] = (ventasPorLocal[r.local] ?? 0) + r.ventas;
       ef += r.efectivo ?? 0; tar += r.tarjeta ?? 0; tr += r.transf ?? 0;
     }
@@ -323,19 +354,19 @@ export default function DashboardPage() {
       if (!r.fecha) continue;
       if (fechaDesde && r.fecha < fechaDesde) continue;
       if (fechaHasta && r.fecha > fechaHasta) continue;
-      if (sucursal !== 'Todas' && r.sucursal !== sucursal) continue;
+      if (filtroActivo && !sucursales.includes(r.sucursal)) continue;
       totalGastos += r.monto;
       if (r.sucursal) {
         if (!gastosPorSucursal[r.sucursal]) gastosPorSucursal[r.sucursal] = { gastos: 0 };
         gastosPorSucursal[r.sucursal].gastos += r.monto;
       }
     }
-    if (sucursal === 'Todas' && produccionSummary && (produccionSummary.ventas > 0 || produccionSummary.gastos > 0)) {
+    if (!filtroActivo && produccionSummary && (produccionSummary.ventas > 0 || produccionSummary.gastos > 0)) {
       ventasPorLocal['Producción'] = produccionSummary.ventas;
       gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
       totalGastos += produccionSummary.gastos;
     }
-    if (sucursal === 'Todas' && distribuidoraGastos > 0) {
+    if (!filtroActivo && distribuidoraGastos > 0) {
       gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastos };
       totalGastos += distribuidoraGastos;
     }
@@ -354,7 +385,7 @@ export default function DashboardPage() {
       topSucursal: distribucion[0] ?? null,
       medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
     };
-  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursal, computed, produccionSummary, distribuidoraGastos]);
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
   const activeData = computedDateRange ?? computed;
@@ -365,19 +396,20 @@ export default function DashboardPage() {
     const { porLocal, porLocalMes } = ccData;
     const gastosPorMes = vData?.gastosPorMes ?? {};
     const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
-    const sucursal = filters.sucursal;
+    const sucursales = filters.sucursales;
+    const filtroActivo = sucursales.length > 0 && sucursales.length < totalSucursales;
 
     let totalVentas = 0;
     for (const local of Object.keys(porLocal)) {
-      if (sucursal !== 'Todas' && local !== sucursal) continue;
+      if (filtroActivo && !sucursales.includes(local)) continue;
       totalVentas += porLocalMes[local]?.[mesComp]?.ventas ?? 0;
     }
-    const totalGastos = sucursal === 'Todas'
+    const totalGastos = !filtroActivo
       ? (gastosPorMes[mesComp] ?? 0)
-      : (gastosPorMesSucursal[sucursal]?.[mesComp] ?? 0);
+      : sucursales.reduce((s, suc) => s + (gastosPorMesSucursal[suc]?.[mesComp] ?? 0), 0);
 
     return { totalVentas, totalGastos };
-  }, [ccData, vData, mesComp, compOn, compareType, filters.sucursal]);
+  }, [ccData, vData, mesComp, compOn, compareType, filters.sucursales, totalSucursales]);
 
   // ── Comparación de locales (mismo período) ────────────────────────────────
   const computedCompLocal = useMemo(() => {
@@ -455,8 +487,8 @@ export default function DashboardPage() {
 
   // ── Sucursales para el filtro del Header ─────────────────────────────────
   const sucursalesDisponibles = useMemo(() => {
-    if (!ccData?.porLocal) return ['Todas'];
-    return ['Todas', ...sortSucursales(Object.keys(ccData.porLocal))];
+    if (!ccData?.porLocal) return [];
+    return sortSucursales(Object.keys(ccData.porLocal));
   }, [ccData]);
 
   const periodoLabel = modoFiltro === 'dia' && (fechaDesde || fechaHasta)
@@ -475,7 +507,7 @@ export default function DashboardPage() {
       <Header
         filters={filters}
         onFiltersChange={setFilters}
-        sucursalesDisponibles={sucursalesDisponibles}
+        title="Data Analytics Desk"
       />
 
       <main className="flex-1 px-4 lg:px-6 py-4 lg:py-5 space-y-4 lg:space-y-5 pb-6">
@@ -543,6 +575,13 @@ export default function DashboardPage() {
             )}
           </div>
 
+          <SucursalFilter
+            sucursales={sucursalesDisponibles}
+            selected={filters.sucursales}
+            onChange={sucursales => setFilters(f => ({ ...f, sucursales }))}
+            disabled={isLocalRole}
+          />
+
           {/* Separador */}
           <span className="border-l border-gray-200 h-4 mx-1" />
 
@@ -599,14 +638,14 @@ export default function DashboardPage() {
                 <>
                   <select value={localA} onChange={e => setLocalA(e.target.value)}
                     className="border border-blue-300 bg-blue-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-blue-700 outline-none">
-                    {sucursalesDisponibles.filter(s => s !== 'Todas').map(s => (
+                    {sucursalesDisponibles.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                   <span className="text-gray-400 text-[11px] font-bold">vs</span>
                   <select value={localB} onChange={e => setLocalB(e.target.value)}
                     className="border border-purple-300 bg-purple-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-purple-700 outline-none">
-                    {sucursalesDisponibles.filter(s => s !== 'Todas').map(s => (
+                    {sucursalesDisponibles.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
@@ -733,7 +772,7 @@ export default function DashboardPage() {
               chartType={filters.vista === 'granular' ? 'line' : 'bar'}
               onChartTypeChange={(t) => setFilters(f => ({ ...f, vista: t === 'line' ? 'granular' : 'overview' }))}
               loading={loading}
-              accentColor={filters.sucursal !== 'Todas' ? getSucursalConfig(filters.sucursal).color : '#2563EB'}
+              accentColor={filters.sucursales.length === 1 ? getSucursalConfig(filters.sucursales[0]).color : '#2563EB'}
               sucursalSeries={sucursalSeriesConfig}
             />
           </div>
