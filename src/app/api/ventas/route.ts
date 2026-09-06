@@ -30,6 +30,12 @@ export interface FacturaSinFecha {
   valorCelda: string;       // lo que hay en la celda de vencimiento (puede ser "", " ", "n"…)
 }
 
+export interface RegistroFactura {
+  id: number; sucursal: string; tipo: string; subtipo: string;
+  proveedor: string; medioPago: string; monto: number;
+  fecha: string; mes: number; anio: number;
+}
+
 async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   const rows = await readSheet(sheetId, `${tab}!A1:Z5000`);
   if (rows.length < 2) return { registros: [], sinFecha: [] };
@@ -59,11 +65,7 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
     monto:     findHeader(headers, 'Total Factura', 'Monto', 'Columna 8', 'Total'),
   };
 
-  const registros: {
-    id: number; sucursal: string; tipo: string; subtipo: string;
-    proveedor: string; medioPago: string; monto: number;
-    fecha: string; mes: number; anio: number;
-  }[] = [];
+  const registros: RegistroFactura[] = [];
   const sinFecha: FacturaSinFecha[] = [];
 
   for (let i = 0; i < dataRows.length; i++) {
@@ -116,6 +118,92 @@ async function fetchLocalVentas(nombre: string, sheetId: string, tab: string) {
   return { registros, sinFecha };
 }
 
+export interface GastosAgregados {
+  kpi: { totalGastos: number; totalIngresos: number; margen: number; totalTransacciones: number };
+  chartData: { fecha: string; ventas: number; gastos: number }[];
+  gastosPorMes: Record<string, number>;
+  gastosPorMesSucursal: Record<string, Record<string, number>>;
+  porSucursal: Record<string, { ventas: number; gastos: number; transacciones: number }>;
+  topProveedores: { nombre: string; monto: number }[];
+  porMedioPago: Record<string, number>;
+}
+
+/**
+ * Agrega un array de facturas (ya filtrado por quien llama — "hasta hoy" o
+ * "mes completo") en el mismo shape que espera el resto de la app. Se llama
+ * dos veces desde `fetchVentasRaw`, una por cada variante, para poder
+ * ofrecer el toggle "Total / Hasta hoy" sin duplicar esta lógica.
+ */
+export function agregarGastos(
+  gastos: RegistroFactura[],
+  totalTransacciones: number,
+  anioActual: number,
+): GastosAgregados {
+  const ingresos      = gastos.filter(r => r.tipo === 'INGRESO');
+  const totalGastos   = gastos.reduce((s, r) => s + r.monto, 0);
+  const totalIngresos = ingresos.reduce((s, r) => s + r.monto, 0);
+
+  const porMes: Record<string, { mes: number; anio: number; ventas: number; gastos: number }> = {};
+  for (const r of gastos) {
+    if (r.anio > anioActual) continue;
+    const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
+    if (!porMes[key]) porMes[key] = { mes: r.mes, anio: r.anio, ventas: 0, gastos: 0 };
+    porMes[key].gastos += r.monto;
+  }
+  const chartData = Object.entries(porMes)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, v]) => ({ fecha: getMesLabel(v.mes, v.anio), ventas: v.ventas, gastos: v.gastos }));
+  const gastosPorMes: Record<string, number> = {};
+  for (const [key, v] of Object.entries(porMes)) gastosPorMes[key] = v.gastos;
+
+  const porSucursal: Record<string, { ventas: number; gastos: number; transacciones: number }> = {};
+  for (const r of gastos) {
+    if (!porSucursal[r.sucursal]) porSucursal[r.sucursal] = { ventas: 0, gastos: 0, transacciones: 0 };
+    porSucursal[r.sucursal].gastos += r.monto;
+    porSucursal[r.sucursal].transacciones++;
+  }
+
+  const gastosPorMesSucursal: Record<string, Record<string, number>> = {};
+  for (const r of gastos) {
+    if (r.anio > anioActual) continue;
+    const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
+    if (!gastosPorMesSucursal[r.sucursal]) gastosPorMesSucursal[r.sucursal] = {};
+    gastosPorMesSucursal[r.sucursal][key] = (gastosPorMesSucursal[r.sucursal][key] ?? 0) + r.monto;
+  }
+
+  const porProveedor: Record<string, number> = {};
+  const proveedorNombre: Record<string, string> = {};
+  for (const r of gastos) {
+    const canonico = normalizeProveedorName(r.proveedor);
+    const key = canonico.toLowerCase();
+    if (!proveedorNombre[key]) proveedorNombre[key] = canonico;
+    porProveedor[key] = (porProveedor[key] ?? 0) + r.monto;
+  }
+  const topProveedores = Object.entries(porProveedor)
+    .sort(([, a], [, b]) => b - a).slice(0, 5)
+    .map(([key, monto]) => ({ nombre: proveedorNombre[key], monto }));
+
+  const porMedioPago: Record<string, number> = {};
+  for (const r of gastos) {
+    porMedioPago[r.medioPago] = (porMedioPago[r.medioPago] ?? 0) + r.monto;
+  }
+
+  return {
+    kpi: {
+      totalGastos,
+      totalIngresos,
+      margen: totalIngresos > 0 ? ((totalIngresos - totalGastos) / totalIngresos) * 100 : 0,
+      totalTransacciones,
+    },
+    chartData,
+    gastosPorMes,
+    gastosPorMesSucursal,
+    porSucursal,
+    topProveedores,
+    porMedioPago,
+  };
+}
+
 export async function fetchVentasData() {
   return withCacheSWR(CACHE_KEY, fetchVentasRaw);
 }
@@ -151,78 +239,26 @@ async function fetchVentasRaw() {
   if (registros.length === 0) return null;
 
   const HOY_ISO = hoyISOChile();
-
-  // Gastos = TODAS las filas de facturas (el sheet suma GASTO+INGRESO sin filtrar por tipo).
-  //
-  // `gastos` excluye facturas con FECHA EMITIDA futura — proveedores como el
-  // arriendo o servicios ya quedan cargados en la planilla con su fecha de
-  // vencimiento del mes completo desde el día 1, aunque falten semanas para
-  // que "pasen". Sin este corte, el mes en curso suma sus gastos completos
-  // contra sólo los días de venta que ya ocurrieron (la caja no tiene
-  // "ventas futuras"), e infla el Factor Índice / Margen Neto de forma
-  // irreal (ej. 376% en vez de ~97% el día 4 de un mes de 30).
-  // `registrosDiariosGastos` (más abajo) sigue sin filtrar: informes y el
-  // asistente ya cortan por su propio rango de fechas explícito.
-  const gastosCrudo = registros; // todas las filas, sin filtrar — para registrosDiariosGastos
-  const gastos       = registros.filter(r => r.fecha <= HOY_ISO);
-  const ingresos      = gastos.filter(r => r.tipo === 'INGRESO');
-  const totalGastos   = gastos.reduce((s, r) => s + r.monto, 0);
-  const totalIngresos = ingresos.reduce((s, r) => s + r.monto, 0);
-
   const ANIO_ACTUAL = new Date().getFullYear();
 
-  // ── Por mes ─────────────────────────────────────────────────────────────
-  const porMes: Record<string, { mes: number; anio: number; ventas: number; gastos: number }> = {};
-  for (const r of gastos) {
-    if (r.anio > ANIO_ACTUAL) continue; // descartar fechas futuras
-    const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
-    if (!porMes[key]) porMes[key] = { mes: r.mes, anio: r.anio, ventas: 0, gastos: 0 };
-    porMes[key].gastos += r.monto; // suma todo (GASTO + INGRESO = total facturas)
-  }
+  // `gastosCrudo`: TODAS las filas, sin filtrar — la usa registrosDiariosGastos
+  // (informes/asistente cortan por su propio rango de fechas explícito) y
+  // ahora también la variante "mes completo" del toggle.
+  //
+  // `gastosHastaHoy`: excluye facturas con FECHA EMITIDA futura — proveedores
+  // como el arriendo o servicios ya quedan cargados en la planilla con su
+  // fecha de vencimiento del mes completo desde el día 1, aunque falten
+  // semanas para que "pasen". Sin este corte, el mes en curso suma sus
+  // gastos completos contra sólo los días de venta que ya ocurrieron (la
+  // caja no tiene "ventas futuras"), e infla el Factor Índice / Margen Neto
+  // de forma irreal (ej. 376% en vez de ~97% el día 4 de un mes de 30). Es
+  // el comportamiento default de siempre — sigue siendo lo que exponen los
+  // campos planos de la respuesta.
+  const gastosCrudo    = registros;
+  const gastosHastaHoy = registros.filter(r => r.fecha <= HOY_ISO);
 
-  const chartData = Object.entries(porMes)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([, v]) => ({ fecha: getMesLabel(v.mes, v.anio), ventas: v.ventas, gastos: v.gastos }));
-
-  const gastosPorMes: Record<string, number> = {};
-  for (const [key, v] of Object.entries(porMes)) gastosPorMes[key] = v.gastos;
-
-  // ── Por sucursal ────────────────────────────────────────────────────────
-  const porSucursal: Record<string, { ventas: number; gastos: number; transacciones: number }> = {};
-  for (const r of gastos) {
-    if (!porSucursal[r.sucursal]) porSucursal[r.sucursal] = { ventas: 0, gastos: 0, transacciones: 0 };
-    porSucursal[r.sucursal].gastos += r.monto; // total facturas (GASTO+INGRESO)
-    porSucursal[r.sucursal].transacciones++;
-  }
-
-  // ── Gastos por mes + sucursal (para filtrar gráfico por local) ───────────
-  const gastosPorMesSucursal: Record<string, Record<string, number>> = {};
-  for (const r of gastos) {
-    if (r.anio > ANIO_ACTUAL) continue;
-    const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
-    if (!gastosPorMesSucursal[r.sucursal]) gastosPorMesSucursal[r.sucursal] = {};
-    gastosPorMesSucursal[r.sucursal][key] = (gastosPorMesSucursal[r.sucursal][key] ?? 0) + r.monto;
-  }
-
-  // ── Top proveedores ─────────────────────────────────────────────────────
-  // Unificar variantes tipeadas a mano antes de agrupar — ver normalizeProveedorName.
-  const porProveedor: Record<string, number> = {};
-  const proveedorNombre: Record<string, string> = {};
-  for (const r of gastos) {
-    const canonico = normalizeProveedorName(r.proveedor);
-    const key = canonico.toLowerCase();
-    if (!proveedorNombre[key]) proveedorNombre[key] = canonico;
-    porProveedor[key] = (porProveedor[key] ?? 0) + r.monto;
-  }
-  const topProveedores = Object.entries(porProveedor)
-    .sort(([, a], [, b]) => b - a).slice(0, 5)
-    .map(([key, monto]) => ({ nombre: proveedorNombre[key], monto }));
-
-  // ── Por medio de pago ───────────────────────────────────────────────────
-  const porMedioPago: Record<string, number> = {};
-  for (const r of gastos) {
-    porMedioPago[r.medioPago] = (porMedioPago[r.medioPago] ?? 0) + r.monto;
-  }
+  const hastaHoy = agregarGastos(gastosHastaHoy, registros.length, ANIO_ACTUAL);
+  const finDeMes = agregarGastos(gastosCrudo, registros.length, ANIO_ACTUAL);
 
   const registrosDiariosGastos = gastosCrudo
     .filter(r => r.fecha)
@@ -236,21 +272,17 @@ async function fetchVentasRaw() {
     }));
 
   return {
-    kpi: {
-      totalGastos,
-      totalIngresos,
-      margen: totalIngresos > 0 ? ((totalIngresos - totalGastos) / totalIngresos) * 100 : 0,
-      totalTransacciones: registros.length,
-    },
-    chartData,
-    gastosPorMes,
-    gastosPorMesSucursal,
-    porSucursal,
-    topProveedores,
-    porMedioPago,
+    kpi: hastaHoy.kpi,
+    chartData: hastaHoy.chartData,
+    gastosPorMes: hastaHoy.gastosPorMes,
+    gastosPorMesSucursal: hastaHoy.gastosPorMesSucursal,
+    porSucursal: hastaHoy.porSucursal,
+    topProveedores: hastaHoy.topProveedores,
+    porMedioPago: hastaHoy.porMedioPago,
     registrosDiariosGastos,
     facturasSinFecha,
     ultimosRegistros: registros.slice(-10).reverse(),
+    finDeMes,
   };
 }
 
