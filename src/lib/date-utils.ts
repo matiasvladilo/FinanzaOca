@@ -162,6 +162,15 @@ export function hoyISOChile(): string {
 }
 
 /**
+ * ¿`mesKey` (formato "YYYY-MM") es el mes en curso, en hora de Chile?
+ * Se usa para decidir cuándo tiene sentido mostrar el toggle "Total / Hasta
+ * hoy": en un mes ya cerrado las dos vistas dan el mismo número.
+ */
+export function esMesActualChile(mesKey: string): boolean {
+  return mesKey === hoyISOChile().slice(0, 7);
+}
+
+/**
  * Minutos que `tz` va adelantada respecto de UTC en ese instante.
  * Chile alterna entre −240 y −180 con el horario de verano, así que no se puede
  * hardcodear el offset.
