@@ -85,3 +85,60 @@ test('restores focus to the bubble when immersive chat closes', async () => {
 
   expect(screen.getByRole('button', { name: /abrir asistente/i })).toHaveFocus()
 })
+
+test('exposes the OCAI conversation actions through an accessible menu', async () => {
+  const user = userEvent.setup()
+  render(<ChatHarness />)
+
+  await user.click(screen.getByRole('button', { name: /abrir asistente/i }))
+
+  expect(screen.getByText('OCAI · Asistente FinanzasOca')).toBeVisible()
+  expect(screen.getByRole('button', { name: /modo inmersivo/i })).toBeVisible()
+  expect(screen.getByRole('button', { name: /^cerrar$/i })).toHaveAttribute('title', 'Cerrar')
+  expect(screen.getByRole('button', { name: /enviar mensaje/i })).toHaveAttribute('title', 'Enviar mensaje')
+  expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite')
+  expect(screen.getByRole('button', { name: /más acciones de ocai/i })).toHaveAttribute('title', 'Más acciones de OCAI')
+
+  await user.click(screen.getByRole('button', { name: /más acciones de ocai/i }))
+  expect(screen.getByRole('menu')).toBeVisible()
+  expect(screen.getByRole('menuitem', { name: /nueva conversación/i })).toBeVisible()
+  expect(screen.getByRole('menuitem', { name: /compartir chat/i })).toBeVisible()
+})
+
+test('cancelling a new conversation preserves messages and the draft', async () => {
+  const user = userEvent.setup()
+  render(<ChatHarness />)
+
+  await user.click(screen.getByRole('button', { name: /abrir asistente/i }))
+  await user.type(screen.getByPlaceholderText('Escribí tu pregunta…'), 'Mensaje a conservar')
+  await user.click(screen.getByRole('button', { name: /enviar mensaje/i }))
+  expect(await screen.findByText('Respuesta semilla')).toBeVisible()
+  await user.type(screen.getByPlaceholderText('Escribí tu pregunta…'), 'Borrador a conservar')
+
+  await user.click(screen.getByRole('button', { name: /más acciones de ocai/i }))
+  await user.click(screen.getByRole('menuitem', { name: /nueva conversación/i }))
+  expect(screen.getByRole('dialog', { name: /nueva conversación/i })).toBeVisible()
+  await user.click(screen.getByRole('button', { name: /cancelar/i }))
+
+  expect(screen.getByText('Respuesta semilla')).toBeVisible()
+  expect(screen.getByPlaceholderText('Escribí tu pregunta…')).toHaveValue('Borrador a conservar')
+})
+
+test('confirming a new conversation clears messages and the draft', async () => {
+  const user = userEvent.setup()
+  render(<ChatHarness />)
+
+  await user.click(screen.getByRole('button', { name: /abrir asistente/i }))
+  await user.type(screen.getByPlaceholderText('Escribí tu pregunta…'), 'Mensaje a borrar')
+  await user.click(screen.getByRole('button', { name: /enviar mensaje/i }))
+  expect(await screen.findByText('Respuesta semilla')).toBeVisible()
+  await user.type(screen.getByPlaceholderText('Escribí tu pregunta…'), 'Borrador a borrar')
+
+  await user.click(screen.getByRole('button', { name: /más acciones de ocai/i }))
+  await user.click(screen.getByRole('menuitem', { name: /nueva conversación/i }))
+  await user.click(screen.getByRole('button', { name: /confirmar nueva conversación/i }))
+
+  expect(screen.queryByText('Mensaje a borrar')).not.toBeInTheDocument()
+  expect(screen.queryByText('Respuesta semilla')).not.toBeInTheDocument()
+  expect(screen.getByPlaceholderText('Escribí tu pregunta…')).toHaveValue('')
+})
