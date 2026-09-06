@@ -69,6 +69,6 @@ El despliegue rotará `SESSION_SECRET` tras migrar para invalidar todas las cook
 1. Crear y proteger la tabla de perfiles en Supabase con sus restricciones y RLS.
 2. Mapear y validar cada usuario actual con un email único; resolver duplicados, cuentas sin email y estado de confirmación antes de crear cuentas.
 3. Crear los usuarios, asignar perfiles y probar una cuenta de cada rol en un entorno controlado antes de desplegar código.
-4. Configurar exclusivamente variables de servidor y límites de autenticación.
-5. Desplegar, rotar `SESSION_SECRET`, comprobar login, RLS y rutas retiradas en producción, y revocar las contraseñas expuestas.
+4. Configurar exclusivamente variables de servidor, incluidos el nuevo `SESSION_SECRET` y límites de autenticación, en todas las instancias antes de habilitar el nuevo código.
+5. Desplegar el cambio de forma atómica; comprobar login, RLS y rutas retiradas en producción, y revocar las contraseñas expuestas.
 6. Mantener un rollback de código y perfiles durante una ventana definida, sin volver a almacenar ni habilitar contraseñas antiguas.
