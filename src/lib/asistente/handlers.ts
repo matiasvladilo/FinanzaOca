@@ -10,7 +10,7 @@
 import { fetchDistribuidoraForReport } from '@/app/api/informes/generate/route';
 import { fetchMermaHistoricoCompleto } from '@/app/api/merma-data/route';
 import { fetchVentasData } from '@/app/api/ventas/route';
-import { buscarProductoPorNombre } from '@/app/api/produccion-data/route';
+import { buscarProductoPorNombre, fetchProduccionForReport } from '@/app/api/produccion-data/route';
 import { fetchGastoFijoForReport, fetchGastoIndirectoForReport } from '@/lib/gasto-fijo';
 import { fetchPresupuesto } from '@/app/api/presupuesto/route';
 import { normalizeProveedorName, normalizeLocalName, claveAgrupacion } from '@/lib/data/parsers';
@@ -106,6 +106,8 @@ export const ASISTENTE_HANDLERS: Record<string, (input: Record<string, unknown>)
   buscar_gasto_proveedor: buscarGastoProveedor,
   buscar_producto_venta: async (input) =>
     buscarProductoPorNombre(str(input.nombre), str(input.fechaDesde), str(input.fechaHasta)),
+  obtener_produccion: async (input) =>
+    fetchProduccionForReport(str(input.fechaDesde), str(input.fechaHasta)),
   obtener_gasto_fijo: async (input) =>
     fetchGastoFijoForReport(str(input.fechaDesde), str(input.fechaHasta)),
   obtener_gasto_indirecto: async (input) =>

@@ -90,6 +90,18 @@ export const ASISTENTE_TOOLS: Tool[] = [
     },
   },
   {
+    name: 'obtener_produccion',
+    description: 'Totales de Producción (el área de ConectOca, no una de las 4 sucursales) en un período: ventas, gastos/costos, pedidos, deuda pendiente y top productos. Usar para preguntas de "cuánto vendió/gastó Producción" — es la fuente directa; no confundir con obtener_distribuidora (compras a proveedores externos) ni con buscar_producto_venta (un producto puntual).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        fechaDesde: { type: 'string', description: `Inicio del período. ${FECHA_DESC}` },
+        fechaHasta: { type: 'string', description: `Fin del período. ${FECHA_DESC}` },
+      },
+      required: ['fechaDesde', 'fechaHasta'],
+    },
+  },
+  {
     name: 'obtener_distribuidora',
     description: 'Cuánto compró Distribuidora a proveedores externos en un período, y a quién. No incluye lo que le compraron los locales a Distribuidora — para eso usar buscar_gasto_proveedor con proveedor="distribuidora".',
     input_schema: {
