@@ -15,7 +15,7 @@
  */
 
 import { useState, useRef, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react';
-import { Maximize2, Minimize2, MoreHorizontal, Send, X } from 'lucide-react';
+import { Maximize2, Minimize2, MoreHorizontal, Plus, Send, Share2, X } from 'lucide-react';
 
 export interface Mensaje {
   role: 'user' | 'assistant';
@@ -200,12 +200,12 @@ export default function AsistenteChat({
         <p id="asistente-chat-title" className="text-[13px] font-bold text-gray-900 dark:text-gray-100">OCAI · Asistente FinanzasOca</p>
         <div className="flex items-center gap-1">
           {view === 'panel' ? (
-            <button ref={maximizeRef} onClick={onEnterImmersive} aria-label="Modo inmersivo (pantalla completa)" title="Modo inmersivo" className={`${controlClass} gap-1 px-2 text-[12px] font-medium`}>
-              <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" /> Modo inmersivo
+            <button ref={maximizeRef} onClick={onEnterImmersive} aria-label="Modo inmersivo (pantalla completa)" title="Modo inmersivo" className={controlClass}>
+              <Maximize2 className="w-4 h-4" aria-hidden="true" />
             </button>
           ) : (
-            <button onClick={onMinimize} aria-label="Minimizar" title="Minimizar" className={`${controlClass} gap-1 px-2 text-[12px] font-medium`}>
-              <Minimize2 className="w-3.5 h-3.5" aria-hidden="true" /> Minimizar
+            <button onClick={onMinimize} aria-label="Minimizar" title="Minimizar" className={controlClass}>
+              <Minimize2 className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
           <div className="relative">
@@ -221,12 +221,12 @@ export default function AsistenteChat({
               <MoreHorizontal className="w-5 h-5" aria-hidden="true" />
             </button>
             {menuAbierto && (
-              <div role="menu" aria-label="Acciones de OCAI" className="absolute right-0 top-full z-10 mt-1 w-48 rounded-xl border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                <button type="button" role="menuitem" onClick={iniciarNuevaConversacion} className="min-h-11 w-full rounded-lg px-3 text-left text-[13px] text-gray-800 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100 dark:hover:bg-gray-800">
-                  Nueva conversación
+              <div role="menu" aria-label="Acciones de OCAI" className="absolute right-0 top-full z-10 mt-1 flex gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                <button type="button" role="menuitem" onClick={iniciarNuevaConversacion} aria-label="Nueva conversación" title="Nueva conversación" className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-gray-800">
+                  <Plus className="w-4 h-4" aria-hidden="true" />
                 </button>
-                <button type="button" role="menuitem" onClick={compartirChat} className="min-h-11 w-full rounded-lg px-3 text-left text-[13px] text-gray-800 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-gray-100 dark:hover:bg-gray-800">
-                  Compartir chat
+                <button type="button" role="menuitem" onClick={compartirChat} aria-label="Compartir chat" title="Compartir chat" className="min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-gray-800">
+                  <Share2 className="w-4 h-4" aria-hidden="true" />
                 </button>
               </div>
             )}
