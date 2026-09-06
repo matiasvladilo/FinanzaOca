@@ -18,6 +18,7 @@ const ACCENT: Record<AccentColor, {
   triggerActive: string;
   hoverBorder: string;
   hoverText: string;
+  hoverTextDark: string;
   solidText: string;
   rgb: string;
 }> = {
@@ -25,6 +26,7 @@ const ACCENT: Record<AccentColor, {
     triggerActive: 'bg-blue-600 border-blue-600 text-white',
     hoverBorder: 'hover:border-blue-400',
     hoverText: 'hover:text-blue-600',
+    hoverTextDark: 'hover:text-blue-400',
     solidText: 'text-blue-600',
     rgb: '37, 99, 235', // blue-600
   },
@@ -32,6 +34,7 @@ const ACCENT: Record<AccentColor, {
     triggerActive: 'bg-violet-600 border-violet-600 text-white',
     hoverBorder: 'hover:border-violet-400',
     hoverText: 'hover:text-violet-600',
+    hoverTextDark: 'hover:text-violet-400',
     solidText: 'text-violet-600',
     rgb: '124, 58, 237', // violet-600
   },
@@ -103,7 +106,7 @@ export function PeriodSelect({
           isFiltered
             ? accent.triggerActive
             : dark
-              ? clsx('bg-slate-700 border-slate-600 text-slate-200', accent.hoverBorder, accent.hoverText)
+              ? clsx('bg-slate-700 border-slate-600 text-slate-200', accent.hoverBorder, accent.hoverTextDark)
               : clsx('bg-white border-gray-200 text-gray-600', accent.hoverBorder, accent.hoverText),
         )}
       >
