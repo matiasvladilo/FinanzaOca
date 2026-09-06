@@ -27,6 +27,14 @@ const PANEL_H = 520;
 const GAP = 12;     // separación entre la burbuja y el panel
 const MARGIN = 8;   // margen mínimo contra los bordes del viewport
 
+// Transcripción de sólo lo visible (sin metadata ni marcas de tiempo
+// inventadas), en orden cronológico — es lo que termina en el portapapeles.
+function formatearTranscripcion(mensajes: Mensaje[]): string {
+  return mensajes
+    .map(m => `${m.role === 'user' ? 'Tú' : 'OCAI'}: ${m.content}`)
+    .join('\n\n');
+}
+
 function calcularPosicionPanel(anchor: { x: number; y: number }, bubbleSize: number) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -61,6 +69,7 @@ export default function AsistenteChat({
   const [cargando, setCargando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [confirmandoNuevaConversacion, setConfirmandoNuevaConversacion] = useState(false);
+  const [estadoAnuncio, setEstadoAnuncio] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const maximizeRef = useRef<HTMLButtonElement>(null);
@@ -163,9 +172,14 @@ export default function AsistenteChat({
     setConfirmandoNuevaConversacion(false);
   }
 
-  function compartirChat() {
-    // Task 7 conectará esta acción al portapapeles.
+  async function compartirChat() {
     setMenuAbierto(false);
+    try {
+      await navigator.clipboard.writeText(formatearTranscripcion(mensajes));
+      setEstadoAnuncio('Conversación copiada');
+    } catch {
+      setEstadoAnuncio('No pude copiar la conversación');
+    }
   }
 
   const controlClass = 'min-w-11 min-h-11 inline-flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900';
@@ -224,7 +238,7 @@ export default function AsistenteChat({
       </div>
 
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-        {cargando ? 'OCAI está preparando una respuesta.' : ''}
+        {cargando ? 'OCAI está preparando una respuesta.' : estadoAnuncio}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

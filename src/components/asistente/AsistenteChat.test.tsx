@@ -142,3 +142,38 @@ test('confirming a new conversation clears messages and the draft', async () => 
   expect(screen.queryByText('Respuesta semilla')).not.toBeInTheDocument()
   expect(screen.getByPlaceholderText('Escribí tu pregunta…')).toHaveValue('')
 })
+
+test('shares the conversation transcript to the clipboard in chronological order', async () => {
+  const user = userEvent.setup()
+  const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+  render(<ChatHarness />)
+
+  await user.click(screen.getByRole('button', { name: /abrir asistente/i }))
+  await user.type(screen.getByPlaceholderText('Escribí tu pregunta…'), 'Mensaje a compartir')
+  await user.click(screen.getByRole('button', { name: /enviar mensaje/i }))
+  expect(await screen.findByText('Respuesta semilla')).toBeVisible()
+
+  await user.click(screen.getByRole('button', { name: /más acciones de ocai/i }))
+  await user.click(screen.getByRole('menuitem', { name: /compartir chat/i }))
+
+  expect(writeText).toHaveBeenCalledWith('Tú: Mensaje a compartir\n\nOCAI: Respuesta semilla')
+  expect(await screen.findByText('Conversación copiada')).toBeInTheDocument()
+})
+
+test('keeps messages intact and announces an error when clipboard copy fails', async () => {
+  const user = userEvent.setup()
+  vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'))
+  render(<ChatHarness />)
+
+  await user.click(screen.getByRole('button', { name: /abrir asistente/i }))
+  await user.type(screen.getByPlaceholderText('Escribí tu pregunta…'), 'Mensaje que debe sobrevivir')
+  await user.click(screen.getByRole('button', { name: /enviar mensaje/i }))
+  expect(await screen.findByText('Respuesta semilla')).toBeVisible()
+
+  await user.click(screen.getByRole('button', { name: /más acciones de ocai/i }))
+  await user.click(screen.getByRole('menuitem', { name: /compartir chat/i }))
+
+  expect(await screen.findByText('No pude copiar la conversación')).toBeInTheDocument()
+  expect(screen.getByText('Mensaje que debe sobrevivir')).toBeVisible()
+  expect(screen.getByText('Respuesta semilla')).toBeVisible()
+})
