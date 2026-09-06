@@ -19,7 +19,7 @@ import type { CierreCajaResponse, VentasResponse } from '@/types/api';
 import { toast } from '@/components/ui/Toast';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { getSucursalColor, getSucursalConfig, sortSucursales } from '@/config/sucursales';
-import { hoyISOChile } from '@/lib/date-utils';
+import { hoyISOChile, esMesActualChile } from '@/lib/date-utils';
 
 const MESES_SHORT = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const MESES_FULL: Record<string, string> = {
@@ -37,7 +37,14 @@ function mesLabel(key: string) {
 }
 
 const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucursales: [], vista: 'overview' };
-type ProductionSummary = { ventas: number; gastos: number };
+type ProductionSummary = { ventas: number; gastosHastaHoy: number; gastosFinDeMes: number };
+// `VentasResponse` (src/types/api.ts) todavía no declara `finDeMes` — el campo
+// existe en la respuesta real de /api/ventas (Task 3) pero el tipo compartido
+// no se actualizó en esa tarea. Se extiende acá, sólo para este archivo, en
+// vez de tocar src/types/api.ts (fuera del alcance de esta tarea).
+type VentasResponseConFinDeMes = VentasResponse & {
+  finDeMes?: Omit<VentasResponse, 'ok' | 'registrosDiariosGastos'>;
+};
 
 function ssGet(key: string, fallback: string): string {
   try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -57,16 +64,17 @@ export default function DashboardPage() {
   const [selectedSucursales, setSelectedSucursales] = useState<string[]>([]);
   const [isLocalRole, setIsLocalRole] = useState(false);
   const [compOn, setCompOn]         = useState(false);
+  const [modoGastos, setModoGastos] = useState<'total' | 'hastaHoy'>('total');
   const [compareType, setCompareType] = useState<'mes' | 'local'>('mes');
   const [localA, setLocalA]         = useState('');
   const [localB, setLocalB]         = useState('');
   const dateRef = useRef<HTMLDivElement>(null);
   const [ccData, setCcData]     = useState<CierreCajaResponse | null>(null);
-  const [vData, setVData]       = useState<VentasResponse | null>(null);
+  const [vData, setVData]       = useState<VentasResponseConFinDeMes | null>(null);
   const [loading, setLoading]   = useState(true);
   const [produccionSummary, setProduccionSummary] = useState<ProductionSummary | null>(null);
   // Distribuidora aporta solo gastos: sus ventas ya vienen contadas en Producción
-  const [distribuidoraGastos, setDistribuidoraGastos] = useState<number>(0);
+  const [distribuidoraGastos, setDistribuidoraGastos] = useState<{ hastaHoy: number; finDeMes: number }>({ hastaHoy: 0, finDeMes: 0 });
   // Serie histórica de ventas de Producción, para cuando se la elige en "comparar por
   // sucursal". Aparte de produccionSummary porque ese solo cubre el período filtrado.
   const [produccionPorMes, setProduccionPorMes] = useState<Record<string, number>>({});
@@ -110,6 +118,7 @@ export default function DashboardPage() {
     setModoFiltro(ssGet('dash_modoFiltro', 'mes') as 'mes' | 'dia');
     setMesComp(ssGet('dash_mesComp', ''));
     setCompOn(ssGet('dash_compOn', 'false') === 'true');
+    setModoGastos(ssGet('dash_modoGastos', 'total') as 'total' | 'hastaHoy');
     setCompareType(ssGet('dash_compareType', 'mes') as 'mes' | 'local');
     setLocalA(ssGet('dash_localA', ''));
     setLocalB(ssGet('dash_localB', ''));
@@ -122,6 +131,7 @@ export default function DashboardPage() {
   useEffect(() => { try { sessionStorage.setItem('dash_fechaDesde', fechaDesde); } catch {} }, [fechaDesde]);
   useEffect(() => { try { sessionStorage.setItem('dash_fechaHasta', fechaHasta); } catch {} }, [fechaHasta]);
   useEffect(() => { try { sessionStorage.setItem('dash_compOn', String(compOn)); } catch {} }, [compOn]);
+  useEffect(() => { try { sessionStorage.setItem('dash_modoGastos', modoGastos); } catch {} }, [modoGastos]);
   useEffect(() => { try { sessionStorage.setItem('dash_compareType', compareType); } catch {} }, [compareType]);
   useEffect(() => { try { sessionStorage.setItem('dash_mesComp', mesComp); } catch {} }, [mesComp]);
   useEffect(() => { try { sessionStorage.setItem('dash_localA', localA); } catch {} }, [localA]);
@@ -133,7 +143,7 @@ export default function DashboardPage() {
     Promise.all([
       fetch('/api/cierre-caja').then(r => r.json()),
       fetch('/api/ventas').then(r => r.json()),
-    ]).then(([cc, v]: [CierreCajaResponse, VentasResponse]) => {
+    ]).then(([cc, v]: [CierreCajaResponse, VentasResponseConFinDeMes]) => {
       setCcData(cc);
       setVData(v);
       if (cc.mesesDisponibles?.length) {
@@ -182,7 +192,8 @@ export default function DashboardPage() {
         }
         setProduccionSummary({
           ventas: d.kpi?.totalVentas ?? 0,
-          gastos: d.kpi?.totalCostos ?? 0,
+          gastosHastaHoy: d.kpi?.totalCostos ?? 0,
+          gastosFinDeMes: d.finDeMes?.kpi?.totalCostos ?? (d.kpi?.totalCostos ?? 0),
         });
       })
       .catch(() => {
@@ -195,10 +206,12 @@ export default function DashboardPage() {
       .then(r => r.json())
       .then(d => {
         if (cancelled) return;
-        setDistribuidoraGastos(d?.ok ? (d.kpi?.totalGastos ?? 0) : 0);
+        setDistribuidoraGastos(d?.ok
+          ? { hastaHoy: d.kpi?.totalGastos ?? 0, finDeMes: d.finDeMes?.kpi?.totalGastos ?? (d.kpi?.totalGastos ?? 0) }
+          : { hastaHoy: 0, finDeMes: 0 });
       })
       .catch(() => {
-        if (!cancelled) setDistribuidoraGastos(0);
+        if (!cancelled) setDistribuidoraGastos({ hastaHoy: 0, finDeMes: 0 });
       });
 
     return () => { cancelled = true; };
@@ -214,11 +227,21 @@ export default function DashboardPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [dateOpen]);
 
+  // ── Variante activa de gastos (Total / Hasta hoy) ────────────────────────
+  // Los memos de abajo (computed, computedDateRange) no cambian: sólo se les
+  // redirige el dato de entrada según el toggle.
+  const gastosPorMesActivo         = modoGastos === 'total' ? (vData?.finDeMes?.gastosPorMes ?? {})         : (vData?.gastosPorMes ?? {});
+  const porSucursalActivo          = modoGastos === 'total' ? (vData?.finDeMes?.porSucursal ?? {})          : (vData?.porSucursal ?? {});
+  const gastosPorMesSucursalActivo = modoGastos === 'total' ? (vData?.finDeMes?.gastosPorMesSucursal ?? {}) : (vData?.gastosPorMesSucursal ?? {});
+  const totalGastosVentasActivo    = modoGastos === 'total' ? (vData?.finDeMes?.kpi?.totalGastos ?? 0)      : (vData?.kpi?.totalGastos ?? 0);
+  const produccionGastosActivo     = modoGastos === 'total' ? (produccionSummary?.gastosFinDeMes ?? 0)      : (produccionSummary?.gastosHastaHoy ?? 0);
+  const distribuidoraGastosActivo  = modoGastos === 'total' ? distribuidoraGastos.finDeMes                  : distribuidoraGastos.hastaHoy;
+
   // ── Cálculos del dashboard (memoizados) ──────────────────────────────────
   const computed = useMemo(() => {
     if (!ccData?.ok) return null;
     const { porLocal, porLocalMes, chartData, mesesDisponibles } = ccData;
-    const gastosPorMes = vData?.gastosPorMes ?? {};
+    const gastosPorMes = gastosPorMesActivo;
 
     const registrosDiarios = vData?.registrosDiariosGastos ?? [];
     const gastosPorSucursal: Record<string, { gastos: number }> = {};
@@ -229,12 +252,13 @@ export default function DashboardPage() {
       // mes en curso con facturas de días que todavía no pasaron.
       const hoyISO = hoyISOChile();
       for (const r of registrosDiarios) {
-        if (!r.fecha || r.fecha.slice(0, 7) !== mesFiltro || r.fecha > hoyISO) continue;
+        if (!r.fecha || r.fecha.slice(0, 7) !== mesFiltro) continue;
+        if (modoGastos === 'hastaHoy' && r.fecha > hoyISO) continue;
         if (!gastosPorSucursal[r.sucursal]) gastosPorSucursal[r.sucursal] = { gastos: 0 };
         gastosPorSucursal[r.sucursal].gastos += r.monto;
       }
     } else {
-      for (const [suc, d] of Object.entries(vData?.porSucursal ?? {})) {
+      for (const [suc, d] of Object.entries(porSucursalActivo)) {
         gastosPorSucursal[suc] = { gastos: d.gastos };
       }
     }
@@ -254,29 +278,29 @@ export default function DashboardPage() {
     }
     if (filtroActivo) {
       ventasPorLocal = Object.fromEntries(sucursales.map(s => [s, ventasPorLocal[s] ?? 0]));
-    } else if (produccionSummary && (produccionSummary.ventas > 0 || produccionSummary.gastos > 0)) {
+    } else if (produccionSummary && (produccionSummary.ventas > 0 || produccionGastosActivo > 0)) {
       ventasPorLocal['Producción'] = produccionSummary.ventas;
-      gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
+      gastosPorSucursal['Producción'] = { gastos: produccionGastosActivo };
     }
 
     // Distribuidora entra como línea de gasto propia, sin ventas: las suyas se
     // cargan en ConectOca y ya están dentro de Producción.
-    if (!filtroActivo && distribuidoraGastos > 0) {
-      gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastos };
+    if (!filtroActivo && distribuidoraGastosActivo > 0) {
+      gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastosActivo };
     }
 
     const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
 
-    const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
+    const gastosPorMesSucursal = gastosPorMesSucursalActivo;
     let totalGastos = 0;
     if (!filtroActivo) {
-      totalGastos = hasMes ? (gastosPorMes[mesFiltro] ?? 0) : (vData?.kpi?.totalGastos ?? 0);
+      totalGastos = hasMes ? (gastosPorMes[mesFiltro] ?? 0) : totalGastosVentasActivo;
     } else if (hasMes) {
       totalGastos = sucursales.reduce((s, suc) => s + (gastosPorMesSucursal[suc]?.[mesFiltro] ?? 0), 0);
     } else {
-      totalGastos = sucursales.reduce((s, suc) => s + (vData?.porSucursal?.[suc]?.gastos ?? 0), 0);
+      totalGastos = sucursales.reduce((s, suc) => s + (porSucursalActivo[suc]?.gastos ?? 0), 0);
     }
-    if (!filtroActivo) totalGastos += (produccionSummary?.gastos ?? 0) + distribuidoraGastos;
+    if (!filtroActivo) totalGastos += produccionGastosActivo + distribuidoraGastosActivo;
 
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
 
@@ -327,7 +351,7 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursales, mesFiltro, produccionSummary, distribuidoraGastos, totalSucursales]);
+  }, [ccData, vData, filters.sucursales, mesFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
@@ -361,14 +385,14 @@ export default function DashboardPage() {
         gastosPorSucursal[r.sucursal].gastos += r.monto;
       }
     }
-    if (!filtroActivo && produccionSummary && (produccionSummary.ventas > 0 || produccionSummary.gastos > 0)) {
+    if (!filtroActivo && produccionSummary && (produccionSummary.ventas > 0 || produccionGastosActivo > 0)) {
       ventasPorLocal['Producción'] = produccionSummary.ventas;
-      gastosPorSucursal['Producción'] = { gastos: produccionSummary.gastos };
-      totalGastos += produccionSummary.gastos;
+      gastosPorSucursal['Producción'] = { gastos: produccionGastosActivo };
+      totalGastos += produccionGastosActivo;
     }
-    if (!filtroActivo && distribuidoraGastos > 0) {
-      gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastos };
-      totalGastos += distribuidoraGastos;
+    if (!filtroActivo && distribuidoraGastosActivo > 0) {
+      gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastosActivo };
+      totalGastos += distribuidoraGastosActivo;
     }
     const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
@@ -385,7 +409,7 @@ export default function DashboardPage() {
       topSucursal: distribucion[0] ?? null,
       medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
     };
-  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, produccionSummary, distribuidoraGastos, totalSucursales]);
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
   const activeData = computedDateRange ?? computed;
@@ -652,6 +676,21 @@ export default function DashboardPage() {
                 </>
               )}
             </>
+          )}
+
+          {/* Toggle Total / Hasta hoy — sólo tiene sentido en el mes en curso */}
+          {esMesActualChile(mesFiltro) && (
+            <button
+              onClick={() => setModoGastos(m => m === 'total' ? 'hastaHoy' : 'total')}
+              className={clsx(
+                'flex items-center gap-1 border rounded-xl px-3 py-2 text-[11px] font-semibold transition-all',
+                modoGastos === 'total'
+                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600',
+              )}
+            >
+              {modoGastos === 'total' ? 'Total' : 'Hasta hoy'}
+            </button>
           )}
         </div>
 
