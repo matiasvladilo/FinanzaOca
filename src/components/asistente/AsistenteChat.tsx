@@ -60,6 +60,9 @@ export default function AsistenteChat({
 }) {
   const [cargando, setCargando] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const maximizeRef = useRef<HTMLButtonElement>(null);
+  const previousViewRef = useRef(view);
 
   // Recalcula si la burbuja se movió (arrastre) o si la ventana cambió de
   // tamaño mientras el panel estaba abierto.
@@ -80,9 +83,43 @@ export default function AsistenteChat({
   }, [mensajes, cargando]);
 
   useEffect(() => {
+    if (view === 'immersive') {
+      dialogRef.current?.focus();
+    } else if (previousViewRef.current === 'immersive') {
+      maximizeRef.current?.focus();
+    }
+    previousViewRef.current = view;
+  }, [view]);
+
+  useEffect(() => {
     if (view !== 'immersive') return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onMinimize();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onMinimize();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusables = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      if (focusables.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -113,16 +150,21 @@ export default function AsistenteChat({
 
   return (
     <div
+      ref={dialogRef}
+      role={view === 'immersive' ? 'dialog' : undefined}
+      aria-modal={view === 'immersive' ? true : undefined}
+      aria-labelledby={view === 'immersive' ? 'asistente-chat-title' : undefined}
+      tabIndex={view === 'immersive' ? -1 : undefined}
       className={view === 'immersive'
         ? 'fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-950'
         : 'fixed z-50 w-[360px] max-w-[calc(100vw-2rem)] h-[520px] max-h-[70vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden'}
       style={view === 'panel' ? { top: posicion.top, left: posicion.left } : undefined}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
-        <p className="text-[13px] font-bold text-gray-900 dark:text-gray-100">Asistente FinanzasOca</p>
+        <p id="asistente-chat-title" className="text-[13px] font-bold text-gray-900 dark:text-gray-100">Asistente FinanzasOca</p>
         <div className="flex items-center gap-1">
           {view === 'panel' ? (
-            <button onClick={onEnterImmersive} aria-label="Pantalla completa" title="Pantalla completa" className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400">
+            <button ref={maximizeRef} onClick={onEnterImmersive} aria-label="Pantalla completa" title="Pantalla completa" className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400">
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
           ) : (

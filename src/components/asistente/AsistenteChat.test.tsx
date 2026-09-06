@@ -9,7 +9,7 @@ vi.mock('@/lib/session-client', () => ({
 }))
 
 vi.mock('next/image', () => ({
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} />,
+  default: () => <div />,
 }))
 
 function ChatHarness() {
@@ -52,4 +52,25 @@ test('preserves a seeded message and draft through immersive, minimize, close, a
 
   expect(screen.getByText('Respuesta semilla')).toBeVisible()
   expect(screen.getByPlaceholderText('Escribí tu pregunta…')).toHaveValue('Borrador que debe sobrevivir')
+})
+
+test('opens immersive chat as a modal dialog and restores focus after Escape', async () => {
+  const user = userEvent.setup()
+  render(<ChatHarness />)
+
+  await user.click(screen.getByRole('button', { name: /abrir asistente/i }))
+  const maximize = screen.getByRole('button', { name: /pantalla completa/i })
+  await user.click(maximize)
+
+  const dialog = screen.getByRole('dialog', { name: /asistente finanzasoca/i })
+  expect(dialog).toHaveAttribute('aria-modal', 'true')
+  expect(dialog).toHaveFocus()
+
+  await user.keyboard('{Shift>}{Tab}{/Shift}')
+  expect(screen.getByPlaceholderText('Escribí tu pregunta…')).toHaveFocus()
+  await user.keyboard('{Tab}')
+  expect(screen.getByRole('button', { name: /minimizar/i })).toHaveFocus()
+
+  await user.keyboard('{Escape}')
+  expect(screen.getByRole('button', { name: /pantalla completa/i })).toHaveFocus()
 })
