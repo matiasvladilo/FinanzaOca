@@ -25,6 +25,7 @@ import { fetchGastosFacturas, topProveedores } from '@/lib/data/gastos';
 import { getMesLabel } from '@/lib/data/parsers';
 import { withCacheSWR } from '@/lib/data/cache';
 import { requireAuth } from '@/lib/auth-api';
+import { hoyISOChile } from '@/lib/date-utils';
 
 const CACHE_PREFIX = 'distribuidora-v1';
 
@@ -77,39 +78,51 @@ export async function GET(req: NextRequest) {
     const { desde, hasta } = getDateRange({ mesDesde, mesHasta, fechaDesde, fechaHasta });
 
     const cacheKey = `${CACHE_PREFIX}:${desde.toISOString()}:${hasta.toISOString()}`;
-    const gastos = await withCacheSWR(cacheKey, () =>
+    const gastosFinDeMes = await withCacheSWR(cacheKey, () =>
       fetchGastosFacturas(config.id, 'todos', desde, hasta),
     );
+    const HOY_ISO = hoyISOChile();
+    const gastosHastaHoy = gastosFinDeMes.filter(r => r.fecha <= HOY_ISO);
 
-    // ── KPI ───────────────────────────────────────────────────────────────────
-    const totalGastos = gastos.reduce((s, r) => s + r.monto, 0);
-    const totalFacturas = gastos.length;
+    function agregar(gastosArr: typeof gastosFinDeMes) {
+      const totalGastos = gastosArr.reduce((s, r) => s + r.monto, 0);
+      const totalFacturas = gastosArr.length;
 
-    // ── Gastos por mes ────────────────────────────────────────────────────────
-    const mesMap: Record<string, { mes: number; anio: number; monto: number }> = {};
-    for (const r of gastos) {
-      if (!r.mes || !r.anio) continue;
-      const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
-      if (!mesMap[key]) mesMap[key] = { mes: r.mes, anio: r.anio, monto: 0 };
-      mesMap[key].monto += r.monto;
+      const mesMap: Record<string, { mes: number; anio: number; monto: number }> = {};
+      for (const r of gastosArr) {
+        if (!r.mes || !r.anio) continue;
+        const key = `${r.anio}-${String(r.mes).padStart(2, '0')}`;
+        if (!mesMap[key]) mesMap[key] = { mes: r.mes, anio: r.anio, monto: 0 };
+        mesMap[key].monto += r.monto;
+      }
+      const gastosPorMes = Object.entries(mesMap)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, v]) => ({ key, mes: getMesLabel(v.mes, v.anio), monto: v.monto }));
+
+      const detalle = [...gastosArr]
+        .sort((a, b) => b.fecha.localeCompare(a.fecha))
+        .map(r => ({ fecha: r.fecha, proveedor: r.proveedor, monto: r.monto }));
+
+      return {
+        kpi: { totalGastos, totalFacturas },
+        gastosPorMes,
+        topProveedores: topProveedores(gastosArr),
+        detalle,
+      };
     }
-    const gastosPorMes = Object.entries(mesMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, v]) => ({ key, mes: getMesLabel(v.mes, v.anio), monto: v.monto }));
 
-    // ── Detalle de facturas (más recientes primero) ──────────────────────────
-    const detalle = [...gastos]
-      .sort((a, b) => b.fecha.localeCompare(a.fecha))
-      .map(r => ({ fecha: r.fecha, proveedor: r.proveedor, monto: r.monto }));
+    const hastaHoy = agregar(gastosHastaHoy);
+    const finDeMes = agregar(gastosFinDeMes);
 
     return NextResponse.json({
       ok: true,
-      kpi: { totalGastos, totalFacturas },
-      gastosPorMes,
-      topProveedores: topProveedores(gastos),
-      detalle,
+      kpi: hastaHoy.kpi,
+      gastosPorMes: hastaHoy.gastosPorMes,
+      topProveedores: hastaHoy.topProveedores,
+      detalle: hastaHoy.detalle,
       mesDesde,
       mesHasta,
+      finDeMes,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Error desconocido';
