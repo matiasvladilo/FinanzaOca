@@ -28,15 +28,23 @@ const MAX_HISTORIAL_MENSAJES = 20;
  * handlers.ts — llama por HTTP a /api/informes/generate con x-cron-secret,
  * reutilizando el mismo endpoint ya deployado y probado del informe por
  * correo, en vez de duplicar/refactorizar esa lógica (ver Task 6 del plan).
+ *
+ * baseUrl se toma del propio request (req.nextUrl.origin), no de
+ * NEXT_PUBLIC_BASE_URL: esta llamada es un self-call al mismo servidor que
+ * ya está atendiendo el request, así que siempre hay que pegarle a ese
+ * mismo host:puerto. Con el env var fijo, cualquier dev server que no
+ * termine escuchando en el puerto "de siempre" (ej. el 3000 ocupado y
+ * Next asignando otro automáticamente) rompía esta herramienta en
+ * silencio — el resto de las herramientas no lo notaba porque llaman
+ * funciones en el mismo proceso, nunca HTTP.
  */
-async function obtenerInformePeriodo(input: Record<string, unknown>) {
+async function obtenerInformePeriodo(input: Record<string, unknown>, baseUrl: string) {
   const fechaDesde = String(input.fechaDesde ?? '');
   const fechaHasta = String(input.fechaHasta ?? '');
   const sucursal = normalizeLocalName(String(input.sucursal ?? ''));
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   const cronSecret = process.env.CRON_SECRET;
-  if (!baseUrl || !cronSecret) {
-    return { error: 'Falta configuración del servidor (NEXT_PUBLIC_BASE_URL o CRON_SECRET)' };
+  if (!cronSecret) {
+    return { error: 'Falta configuración del servidor (CRON_SECRET)' };
   }
   const params = new URLSearchParams({ fechaDesde, fechaHasta, tipo: 'custom' });
   if (sucursal) params.set('sucursal', sucursal);
@@ -58,10 +66,10 @@ async function obtenerInformePeriodo(input: Record<string, unknown>) {
   };
 }
 
-async function ejecutarHerramienta(name: string, input: Record<string, unknown>): Promise<unknown> {
+async function ejecutarHerramienta(name: string, input: Record<string, unknown>, baseUrl: string): Promise<unknown> {
   if (name === 'obtener_informe_periodo') {
     try {
-      return await obtenerInformePeriodo(input);
+      return await obtenerInformePeriodo(input, baseUrl);
     } catch (err) {
       console.error('[asistente] Error en herramienta obtener_informe_periodo:', err);
       return { error: 'No se pudo generar el informe ahora mismo.' };
@@ -157,7 +165,7 @@ export async function POST(req: NextRequest) {
       const resultados = await Promise.all(
         toolUses.map(async (tu) => {
           const t = tu as { id: string; name: string; input: Record<string, unknown> };
-          const resultado = await ejecutarHerramienta(t.name, t.input);
+          const resultado = await ejecutarHerramienta(t.name, t.input, req.nextUrl.origin);
           return {
             type: 'tool_result' as const,
             tool_use_id: t.id,
