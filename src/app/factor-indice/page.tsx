@@ -19,7 +19,7 @@ import FactorGauge from '@/components/factor-indice/FactorGauge';
 import RiskStrip from '@/components/factor-indice/RiskStrip';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
-import { hoyISOChile, esMesActualChile } from '@/lib/date-utils';
+import { hoyISOChile, esMesActualChile, esMesFuturoChile } from '@/lib/date-utils';
 import { getLocalRestriction } from '@/lib/session-client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -227,8 +227,15 @@ export default function FactorIndicePage() {
     // semana en curso ya suma facturas con vencimiento en días que todavía no
     // pasaron, contra ventas de caja que sólo existen para días reales.
     const hoyISO = hoyISOChile();
+    // Fuera del mes actual el toggle no aplica: un mes pasado da lo mismo en
+    // ambas vistas, y en un mes futuro "hasta hoy" siempre sería 0 (nada de
+    // ese mes pasó todavía) — sólo 'total' tiene sentido ahí.
+    const modoEfectivo: 'total' | 'hastaHoy' =
+      esMesFuturoChile(mesSeleccionado) ? 'total'
+      : esMesActualChile(mesSeleccionado) ? modoGastos
+      : 'hastaHoy';
     const diasGastosRaw: any[] = ventasData?.registrosDiariosGastos ?? [];
-    const diasGastos: any[] = modoGastos === 'total'
+    const diasGastos: any[] = modoEfectivo === 'total'
       ? diasGastosRaw
       : diasGastosRaw.filter((r: any) => r.fecha <= hoyISO);
 
@@ -338,10 +345,16 @@ export default function FactorIndicePage() {
     // columna 'mes' del sheet): más preciso que filtrar por fecha.iso acá.
     // Si `finDeMes` no viene (respuesta cacheada vieja), degradar al valor
     // "hasta hoy" en vez de quedar en 0.
-    const gastosPorMesActivo = modoGastos === 'total'
+    // Fuera del mes actual el toggle no aplica (ver indice50Data más arriba):
+    // pasado = da lo mismo, futuro = forzar 'total' porque 'hasta hoy' sería 0.
+    const modoEfectivo: 'total' | 'hastaHoy' =
+      esMesFuturoChile(mesSeleccionado) ? 'total'
+      : esMesActualChile(mesSeleccionado) ? modoGastos
+      : 'hastaHoy';
+    const gastosPorMesActivo = modoEfectivo === 'total'
       ? (ventasData?.finDeMes?.gastosPorMes ?? ventasData?.gastosPorMes ?? {})
       : (ventasData?.gastosPorMes ?? {});
-    const gastosMesSuc: Record<string, Record<string, number>> = modoGastos === 'total'
+    const gastosMesSuc: Record<string, Record<string, number>> = modoEfectivo === 'total'
       ? (ventasData?.finDeMes?.gastosPorMesSucursal ?? ventasData?.gastosPorMesSucursal ?? {})
       : (ventasData?.gastosPorMesSucursal ?? {});
     let tg = 0;
@@ -377,7 +390,14 @@ export default function FactorIndicePage() {
   }, [cierreCajaData, ventasData, compMes2, compOn, sucSel, allSucs]);
 
   const isOpt       = factorGlobal !== null && factorGlobal < 60;
-  const mesesDisp   = cierreCajaData?.mesesDisponibles ?? [];
+  // cierreCajaData.mesesDisponibles sólo trae meses con ventas cerradas — un
+  // mes futuro con facturas ya cargadas por su vencimiento (pero sin ventas
+  // todavía) quedaba invisible acá. Se suma finDeMes.gastosPorMes (gastos sin
+  // cortar por hoy) para que ese mes sea seleccionable.
+  const mesesDisp   = [...new Set([
+    ...(cierreCajaData?.mesesDisponibles ?? []),
+    ...Object.keys(ventasData?.finDeMes?.gastosPorMes ?? ventasData?.gastosPorMes ?? {}),
+  ])].sort();
   const fmt         = (v: number) => v >= 1_000_000
     ? `$${(v / 1_000_000).toFixed(1)}M`
     : `$${Math.round(v / 1000)}k`;

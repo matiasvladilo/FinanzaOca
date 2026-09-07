@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { getLocalRestriction } from '@/lib/session-client';
-import { esMesActualChile } from '@/lib/date-utils';
+import { esMesActualChile, esMesFuturoChile } from '@/lib/date-utils';
 import {
   AreaChart, Area,
   LineChart, Line,
@@ -642,9 +642,14 @@ export default function VentasPage() {
           setFacturasSinFecha(facturas.facturasSinFecha ?? []);
         }
 
-        // Unión de meses de ambas fuentes (YYYY-MM), ordenados
+        // Unión de meses de ambas fuentes (YYYY-MM), ordenados. `gastosPorMes`
+        // es la vista "hasta hoy" — un mes futuro con facturas ya cargadas
+        // (vencimiento por delante) nunca aparece ahí porque todas sus fechas
+        // son > hoy. Se suma también finDeMes.gastosPorMes (sin ese corte)
+        // para que ese mes sea seleccionable.
+        const gastosPorMesFinDeMes = facturas.ok ? (facturas.finDeMes?.gastosPorMes ?? gastosPorMes) : {};
         const setCaja    = new Set<string>(caja.ok     ? (caja.mesesDisponibles ?? [])        : []);
-        const setFactura = new Set<string>(facturas.ok ? Object.keys(gastosPorMes)             : []);
+        const setFactura = new Set<string>(facturas.ok ? Object.keys(gastosPorMesFinDeMes)     : []);
         const meses = [...new Set([...setCaja, ...setFactura])].sort();
         setMesesDisponibles(meses);
         if (meses.length) {
@@ -733,8 +738,10 @@ export default function VentasPage() {
 
   // ── Datos filtrados ──────────────────────────────────────
   const filteredData = useMemo(() => {
-    const modoEfectivo: 'total' | 'hastaHoy' = (modoFiltro === 'mes' && mesDesde === mesHasta && esMesActualChile(mesDesde))
-      ? modoGastos
+    const modoEfectivo: 'total' | 'hastaHoy' =
+      modoFiltro !== 'mes' || mesDesde !== mesHasta ? 'hastaHoy'
+      : esMesFuturoChile(mesDesde) ? 'total'
+      : esMesActualChile(mesDesde) ? modoGastos
       : 'hastaHoy';
     // El resto del memo no cambia: se le redirige el dato de entrada según el
     // toggle, con los mismos nombres que ya consumía.
@@ -1234,8 +1241,10 @@ export default function VentasPage() {
   const proyeccionData = useMemo(() => {
     if (!mesDesde) return [];
     // Misma derivación que en filteredData (ver comentario más arriba).
-    const modoEfectivo: 'total' | 'hastaHoy' = (modoFiltro === 'mes' && mesDesde === mesHasta && esMesActualChile(mesDesde))
-      ? modoGastos
+    const modoEfectivo: 'total' | 'hastaHoy' =
+      modoFiltro !== 'mes' || mesDesde !== mesHasta ? 'hastaHoy'
+      : esMesFuturoChile(mesDesde) ? 'total'
+      : esMesActualChile(mesDesde) ? modoGastos
       : 'hastaHoy';
     const produccionMes = modoEfectivo === 'total' ? produccionMesFinDeMes : produccionMesHastaHoy;
     const mes = mesDesde; // YYYY-MM (usa el mes inicial del filtro)

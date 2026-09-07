@@ -171,6 +171,17 @@ export function esMesActualChile(mesKey: string): boolean {
 }
 
 /**
+ * ¿`mesKey` (formato "YYYY-MM") es un mes que todavía no llegó, en hora de
+ * Chile? Para un mes futuro "hasta hoy" siempre da $0 (todavía no pasó
+ * ningún día de ese mes) — sólo "Total" (los gastos ya cargados por su
+ * vencimiento) tiene sentido ahí. Comparación de strings YYYY-MM ordena
+ * igual que la fecha real.
+ */
+export function esMesFuturoChile(mesKey: string): boolean {
+  return mesKey > hoyISOChile().slice(0, 7);
+}
+
+/**
  * Minutos que `tz` va adelantada respecto de UTC en ese instante.
  * Chile alterna entre −240 y −180 con el horario de verano, así que no se puede
  * hardcodear el offset.

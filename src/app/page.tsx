@@ -19,7 +19,7 @@ import type { CierreCajaResponse, VentasResponse } from '@/types/api';
 import { toast } from '@/components/ui/Toast';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
 import { getSucursalColor, getSucursalConfig, sortSucursales } from '@/config/sucursales';
-import { hoyISOChile, esMesActualChile } from '@/lib/date-utils';
+import { hoyISOChile, esMesActualChile, esMesFuturoChile } from '@/lib/date-utils';
 
 const MESES_SHORT = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const MESES_FULL: Record<string, string> = {
@@ -245,7 +245,10 @@ export default function DashboardPage() {
   const computed = useMemo(() => {
     if (!ccData?.ok) return null;
     const modoEfectivo: 'total' | 'hastaHoy' =
-      (modoFiltro === 'mes' && esMesActualChile(mesFiltro)) ? modoGastos : 'hastaHoy';
+      modoFiltro !== 'mes' ? 'hastaHoy'
+      : esMesFuturoChile(mesFiltro) ? 'total'
+      : esMesActualChile(mesFiltro) ? modoGastos
+      : 'hastaHoy';
     const gastosPorMesActivo         = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMes ?? vData?.gastosPorMes ?? {})                 : (vData?.gastosPorMes ?? {});
     const porSucursalActivo          = modoEfectivo === 'total' ? (vData?.finDeMes?.porSucursal ?? vData?.porSucursal ?? {})                   : (vData?.porSucursal ?? {});
     const gastosPorMesSucursalActivo = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMesSucursal ?? vData?.gastosPorMesSucursal ?? {}) : (vData?.gastosPorMesSucursal ?? {});
@@ -462,7 +465,10 @@ export default function DashboardPage() {
     // en curso mostraría gastos "hasta hoy" mientras el KPI de arriba muestra
     // el total del mes.
     const modoEfectivo: 'total' | 'hastaHoy' =
-      (modoFiltro === 'mes' && esMesActualChile(mesFiltro)) ? modoGastos : 'hastaHoy';
+      modoFiltro !== 'mes' ? 'hastaHoy'
+      : esMesFuturoChile(mesFiltro) ? 'total'
+      : esMesActualChile(mesFiltro) ? modoGastos
+      : 'hastaHoy';
     const gastosPorMesSucursal = modoEfectivo === 'total'
       ? (vData?.finDeMes?.gastosPorMesSucursal ?? vData?.gastosPorMesSucursal ?? {})
       : (vData?.gastosPorMesSucursal ?? {});
