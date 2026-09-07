@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { getLocalRestriction } from '@/lib/session-client';
+import { esMesActualChile } from '@/lib/date-utils';
 import {
   AreaChart, Area,
   LineChart, Line,
@@ -563,6 +564,10 @@ function ProveedorModal({
 
 // ─── Tipo presupuesto (eliminado — ahora se calcula como 50% de ventas) ───────
 
+function ssGet(key: string, fallback: string): string {
+  try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+
 // ─── Página principal ─────────────────────────────────────
 export default function VentasPage() {
   const [localSel, setLocalSel] = useState<string[]>([]);
@@ -571,16 +576,20 @@ export default function VentasPage() {
   const dateRef  = useRef<HTMLDivElement>(null);
   // ── Estado raw desde Sheets ──────────────────────────────
   const [rawLocalMes, setRawLocalMes] = useState<Record<string, Record<string, MesSlice>>>({});
-  const [rawGastosMes, setRawGastosMes] = useState<Record<string, number>>({});
-  const [rawGastosMesSucursal, setRawGastosMesSucursal] = useState<Record<string, Record<string, number>>>({});
+  const [rawGastosMesHastaHoy, setRawGastosMesHastaHoy] = useState<Record<string, number>>({});
+  const [rawGastosMesFinDeMes, setRawGastosMesFinDeMes] = useState<Record<string, number>>({});
+  const [rawGastosMesSucursalHastaHoy, setRawGastosMesSucursalHastaHoy] = useState<Record<string, Record<string, number>>>({});
+  const [rawGastosMesSucursalFinDeMes, setRawGastosMesSucursalFinDeMes] = useState<Record<string, Record<string, number>>>({});
   const [rawDiasCaja, setRawDiasCaja] = useState<DiaCaja[]>([]);
   const [rawDiasGastos, setRawDiasGastos] = useState<DiaGasto[]>([]);
-  const [produccionMes, setProduccionMes] = useState<Record<string, ProductionMonth>>({});
+  const [produccionMesHastaHoy, setProduccionMesHastaHoy] = useState<Record<string, ProductionMonth>>({});
+  const [produccionMesFinDeMes, setProduccionMesFinDeMes] = useState<Record<string, ProductionMonth>>({});
   const [produccionTopProveedores, setProduccionTopProveedores] = useState<{ nombre: string; monto: number }[]>([]);
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
   const [mesDesde, setMesDesde] = useState('');
   const [mesHasta, setMesHasta] = useState('');
   const [mesPill, setMesPill] = useState('');
+  const [modoGastos, setModoGastos] = useState<'total' | 'hastaHoy'>('total');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [modoFiltro, setModoFiltro] = useState<'mes' | 'dia'>('mes');
@@ -594,6 +603,14 @@ export default function VentasPage() {
   // Presupuesto (50% de ventas dinámico)
   const [presupuestoOn, setPresupuestoOn] = useState(false);
   const [facturasSinFecha, setFacturasSinFecha] = useState<FacturaSinFecha[]>([]);
+
+  // Restaura el toggle Total/Hasta hoy persistido en sessionStorage
+  useEffect(() => {
+    setModoGastos(ssGet('ventas_modoGastos', 'total') as 'total' | 'hastaHoy');
+  }, []);
+  useEffect(() => {
+    try { sessionStorage.setItem('ventas_modoGastos', modoGastos); } catch {}
+  }, [modoGastos]);
 
   // Cierra dropdowns al hacer click fuera
   useEffect(() => {
@@ -617,9 +634,11 @@ export default function VentasPage() {
         }
         const gastosPorMes: Record<string, number> = facturas.ok ? (facturas.gastosPorMes ?? {}) : {};
         if (facturas.ok) {
-          setRawGastosMes(gastosPorMes);
+          setRawGastosMesHastaHoy(gastosPorMes);
+          setRawGastosMesFinDeMes(facturas.finDeMes?.gastosPorMes ?? gastosPorMes);
           setRawDiasGastos(facturas.registrosDiariosGastos ?? []);
-          setRawGastosMesSucursal(facturas.gastosPorMesSucursal ?? {});
+          setRawGastosMesSucursalHastaHoy(facturas.gastosPorMesSucursal ?? {});
+          setRawGastosMesSucursalFinDeMes(facturas.finDeMes?.gastosPorMesSucursal ?? (facturas.gastosPorMesSucursal ?? {}));
           setFacturasSinFecha(facturas.facturasSinFecha ?? []);
         }
 
@@ -663,7 +682,8 @@ export default function VentasPage() {
       .then(d => {
         if (cancelled) return;
         if (!d?.ok) {
-          setProduccionMes({});
+          setProduccionMesHastaHoy({});
+          setProduccionMesFinDeMes({});
           return;
         }
         const next: Record<string, ProductionMonth> = {};
@@ -677,18 +697,46 @@ export default function VentasPage() {
           const fallbackKey = modoFiltro === 'dia' ? fechaDesde.slice(0, 7) : mesDesde;
           next[fallbackKey] = { ventas: d.kpi.totalVentas ?? 0, gastos: d.kpi.totalCostos ?? 0 };
         }
-        setProduccionMes(next);
+        const nextFinDeMes: Record<string, ProductionMonth> = {};
+        for (const item of d.ventasPorMes ?? []) {
+          nextFinDeMes[item.key] = { ...(nextFinDeMes[item.key] ?? { ventas: 0, gastos: 0 }), ventas: item.ventas ?? 0 };
+        }
+        for (const item of d.finDeMes?.gastosPorMes ?? d.gastosPorMes ?? []) {
+          nextFinDeMes[item.key] = { ...(nextFinDeMes[item.key] ?? { ventas: 0, gastos: 0 }), gastos: item.monto ?? 0 };
+        }
+        if (Object.keys(nextFinDeMes).length === 0 && d.kpi) {
+          const fallbackKey = modoFiltro === 'dia' ? fechaDesde.slice(0, 7) : mesDesde;
+          nextFinDeMes[fallbackKey] = { ventas: d.kpi.totalVentas ?? 0, gastos: d.finDeMes?.kpi?.totalCostos ?? (d.kpi.totalCostos ?? 0) };
+        }
+        setProduccionMesHastaHoy(next);
+        setProduccionMesFinDeMes(nextFinDeMes);
         setProduccionTopProveedores(d.topProveedoresProd ?? []);
       })
       .catch(() => {
         if (!cancelled) {
-          setProduccionMes({});
+          setProduccionMesHastaHoy({});
+          setProduccionMesFinDeMes({});
           setProduccionTopProveedores([]);
         }
       });
 
     return () => { cancelled = true; };
   }, [modoFiltro, mesDesde, mesHasta, fechaDesde, fechaHasta]);
+
+  // ── Variante activa de gastos (Total / Hasta hoy) ────────────────────────
+  // El toggle sólo se muestra cuando hay un único mes seleccionado y ese mes
+  // es el mes en curso (ver Step 7); en cualquier otro caso (rango de meses,
+  // mes cerrado) el modo efectivo es siempre "hasta hoy", sin importar el
+  // último valor que haya quedado guardado en modoGastos.
+  const modoEfectivo: 'total' | 'hastaHoy' = (mesDesde === mesHasta && esMesActualChile(mesDesde))
+    ? modoGastos
+    : 'hastaHoy';
+  // El resto de la página (filteredData de abajo) no cambia: se le
+  // redirige el dato de entrada según el toggle, con los mismos nombres
+  // que ya consumía (rawGastosMes, rawGastosMesSucursal, produccionMes).
+  const rawGastosMes = modoEfectivo === 'total' ? rawGastosMesFinDeMes : rawGastosMesHastaHoy;
+  const rawGastosMesSucursal = modoEfectivo === 'total' ? rawGastosMesSucursalFinDeMes : rawGastosMesSucursalHastaHoy;
+  const produccionMes = modoEfectivo === 'total' ? produccionMesFinDeMes : produccionMesHastaHoy;
 
   // ── Datos filtrados ──────────────────────────────────────
   const filteredData = useMemo(() => {
@@ -1065,7 +1113,7 @@ export default function VentasPage() {
     const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]) : [];
     const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
     return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores, topProveedoresComp };
-  }, [rawLocalMes, rawGastosMes, rawGastosMesSucursal, rawDiasCaja, rawDiasGastos, produccionMes, produccionTopProveedores, localSel,
+  }, [rawLocalMes, modoEfectivo, rawGastosMesHastaHoy, rawGastosMesFinDeMes, rawGastosMesSucursalHastaHoy, rawGastosMesSucursalFinDeMes, rawDiasCaja, rawDiasGastos, produccionMesHastaHoy, produccionMesFinDeMes, produccionTopProveedores, localSel,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compOn, compMes]);
 
@@ -1358,6 +1406,21 @@ export default function VentasPage() {
             <Wallet className="w-3.5 h-3.5 opacity-80" />
             <span className="font-semibold text-[11px]">Presupuesto</span>
           </button>
+
+          {/* Toggle Total / Hasta hoy — sólo tiene sentido en el mes en curso */}
+          {mesDesde === mesHasta && esMesActualChile(mesDesde) && (
+            <button
+              onClick={() => setModoGastos(m => m === 'total' ? 'hastaHoy' : 'total')}
+              className={clsx(
+                'flex items-center gap-1 border rounded-xl px-3 py-2 text-[11px] font-semibold transition-all',
+                modoGastos === 'total'
+                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600',
+              )}
+            >
+              {modoGastos === 'total' ? 'Total' : 'Hasta hoy'}
+            </button>
+          )}
 
           <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 w-44">
             <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
