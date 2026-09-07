@@ -228,14 +228,19 @@ export default function DashboardPage() {
   }, [dateOpen]);
 
   // ── Variante activa de gastos (Total / Hasta hoy) ────────────────────────
+  // Fuera del mes en curso (mes cerrado, "Todos los meses", o modo rango de
+  // fechas) el toggle no se muestra — forzar 'hastaHoy' ahí para que el
+  // comportamiento sea exactamente el de siempre, quede visible o no el
+  // control.
+  const modoEfectivo: 'total' | 'hastaHoy' = esMesActualChile(mesFiltro) ? modoGastos : 'hastaHoy';
   // Los memos de abajo (computed, computedDateRange) no cambian: sólo se les
   // redirige el dato de entrada según el toggle.
-  const gastosPorMesActivo         = modoGastos === 'total' ? (vData?.finDeMes?.gastosPorMes ?? {})         : (vData?.gastosPorMes ?? {});
-  const porSucursalActivo          = modoGastos === 'total' ? (vData?.finDeMes?.porSucursal ?? {})          : (vData?.porSucursal ?? {});
-  const gastosPorMesSucursalActivo = modoGastos === 'total' ? (vData?.finDeMes?.gastosPorMesSucursal ?? {}) : (vData?.gastosPorMesSucursal ?? {});
-  const totalGastosVentasActivo    = modoGastos === 'total' ? (vData?.finDeMes?.kpi?.totalGastos ?? 0)      : (vData?.kpi?.totalGastos ?? 0);
-  const produccionGastosActivo     = modoGastos === 'total' ? (produccionSummary?.gastosFinDeMes ?? 0)      : (produccionSummary?.gastosHastaHoy ?? 0);
-  const distribuidoraGastosActivo  = modoGastos === 'total' ? distribuidoraGastos.finDeMes                  : distribuidoraGastos.hastaHoy;
+  const gastosPorMesActivo         = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMes ?? {})         : (vData?.gastosPorMes ?? {});
+  const porSucursalActivo          = modoEfectivo === 'total' ? (vData?.finDeMes?.porSucursal ?? {})          : (vData?.porSucursal ?? {});
+  const gastosPorMesSucursalActivo = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMesSucursal ?? {}) : (vData?.gastosPorMesSucursal ?? {});
+  const totalGastosVentasActivo    = modoEfectivo === 'total' ? (vData?.finDeMes?.kpi?.totalGastos ?? 0)      : (vData?.kpi?.totalGastos ?? 0);
+  const produccionGastosActivo     = modoEfectivo === 'total' ? (produccionSummary?.gastosFinDeMes ?? 0)      : (produccionSummary?.gastosHastaHoy ?? 0);
+  const distribuidoraGastosActivo  = modoEfectivo === 'total' ? distribuidoraGastos.finDeMes                  : distribuidoraGastos.hastaHoy;
 
   // ── Cálculos del dashboard (memoizados) ──────────────────────────────────
   const computed = useMemo(() => {
@@ -253,7 +258,7 @@ export default function DashboardPage() {
       const hoyISO = hoyISOChile();
       for (const r of registrosDiarios) {
         if (!r.fecha || r.fecha.slice(0, 7) !== mesFiltro) continue;
-        if (modoGastos === 'hastaHoy' && r.fecha > hoyISO) continue;
+        if (modoEfectivo === 'hastaHoy' && r.fecha > hoyISO) continue;
         if (!gastosPorSucursal[r.sucursal]) gastosPorSucursal[r.sucursal] = { gastos: 0 };
         gastosPorSucursal[r.sucursal].gastos += r.monto;
       }
@@ -409,7 +414,7 @@ export default function DashboardPage() {
       topSucursal: distribucion[0] ?? null,
       medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
     };
-  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, mesFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
   const activeData = computedDateRange ?? computed;
