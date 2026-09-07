@@ -728,7 +728,7 @@ export default function VentasPage() {
   // es el mes en curso (ver Step 7); en cualquier otro caso (rango de meses,
   // mes cerrado) el modo efectivo es siempre "hasta hoy", sin importar el
   // último valor que haya quedado guardado en modoGastos.
-  const modoEfectivo: 'total' | 'hastaHoy' = (mesDesde === mesHasta && esMesActualChile(mesDesde))
+  const modoEfectivo: 'total' | 'hastaHoy' = (modoFiltro === 'mes' && mesDesde === mesHasta && esMesActualChile(mesDesde))
     ? modoGastos
     : 'hastaHoy';
   // El resto de la página (filteredData de abajo) no cambia: se le
@@ -1408,7 +1408,7 @@ export default function VentasPage() {
           </button>
 
           {/* Toggle Total / Hasta hoy — sólo tiene sentido en el mes en curso */}
-          {mesDesde === mesHasta && esMesActualChile(mesDesde) && (
+          {modoFiltro === 'mes' && mesDesde === mesHasta && esMesActualChile(mesDesde) && (
             <button
               onClick={() => setModoGastos(m => m === 'total' ? 'hastaHoy' : 'total')}
               className={clsx(
