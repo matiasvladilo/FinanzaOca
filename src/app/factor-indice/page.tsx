@@ -19,7 +19,7 @@ import FactorGauge from '@/components/factor-indice/FactorGauge';
 import RiskStrip from '@/components/factor-indice/RiskStrip';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
-import { hoyISOChile } from '@/lib/date-utils';
+import { hoyISOChile, esMesActualChile } from '@/lib/date-utils';
 import { getLocalRestriction } from '@/lib/session-client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -31,6 +31,10 @@ const MESES_FULL: Record<string, string> = {
 function mesLabel(key: string) {
   const [anio, mes] = key.split('-');
   return (MESES_FULL[mes] ?? mes) + ' ' + anio;
+}
+
+function ssGet(key: string, fallback: string): string {
+  try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
 }
 
 const SUC_COLORS: Record<string, string> = {
@@ -182,10 +186,19 @@ export default function FactorIndicePage() {
   // ── Comparación ─────────────────────────────────────────────────────────
   const [compOn, setCompOn]   = useState(false);
   const [compMes2, setCompMes2] = useState('');
+  const [modoGastos, setModoGastos] = useState<'total' | 'hastaHoy'>('total');
 
   // Restricción de sucursal para rol 'local' — mismo patrón que Ventas: null
   // si el usuario puede ver todos los locales, o el nombre exacto del suyo.
   const localRestriccion = getLocalRestriction();
+
+  // Restaura el toggle Total/Hasta hoy persistido en sessionStorage
+  useEffect(() => {
+    setModoGastos(ssGet('factor_modoGastos', 'total') as 'total' | 'hastaHoy');
+  }, []);
+  useEffect(() => {
+    try { sessionStorage.setItem('factor_modoGastos', modoGastos); } catch {}
+  }, [modoGastos]);
 
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -214,7 +227,10 @@ export default function FactorIndicePage() {
     // semana en curso ya suma facturas con vencimiento en días que todavía no
     // pasaron, contra ventas de caja que sólo existen para días reales.
     const hoyISO = hoyISOChile();
-    const diasGastos: any[] = (ventasData?.registrosDiariosGastos ?? []).filter((r: any) => r.fecha <= hoyISO);
+    const diasGastosRaw: any[] = ventasData?.registrosDiariosGastos ?? [];
+    const diasGastos: any[] = modoGastos === 'total'
+      ? diasGastosRaw
+      : diasGastosRaw.filter((r: any) => r.fecha <= hoyISO);
 
     const ventasSS: Record<string, Record<string, number>> = {};
     const gastosSS: Record<string, Record<string, number>> = {};
@@ -261,7 +277,7 @@ export default function FactorIndicePage() {
     });
 
     return { indice50Data: rows, allSucs };
-  }, [cierreCajaData, ventasData, mesSeleccionado, modo, localRestriccion]);
+  }, [cierreCajaData, ventasData, mesSeleccionado, modo, modoGastos, localRestriccion]);
 
   const sucursalesVisibles = sucSel.length > 0 ? sucSel : allSucs;
 
@@ -318,16 +334,19 @@ export default function FactorIndicePage() {
       .filter((r: any) => r.fecha?.startsWith(mesSeleccionado) && (todasSucs || sucSel.includes(r.local)))
       .reduce((s: number, r: any) => s + r.ventas, 0);
     // Usar gastosPorMesSucursal del server (usa col 'mes' del sheet — más preciso que filtrar por fecha.iso)
-    const gastosMesSuc: Record<string, Record<string, number>> = ventasData?.gastosPorMesSucursal ?? {};
+    const gastosPorMesActivo = modoGastos === 'total' ? (ventasData?.finDeMes?.gastosPorMes ?? {}) : (ventasData?.gastosPorMes ?? {});
+    const gastosMesSuc: Record<string, Record<string, number>> = modoGastos === 'total'
+      ? (ventasData?.finDeMes?.gastosPorMesSucursal ?? {})
+      : (ventasData?.gastosPorMesSucursal ?? {});
     let tg = 0;
     if (todasSucs) {
-      tg = ventasData?.gastosPorMes?.[mesSeleccionado] ?? 0;
+      tg = gastosPorMesActivo[mesSeleccionado] ?? 0;
     } else {
       for (const suc of sucSel) tg += gastosMesSuc[suc]?.[mesSeleccionado] ?? 0;
     }
     const f = tv > 0 ? parseFloat(((tg / tv) * 100).toFixed(1)) : null;
     return { factorGlobal: f, totalVentas: tv, totalGastos: tg };
-  }, [cierreCajaData, ventasData, mesSeleccionado, sucSel, allSucs]);
+  }, [cierreCajaData, ventasData, mesSeleccionado, sucSel, allSucs, modoGastos]);
 
   // ── Factor del período de comparación ────────────────────────────────────
   const compFactorData = useMemo(() => {
@@ -410,6 +429,19 @@ export default function FactorIndicePage() {
             disabled={!!localRestriccion}
           />
         </div>
+
+        {/* Toggle Total / Hasta hoy — sólo tiene sentido en el mes en curso */}
+        {esMesActualChile(mesSeleccionado) && (
+          <button
+            onClick={() => setModoGastos(m => m === 'total' ? 'hastaHoy' : 'total')}
+            className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-medium border transition-all"
+            style={modoGastos === 'total'
+              ? { background: '#059669', borderColor: '#059669', color: '#fff' }
+              : { background: 'var(--card)', borderColor: 'var(--border-2)', color: 'var(--text-2)' }}
+          >
+            {modoGastos === 'total' ? 'Total' : 'Hasta hoy'}
+          </button>
+        )}
 
         {/* Toggle comparación */}
         <button
