@@ -220,6 +220,18 @@ export default function DashboardPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [dateOpen]);
 
+  // ── Meses disponibles para el selector de período ────────────────────────
+  // `ccData.mesesDisponibles` sólo trae meses con ventas cerradas — un mes
+  // futuro (ej. octubre con facturas ya cargadas por su vencimiento) nunca
+  // tiene ventas, así que quedaba invisible acá aunque sí hubiera gastos
+  // cargados para ese mes (ver `finDeMes.gastosPorMes`, que no corta por
+  // hoy). Se unen ambas fuentes para que el mes sea seleccionable.
+  const mesesDisponiblesCombinados = useMemo(() => {
+    const set = new Set<string>(ccData?.mesesDisponibles ?? []);
+    for (const k of Object.keys(vData?.finDeMes?.gastosPorMes ?? vData?.gastosPorMes ?? {})) set.add(k);
+    return [...set].sort();
+  }, [ccData, vData]);
+
   // ── Variante activa de gastos (Total / Hasta hoy) ────────────────────────
   // El toggle sólo se muestra en modo "mes" y sobre el mes en curso; en
   // cualquier otro caso (mes cerrado, "Todos los meses", o modo rango de
@@ -557,7 +569,7 @@ export default function DashboardPage() {
             <PeriodSelect
               label="Período"
               value={mesFiltro}
-              options={(ccData?.mesesDisponibles ?? []).slice().sort().map(key => ({ label: mesLabel(key), value: key }))}
+              options={mesesDisponiblesCombinados.map(key => ({ label: mesLabel(key), value: key }))}
               onChange={v => { setMesFiltro(v); setModoFiltro('mes'); }}
               allLabel="Todos los meses"
             />
@@ -629,7 +641,7 @@ export default function DashboardPage() {
               const next = !compOn;
               setCompOn(next);
               if (next) {
-                const meses = (ccData?.mesesDisponibles ?? []).slice().sort();
+                const meses = mesesDisponiblesCombinados;
                 const idx = mesFiltro ? meses.indexOf(mesFiltro) : meses.length - 1;
                 if (!mesComp) setMesComp(idx > 0 ? meses[idx - 1] : meses[0] ?? '');
                 const sucs = Object.keys(ccData?.porLocal ?? {});
@@ -668,7 +680,7 @@ export default function DashboardPage() {
                 <PeriodSelect
                   label="vs"
                   value={mesComp}
-                  options={(ccData?.mesesDisponibles ?? []).slice().sort().map(key => ({ label: mesLabel(key), value: key }))}
+                  options={mesesDisponiblesCombinados.map(key => ({ label: mesLabel(key), value: key }))}
                   onChange={setMesComp}
                   allLabel="Seleccionar mes"
                 />

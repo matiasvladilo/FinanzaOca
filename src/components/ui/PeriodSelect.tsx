@@ -125,13 +125,16 @@ export function PeriodSelect({
       {/* ── Dropdown list ─────────────────────────────────────────────────── */}
       {open && (
         <div
-          className="absolute left-0 top-full mt-1.5 rounded-xl shadow-lg overflow-hidden z-50 min-w-[180px] py-1 transition-all duration-150 ease-out"
+          className="absolute left-0 top-full mt-1.5 rounded-xl shadow-lg overflow-y-auto overscroll-contain z-50 min-w-[180px] py-1 transition-all duration-150 ease-out"
           style={{
             background: 'var(--card)',
             border: '1px solid var(--border-2)',
             boxShadow: 'var(--card-shadow), 0 8px 24px -8px rgba(0,0,0,0.18)',
             opacity: entered ? 1 : 0,
             transform: entered ? 'translateY(0)' : 'translateY(-4px)',
+            // Con muchas opciones (ej. muchos meses disponibles) el panel se
+            // cortaba contra el borde de la ventana sin forma de scrollear.
+            maxHeight: 'min(320px, calc(100vh - 100px))',
           }}
         >
           {/* Opción "Todos" siempre al inicio */}
