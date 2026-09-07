@@ -85,6 +85,12 @@ export interface VentasResponse {
   topProveedores: { nombre: string; monto: number }[];
   porMedioPago: Record<string, number>;
   registrosDiariosGastos: { fecha: string; sucursal: string; monto: number }[];
+  /**
+   * Variante "fin de mes" de los agregados de gastos: las mismas cifras pero
+   * sin recortar en el día de hoy (incluye facturas con vencimiento futuro).
+   * Opcional: una respuesta cacheada vieja puede no traerla.
+   */
+  finDeMes?: Omit<VentasResponse, 'ok' | 'registrosDiariosGastos' | 'finDeMes'>;
 }
 
 // ── Merma (/api/merma-data) ───────────────────────────────────────────────────

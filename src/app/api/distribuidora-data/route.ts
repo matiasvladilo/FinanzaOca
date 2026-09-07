@@ -112,7 +112,12 @@ export async function GET(req: NextRequest) {
     }
 
     const hastaHoy = agregar(gastosHastaHoy);
-    const finDeMes = agregar(gastosFinDeMes);
+    // Sólo { kpi, gastosPorMes } — misma forma que el `finDeMes` de
+    // /api/produccion-data. El front sólo lee finDeMes.kpi.totalGastos;
+    // incluir `detalle` (una entrada por factura) y `topProveedores` acá
+    // duplicaba el peso de la respuesta sin que nadie los consumiera.
+    const finDeMesFull = agregar(gastosFinDeMes);
+    const finDeMes = { kpi: finDeMesFull.kpi, gastosPorMes: finDeMesFull.gastosPorMes };
 
     return NextResponse.json({
       ok: true,

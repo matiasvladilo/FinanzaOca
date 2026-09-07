@@ -333,10 +333,16 @@ export default function FactorIndicePage() {
     const tv = diasCaja
       .filter((r: any) => r.fecha?.startsWith(mesSeleccionado) && (todasSucs || sucSel.includes(r.local)))
       .reduce((s: number, r: any) => s + r.ventas, 0);
-    // Usar gastosPorMesSucursal del server (usa col 'mes' del sheet — más preciso que filtrar por fecha.iso)
-    const gastosPorMesActivo = modoGastos === 'total' ? (ventasData?.finDeMes?.gastosPorMes ?? {}) : (ventasData?.gastosPorMes ?? {});
+    // Usar los agregados por mes del server (la clave YYYY-MM sale de la `fecha`
+    // de cada factura, vía agregarGastos en api/ventas/route.ts — no de la
+    // columna 'mes' del sheet): más preciso que filtrar por fecha.iso acá.
+    // Si `finDeMes` no viene (respuesta cacheada vieja), degradar al valor
+    // "hasta hoy" en vez de quedar en 0.
+    const gastosPorMesActivo = modoGastos === 'total'
+      ? (ventasData?.finDeMes?.gastosPorMes ?? ventasData?.gastosPorMes ?? {})
+      : (ventasData?.gastosPorMes ?? {});
     const gastosMesSuc: Record<string, Record<string, number>> = modoGastos === 'total'
-      ? (ventasData?.finDeMes?.gastosPorMesSucursal ?? {})
+      ? (ventasData?.finDeMes?.gastosPorMesSucursal ?? ventasData?.gastosPorMesSucursal ?? {})
       : (ventasData?.gastosPorMesSucursal ?? {});
     let tg = 0;
     if (todasSucs) {

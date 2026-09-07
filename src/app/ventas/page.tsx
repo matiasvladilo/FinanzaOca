@@ -728,18 +728,19 @@ export default function VentasPage() {
   // es el mes en curso (ver Step 7); en cualquier otro caso (rango de meses,
   // mes cerrado) el modo efectivo es siempre "hasta hoy", sin importar el
   // último valor que haya quedado guardado en modoGastos.
-  const modoEfectivo: 'total' | 'hastaHoy' = (modoFiltro === 'mes' && mesDesde === mesHasta && esMesActualChile(mesDesde))
-    ? modoGastos
-    : 'hastaHoy';
-  // El resto de la página (filteredData de abajo) no cambia: se le
-  // redirige el dato de entrada según el toggle, con los mismos nombres
-  // que ya consumía (rawGastosMes, rawGastosMesSucursal, produccionMes).
-  const rawGastosMes = modoEfectivo === 'total' ? rawGastosMesFinDeMes : rawGastosMesHastaHoy;
-  const rawGastosMesSucursal = modoEfectivo === 'total' ? rawGastosMesSucursalFinDeMes : rawGastosMesSucursalHastaHoy;
-  const produccionMes = modoEfectivo === 'total' ? produccionMesFinDeMes : produccionMesHastaHoy;
+  // La derivación vive adentro de cada useMemo que la consume (y no acá
+  // afuera) para no romper la memoización que valida el React Compiler.
 
   // ── Datos filtrados ──────────────────────────────────────
   const filteredData = useMemo(() => {
+    const modoEfectivo: 'total' | 'hastaHoy' = (modoFiltro === 'mes' && mesDesde === mesHasta && esMesActualChile(mesDesde))
+      ? modoGastos
+      : 'hastaHoy';
+    // El resto del memo no cambia: se le redirige el dato de entrada según el
+    // toggle, con los mismos nombres que ya consumía.
+    const rawGastosMes = modoEfectivo === 'total' ? rawGastosMesFinDeMes : rawGastosMesHastaHoy;
+    const rawGastosMesSucursal = modoEfectivo === 'total' ? rawGastosMesSucursalFinDeMes : rawGastosMesSucursalHastaHoy;
+    const produccionMes = modoEfectivo === 'total' ? produccionMesFinDeMes : produccionMesHastaHoy;
     // ── Helper: chart data para un rango de días ─────────────────────────────
     function buildDayChart(fDesde: string, fHasta: string, localFilter: string | null = null) {
       // Producción no tiene registros diarios en rawDiasCaja — usar produccionMes (granularidad mensual)
@@ -1113,7 +1114,7 @@ export default function VentasPage() {
     const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]) : [];
     const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
     return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores, topProveedoresComp };
-  }, [rawLocalMes, modoEfectivo, rawGastosMesHastaHoy, rawGastosMesFinDeMes, rawGastosMesSucursalHastaHoy, rawGastosMesSucursalFinDeMes, rawDiasCaja, rawDiasGastos, produccionMesHastaHoy, produccionMesFinDeMes, produccionTopProveedores, localSel,
+  }, [rawLocalMes, modoGastos, rawGastosMesHastaHoy, rawGastosMesFinDeMes, rawGastosMesSucursalHastaHoy, rawGastosMesSucursalFinDeMes, rawDiasCaja, rawDiasGastos, produccionMesHastaHoy, produccionMesFinDeMes, produccionTopProveedores, localSel,
       mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compOn, compMes]);
 
@@ -1232,6 +1233,11 @@ export default function VentasPage() {
   // ── Proyección de ventas ───────────────────────────────────
   const proyeccionData = useMemo(() => {
     if (!mesDesde) return [];
+    // Misma derivación que en filteredData (ver comentario más arriba).
+    const modoEfectivo: 'total' | 'hastaHoy' = (modoFiltro === 'mes' && mesDesde === mesHasta && esMesActualChile(mesDesde))
+      ? modoGastos
+      : 'hastaHoy';
+    const produccionMes = modoEfectivo === 'total' ? produccionMesFinDeMes : produccionMesHastaHoy;
     const mes = mesDesde; // YYYY-MM (usa el mes inicial del filtro)
     const [year, month] = mes.split('-').map(Number);
     const totalDias = new Date(year, month, 0).getDate();
@@ -1266,7 +1272,7 @@ export default function VentasPage() {
         color: getSucursalColor(local),
       };
     }).filter(d => d.proyeccion > 0 || d.real > 0);
-  }, [rawDiasCaja, rawLocalMes, produccionMes, mesDesde, localSel, localesDisponibles]);
+  }, [rawDiasCaja, rawLocalMes, produccionMesHastaHoy, produccionMesFinDeMes, modoGastos, modoFiltro, mesDesde, mesHasta, localSel, localesDisponibles]);
 
   const proyeccionTotal = useMemo(() => {
     return proyeccionData.reduce((sum, item) => sum + item.proyeccion, 0);

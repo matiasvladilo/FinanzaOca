@@ -38,13 +38,6 @@ function mesLabel(key: string) {
 
 const defaultFilters: DashboardFilters = { fechaInicio: '', fechaFin: '', sucursales: [], vista: 'overview' };
 type ProductionSummary = { ventas: number; gastosHastaHoy: number; gastosFinDeMes: number };
-// `VentasResponse` (src/types/api.ts) todavía no declara `finDeMes` — el campo
-// existe en la respuesta real de /api/ventas (Task 3) pero el tipo compartido
-// no se actualizó en esa tarea. Se extiende acá, sólo para este archivo, en
-// vez de tocar src/types/api.ts (fuera del alcance de esta tarea).
-type VentasResponseConFinDeMes = VentasResponse & {
-  finDeMes?: Omit<VentasResponse, 'ok' | 'registrosDiariosGastos'>;
-};
 
 function ssGet(key: string, fallback: string): string {
   try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
@@ -70,7 +63,7 @@ export default function DashboardPage() {
   const [localB, setLocalB]         = useState('');
   const dateRef = useRef<HTMLDivElement>(null);
   const [ccData, setCcData]     = useState<CierreCajaResponse | null>(null);
-  const [vData, setVData]       = useState<VentasResponseConFinDeMes | null>(null);
+  const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
   const [produccionSummary, setProduccionSummary] = useState<ProductionSummary | null>(null);
   // Distribuidora aporta solo gastos: sus ventas ya vienen contadas en Producción
@@ -143,7 +136,7 @@ export default function DashboardPage() {
     Promise.all([
       fetch('/api/cierre-caja').then(r => r.json()),
       fetch('/api/ventas').then(r => r.json()),
-    ]).then(([cc, v]: [CierreCajaResponse, VentasResponseConFinDeMes]) => {
+    ]).then(([cc, v]: [CierreCajaResponse, VentasResponse]) => {
       setCcData(cc);
       setVData(v);
       if (cc.mesesDisponibles?.length) {
@@ -228,23 +221,26 @@ export default function DashboardPage() {
   }, [dateOpen]);
 
   // ── Variante activa de gastos (Total / Hasta hoy) ────────────────────────
-  // Fuera del mes en curso (mes cerrado, "Todos los meses", o modo rango de
-  // fechas) el toggle no se muestra — forzar 'hastaHoy' ahí para que el
-  // comportamiento sea exactamente el de siempre, quede visible o no el
-  // control.
-  const modoEfectivo: 'total' | 'hastaHoy' = esMesActualChile(mesFiltro) ? modoGastos : 'hastaHoy';
-  // Los memos de abajo (computed, computedDateRange) no cambian: sólo se les
-  // redirige el dato de entrada según el toggle.
-  const gastosPorMesActivo         = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMes ?? {})         : (vData?.gastosPorMes ?? {});
-  const porSucursalActivo          = modoEfectivo === 'total' ? (vData?.finDeMes?.porSucursal ?? {})          : (vData?.porSucursal ?? {});
-  const gastosPorMesSucursalActivo = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMesSucursal ?? {}) : (vData?.gastosPorMesSucursal ?? {});
-  const totalGastosVentasActivo    = modoEfectivo === 'total' ? (vData?.finDeMes?.kpi?.totalGastos ?? 0)      : (vData?.kpi?.totalGastos ?? 0);
-  const produccionGastosActivo     = modoEfectivo === 'total' ? (produccionSummary?.gastosFinDeMes ?? 0)      : (produccionSummary?.gastosHastaHoy ?? 0);
-  const distribuidoraGastosActivo  = modoEfectivo === 'total' ? distribuidoraGastos.finDeMes                  : distribuidoraGastos.hastaHoy;
+  // El toggle sólo se muestra en modo "mes" y sobre el mes en curso; en
+  // cualquier otro caso (mes cerrado, "Todos los meses", o modo rango de
+  // fechas) el modo efectivo es siempre 'hastaHoy', sin importar el último
+  // valor guardado en modoGastos. Cada useMemo que lo necesita deriva su
+  // propia copia adentro del callback (para no romper la memoización que
+  // valida el React Compiler); esta expresión debe quedar idéntica a la del
+  // guard de render del botón, más abajo.
 
   // ── Cálculos del dashboard (memoizados) ──────────────────────────────────
   const computed = useMemo(() => {
     if (!ccData?.ok) return null;
+    const modoEfectivo: 'total' | 'hastaHoy' =
+      (modoFiltro === 'mes' && esMesActualChile(mesFiltro)) ? modoGastos : 'hastaHoy';
+    const gastosPorMesActivo         = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMes ?? vData?.gastosPorMes ?? {})                 : (vData?.gastosPorMes ?? {});
+    const porSucursalActivo          = modoEfectivo === 'total' ? (vData?.finDeMes?.porSucursal ?? vData?.porSucursal ?? {})                   : (vData?.porSucursal ?? {});
+    const gastosPorMesSucursalActivo = modoEfectivo === 'total' ? (vData?.finDeMes?.gastosPorMesSucursal ?? vData?.gastosPorMesSucursal ?? {}) : (vData?.gastosPorMesSucursal ?? {});
+    const totalGastosVentasActivo    = modoEfectivo === 'total' ? (vData?.finDeMes?.kpi?.totalGastos ?? vData?.kpi?.totalGastos ?? 0)          : (vData?.kpi?.totalGastos ?? 0);
+    const produccionGastosActivo     = modoEfectivo === 'total' ? (produccionSummary?.gastosFinDeMes ?? 0)                                     : (produccionSummary?.gastosHastaHoy ?? 0);
+    const distribuidoraGastosActivo  = modoEfectivo === 'total' ? distribuidoraGastos.finDeMes                                                 : distribuidoraGastos.hastaHoy;
+
     const { porLocal, porLocalMes, chartData, mesesDisponibles } = ccData;
     const gastosPorMes = gastosPorMesActivo;
 
@@ -356,12 +352,18 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursales, mesFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
+  }, [ccData, vData, filters.sucursales, mesFiltro, modoFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
     if (modoFiltro !== 'dia' || (!fechaDesde && !fechaHasta)) return null;
     if (!ccData?.ok) return null;
+    // Acá modoFiltro ya está narrowed a 'dia', así que la regla compartida
+    // (`modoFiltro === 'mes' && esMesActualChile(mesFiltro) ? modoGastos :
+    // 'hastaHoy'`, ver `computed`) siempre resuelve a 'hastaHoy': el toggle no
+    // aplica en modo rango de fechas.
+    const produccionGastosActivo    = produccionSummary?.gastosHastaHoy ?? 0;
+    const distribuidoraGastosActivo = distribuidoraGastos.hastaHoy;
     const sucursales = filters.sucursales;
     const filtroActivo = sucursales.length > 0 && sucursales.length < totalSucursales;
     const dias     = (ccData as any).registrosDiarios ?? [];
@@ -414,7 +416,7 @@ export default function DashboardPage() {
       topSucursal: distribucion[0] ?? null,
       medioPago: { efectivo: ef, tarjeta: tar, transf: tr },
     };
-  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, mesFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
+  }, [ccData, vData, fechaDesde, fechaHasta, modoFiltro, filters.sucursales, computed, produccionSummary, distribuidoraGastos, totalSucursales]);
 
   // ── Datos activos (rango de días tiene prioridad sobre mes) ──────────────
   const activeData = computedDateRange ?? computed;
@@ -444,7 +446,14 @@ export default function DashboardPage() {
   const computedCompLocal = useMemo(() => {
     if (!compOn || compareType !== 'local' || !localA || !localB || !ccData?.ok) return null;
     const { porLocalMes, porLocal } = ccData;
-    const gastosPorMesSucursal = vData?.gastosPorMesSucursal ?? {};
+    // Misma derivación que en `computed`: si no, comparar locales sobre el mes
+    // en curso mostraría gastos "hasta hoy" mientras el KPI de arriba muestra
+    // el total del mes.
+    const modoEfectivo: 'total' | 'hastaHoy' =
+      (modoFiltro === 'mes' && esMesActualChile(mesFiltro)) ? modoGastos : 'hastaHoy';
+    const gastosPorMesSucursal = modoEfectivo === 'total'
+      ? (vData?.finDeMes?.gastosPorMesSucursal ?? vData?.gastosPorMesSucursal ?? {})
+      : (vData?.gastosPorMesSucursal ?? {});
     const mes = mesFiltro;
 
     const getData = (local: string) => {
@@ -458,7 +467,7 @@ export default function DashboardPage() {
     };
 
     return { dataA: getData(localA), dataB: getData(localB) };
-  }, [ccData, vData, compOn, compareType, localA, localB, mesFiltro]);
+  }, [ccData, vData, compOn, compareType, localA, localB, mesFiltro, modoFiltro, modoGastos]);
 
   // ── Datos del gráfico por sucursal seleccionada (multi-compare) ──────────
   const sucursalSeriesConfig = useMemo(() => {
@@ -683,8 +692,10 @@ export default function DashboardPage() {
             </>
           )}
 
-          {/* Toggle Total / Hasta hoy — sólo tiene sentido en el mes en curso */}
-          {esMesActualChile(mesFiltro) && (
+          {/* Toggle Total / Hasta hoy — sólo tiene sentido en modo mes y sobre
+              el mes en curso. Esta condición debe quedar idéntica a la de
+              `modoEfectivo` dentro de los useMemo de arriba. */}
+          {modoFiltro === 'mes' && esMesActualChile(mesFiltro) && (
             <button
               onClick={() => setModoGastos(m => m === 'total' ? 'hastaHoy' : 'total')}
               className={clsx(

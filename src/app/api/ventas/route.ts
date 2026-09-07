@@ -258,6 +258,13 @@ async function fetchVentasRaw() {
   const gastosHastaHoy = registros.filter(r => r.fecha <= HOY_ISO);
 
   const hastaHoy = agregarGastos(gastosHastaHoy, registros.length, ANIO_ACTUAL);
+  // OJO con la forma de `finDeMes`: se agrega sobre TODAS las facturas
+  // cargadas, sin ningún recorte temporal. Sus campos agregados de todo el
+  // período (`kpi`, `porSucursal`, `topProveedores`, `porMedioPago`) incluyen
+  // facturas de meses futuros — NO son "este mes, completo". Sólo los campos
+  // indexados por mes (`gastosPorMes`, `gastosPorMesSucursal`, `chartData`)
+  // son seguros de leer per-month; los agregados de arriba únicamente tienen
+  // sentido cuando no hay mes seleccionado (donde el front fuerza 'hastaHoy').
   const finDeMes = agregarGastos(gastosCrudo, registros.length, ANIO_ACTUAL);
 
   const registrosDiariosGastos = gastosCrudo
