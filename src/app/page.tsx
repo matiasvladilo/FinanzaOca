@@ -316,7 +316,11 @@ export default function DashboardPage() {
     } else {
       totalGastos = sucursales.reduce((s, suc) => s + (porSucursalActivo[suc]?.gastos ?? 0), 0);
     }
-    if (!filtroActivo) totalGastos += produccionGastosActivo + distribuidoraGastosActivo;
+    // Distribuidora vende a costo: lo que compra a terceros para abastecerse
+    // no se suma acá — ya quedó anotado como gasto del local cuando este le
+    // compró (proveedor "Distribuidora Oca" en sus Facturas, ver
+    // normalizeProveedorName). Sumarlo de nuevo lo duplicaba.
+    if (!filtroActivo) totalGastos += produccionGastosActivo;
 
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
 
@@ -412,9 +416,10 @@ export default function DashboardPage() {
       gastosPorSucursal['Producción'] = { gastos: produccionGastosActivo };
       totalGastos += produccionGastosActivo;
     }
+    // Distribuidora vende a costo: referencial, ya contado en el gasto del
+    // local — no se suma al total (mismo criterio que en `computed`).
     if (!filtroActivo && distribuidoraGastosActivo > 0) {
       gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastosActivo };
-      totalGastos += distribuidoraGastosActivo;
     }
     const totalVentas = Object.values(ventasPorLocal).reduce((s, v) => s + v, 0);
     const margen = totalVentas > 0 ? ((totalVentas - totalGastos) / totalVentas) * 100 : null;
