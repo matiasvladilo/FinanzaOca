@@ -24,7 +24,7 @@ import { parseMonto, parseFecha, getMesLabel, findHeader, agruparMontosPorTexto 
 import { getSupabaseClient } from '@/lib/supabase';
 import { getControlPanClient } from '@/lib/supabase-controlpan';
 import { requireAuth } from '@/lib/auth-api';
-import { limitesUtcDelRango, ultimoDiaDelMes, hoyISOChile } from '@/lib/date-utils';
+import { limitesUtcDelRango, ultimoDiaDelMes, hoyISOChile, mesLocalDesdeInstante } from '@/lib/date-utils';
 
 /**
  * Rango para consultar ConectOca.
@@ -80,6 +80,12 @@ function esCategoriaDistribuidora(id: string, porId: Map<string, CategoriaRaw>):
  * total agregado, porque eso hacía que el resultado de un mes cambiara según
  * qué tan ancho fuera el rango de fechas consultado (un mismo septiembre daba
  * $25M consultado solo y $33M consultado junto con todo un año).
+ *
+ * El mes de cada pedido/ítem se deriva con mesLocalDesdeInstante (hora de
+ * Chile), no con `created_at.slice(0, 7)` (mes UTC): un pedido de último día
+ * de mes en Chile puede tener un created_at cuya fecha UTC ya sea el día 1
+ * del mes siguiente, y .slice(0,7) lo agrupaba mal — se perdían pedidos de
+ * fin de mes (y su parte de bebidas) hacia el mes equivocado.
  */
 export function calcularVentasPorMes(
   orders: Record<string, unknown>[],
@@ -90,7 +96,7 @@ export function calcularVentasPorMes(
 ): { key: string; mes: string; ventas: number; pedidos: number }[] {
   const ventasMesMap: Record<string, { ventas: number; pedidos: number }> = {};
   for (const o of orders) {
-    const mes = String(o.created_at ?? '').slice(0, 7);
+    const mes = mesLocalDesdeInstante(String(o.created_at ?? ''));
     if (!mes || mes.length !== 7) continue;
     if (!ventasMesMap[mes]) ventasMesMap[mes] = { ventas: 0, pedidos: 0 };
     ventasMesMap[mes].ventas  += Number(o.total ?? 0);
@@ -101,7 +107,7 @@ export function calcularVentasPorMes(
     const productId = String(item.product_id ?? '');
     const categoria = productCategoryMap[productId] ?? 'Sin área';
     if (!categoriasExcluidas.has(categoria)) continue;
-    const mes = String(item.created_at ?? '').slice(0, 7);
+    const mes = mesLocalDesdeInstante(String(item.created_at ?? ''));
     if (!mes || mes.length !== 7) continue;
     bebidasPorMes[mes] = (bebidasPorMes[mes] ?? 0) + Number(item.quantity ?? 0) * Number(item.price ?? 0);
   }
@@ -456,23 +462,59 @@ export interface ControlPanData {
   deudaPorMes: Record<string, number>;
 }
 
-async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData | null> {
+/**
+ * Trae todas las filas de una tabla de ControlPan paginando de a PAGE_SIZE —
+ * PostgREST corta en 1000 filas por defecto, igual que fetchVentasSupabase
+ * más abajo, y por el mismo motivo: un rango de fechas ancho sobre `salidas`
+ * o `pagos` (ej. los 12 meses que pide el gráfico mensual) devolvía solo las
+ * primeras 1000 filas, perdiendo meses enteros en silencio. Ordena por fecha
+ * e id para que la paginación sea determinística — sin ORDER BY, Postgres no
+ * garantiza el mismo orden entre páginas y `.range()` puede repetir o saltar
+ * filas entre llamadas.
+ */
+async function fetchControlPanTabla<T>(
+  db: NonNullable<ReturnType<typeof getControlPanClient>>,
+  tabla: string,
+  columnas: string,
+  desdeStr: string,
+  hastaStr: string,
+): Promise<T[]> {
+  const PAGE_SIZE = 1000;
+  const filas: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await db
+      .from(tabla)
+      .select(columnas)
+      .gte('fecha', desdeStr)
+      .lte('fecha', hastaStr)
+      .order('fecha', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) { console.error(`[produccion-data] ${tabla} error:`, error.message); break; }
+    if (!data?.length) break;
+    filas.push(...(data as T[]));
+    if (data.length < PAGE_SIZE) break;
+  }
+  return filas;
+}
+
+export async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData | null> {
   const db = getControlPanClient();
   if (!db) return null;
 
   const desdeStr = desde.toISOString().slice(0, 10);
   const hastaStr = hasta.toISOString().slice(0, 10);
 
-  const [salidasRes, pagosRes, localesRes] = await Promise.all([
-    db.from('salidas').select('local, kg, deuda, fecha').gte('fecha', desdeStr).lte('fecha', hastaStr),
-    db.from('pagos').select('local, monto').gte('fecha', desdeStr).lte('fecha', hastaStr),
+  const [salidasRows, pagosRows, localesRes] = await Promise.all([
+    fetchControlPanTabla<{ local: string; kg: number; deuda: number; fecha: string }>(db, 'salidas', 'local, kg, deuda, fecha', desdeStr, hastaStr),
+    fetchControlPanTabla<{ local: string; monto: number }>(db, 'pagos', 'local, monto', desdeStr, hastaStr),
     db.from('locales').select('nombre, precio').eq('estado', 'ACTIVO'),
   ]);
 
   // ── SALIDAS: agrupar por local y por mes ──────────────────────────────────
   const clienteMap: Record<string, ControlPanSalidaCliente> = {};
   const deudaPorMes: Record<string, number> = {};
-  for (const row of salidasRes.data ?? []) {
+  for (const row of salidasRows) {
     const localName = (row.local ?? '').trim();
     if (!localName) continue;
     if (!clienteMap[localName]) clienteMap[localName] = { local: localName, kg: 0, deudaGenerada: 0 };
@@ -488,7 +530,7 @@ async function fetchControlPan(desde: Date, hasta: Date): Promise<ControlPanData
   // ── PAGOS: agrupar por local ──────────────────────────────────────────────
   let totalPagado = 0;
   const pagosClienteMap: Record<string, number> = {};
-  for (const row of pagosRes.data ?? []) {
+  for (const row of pagosRows) {
     const monto = Number(row.monto) || 0;
     totalPagado += monto;
     if (row.local) pagosClienteMap[row.local] = (pagosClienteMap[row.local] ?? 0) + monto;
@@ -570,7 +612,8 @@ export async function GET(req: NextRequest) {
           .order('created_at', { ascending: true })
           .limit(50000);
         for (const o of (data ?? [])) {
-          const mes = String((o as Record<string, unknown>).created_at ?? '').slice(0, 7);
+          // Mismo motivo que calcularVentasPorMes: mes en hora de Chile, no UTC.
+          const mes = mesLocalDesdeInstante(String((o as Record<string, unknown>).created_at ?? ''));
           if (mes.length === 7) mesesSet.add(mes);
         }
       } catch { /* Si Supabase falla, devolvemos los de la planilla */ }

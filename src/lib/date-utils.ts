@@ -214,6 +214,28 @@ function instanteEnZona(
   return new Date(real);
 }
 
+/**
+ * Mes calendario en hora de Chile (formato "YYYY-MM") para un instante UTC
+ * (ej. un `created_at` timestamptz de Supabase).
+ *
+ * No usar `isoInstante.slice(0, 7)` para esto: es el mes en UTC, que cerca
+ * del cambio de mes puede ser distinto al mes real en Chile (Chile va 3-4
+ * horas detrás de UTC, así que un pedido de último día de mes en Chile
+ * puede tener un `created_at` cuya fecha UTC ya sea el día 1 del mes
+ * siguiente). Devuelve '' para un input inválido o vacío.
+ */
+export function mesLocalDesdeInstante(isoInstante: string): string {
+  const d = new Date(isoInstante);
+  if (isNaN(d.getTime())) return '';
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ_NEGOCIO,
+    year: 'numeric', month: '2-digit',
+  }).formatToParts(d);
+  const p: Record<string, string> = {};
+  for (const x of partes) if (x.type !== 'literal') p[x.type] = x.value;
+  return `${p.year}-${p.month}`;
+}
+
 /** Cuántos días tiene ese mes (mes 1-12). */
 export function ultimoDiaDelMes(anio: number, mes: number): number {
   return new Date(Date.UTC(anio, mes, 0)).getUTCDate();
