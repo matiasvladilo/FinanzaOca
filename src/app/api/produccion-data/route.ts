@@ -71,6 +71,49 @@ function esCategoriaDistribuidora(id: string, porId: Map<string, CategoriaRaw>):
   return false;
 }
 
+/**
+ * Ventas de Producción por mes: total de pedidos ConectOca del mes, menos las
+ * bebidas/Distribuidora vendidas ese mismo mes, más pan externo del mes.
+ *
+ * Cada ítem resta su propio mes (created_at heredado del pedido padre en
+ * fetchVentasSupabase) — a propósito NO se reparte proporcionalmente sobre un
+ * total agregado, porque eso hacía que el resultado de un mes cambiara según
+ * qué tan ancho fuera el rango de fechas consultado (un mismo septiembre daba
+ * $25M consultado solo y $33M consultado junto con todo un año).
+ */
+export function calcularVentasPorMes(
+  orders: Record<string, unknown>[],
+  items: Record<string, unknown>[],
+  productCategoryMap: Record<string, string>,
+  categoriasExcluidas: Set<string>,
+  panExternoPorMes: Record<string, number>,
+): { key: string; mes: string; ventas: number; pedidos: number }[] {
+  const ventasMesMap: Record<string, { ventas: number; pedidos: number }> = {};
+  for (const o of orders) {
+    const mes = String(o.created_at ?? '').slice(0, 7);
+    if (!mes || mes.length !== 7) continue;
+    if (!ventasMesMap[mes]) ventasMesMap[mes] = { ventas: 0, pedidos: 0 };
+    ventasMesMap[mes].ventas  += Number(o.total ?? 0);
+    ventasMesMap[mes].pedidos += 1;
+  }
+  const bebidasPorMes: Record<string, number> = {};
+  for (const item of items) {
+    const productId = String(item.product_id ?? '');
+    const categoria = productCategoryMap[productId] ?? 'Sin área';
+    if (!categoriasExcluidas.has(categoria)) continue;
+    const mes = String(item.created_at ?? '').slice(0, 7);
+    if (!mes || mes.length !== 7) continue;
+    bebidasPorMes[mes] = (bebidasPorMes[mes] ?? 0) + Number(item.quantity ?? 0) * Number(item.price ?? 0);
+  }
+  return Object.entries(ventasMesMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, v]) => {
+      const [anio, mes] = key.split('-');
+      const ventasCorregidas = v.ventas - (bebidasPorMes[key] ?? 0) + (panExternoPorMes[key] ?? 0);
+      return { key, mes: getMesLabel(parseInt(mes), parseInt(anio)), ventas: ventasCorregidas, pedidos: v.pedidos };
+    });
+}
+
 // ── Rango de fechas ──────────────────────────────────────────────────────────
 function getDateRange(params: {
   mesDesde?: string; mesHasta?: string;
@@ -592,34 +635,9 @@ export async function GET(req: NextRequest) {
       ? Math.round(((totalVentas - totalCostos - totalMerma) / totalVentas) * 100)
       : 0;
 
-    // ── Ventas por mes: (orders.total - bebidas del mes) + pan externo del mes ──
-    // Los items no tienen created_at propio, así que distribuimos bebidasItems
-    // de forma proporcional al peso de cada mes sobre el total de orders.
-    const ventasMesMap: Record<string, { ventas: number; bebidasRaw: number; pedidos: number }> = {};
-    for (const o of orders) {
-      const mes = String(o.created_at ?? '').slice(0, 7);
-      if (!mes || mes.length !== 7) continue;
-      if (!ventasMesMap[mes]) ventasMesMap[mes] = { ventas: 0, bebidasRaw: 0, pedidos: 0 };
-      ventasMesMap[mes].ventas  += Number(o.total ?? 0);
-      ventasMesMap[mes].pedidos += 1;
-    }
-    // Acumular bebidas por mes usando el created_at del orden padre
-    // Para eso necesitamos un mapa order_id → mes. Lo hacemos con los orders que ya tenemos.
-    // Como items no tienen created_at, usamos una distribución proporcional al total de bebidas:
-    // distribuimos bebidasItems en los meses según el peso de orders.total de cada mes.
-    const totalOrdersSumLocal = orders.reduce((s, o) => s + Number(o.total ?? 0), 0);
-    for (const [mes, v] of Object.entries(ventasMesMap)) {
-      const peso = totalOrdersSumLocal > 0 ? v.ventas / totalOrdersSumLocal : 0;
-      ventasMesMap[mes].bebidasRaw = bebidasItems * peso;
-    }
+    // ── Ventas por mes: (orders.total - bebidas del mes real) + pan externo del mes ──
     const panExternoPorMes = controlPan?.deudaPorMes ?? {};
-    const ventasPorMes = Object.entries(ventasMesMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, v]) => {
-        const [anio, mes] = key.split('-');
-        const ventasCorregidas = v.ventas - v.bebidasRaw + (panExternoPorMes[key] ?? 0);
-        return { key, mes: getMesLabel(parseInt(mes), parseInt(anio)), ventas: ventasCorregidas, pedidos: v.pedidos };
-      });
+    const ventasPorMes = calcularVentasPorMes(orders, items, productCategoryMap, categoriasExcluidas, panExternoPorMes);
 
     // ── Gastos por mes (Facturas) ─────────────────────────────────────────────
     const gastosMesMap: Record<string, { mes: number; anio: number; monto: number }> = {};
