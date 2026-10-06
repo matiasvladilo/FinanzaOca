@@ -68,9 +68,12 @@ export default function DashboardPage() {
   const [produccionSummary, setProduccionSummary] = useState<ProductionSummary | null>(null);
   // Distribuidora aporta solo gastos: sus ventas ya vienen contadas en Producción
   const [distribuidoraGastos, setDistribuidoraGastos] = useState<{ hastaHoy: number; finDeMes: number }>({ hastaHoy: 0, finDeMes: 0 });
-  // Serie histórica de ventas de Producción, para cuando se la elige en "comparar por
-  // sucursal". Aparte de produccionSummary porque ese solo cubre el período filtrado.
+  // Series históricas de Producción (todos los meses, no solo el filtrado):
+  // ventas por mes (ya se usaba para "comparar por sucursal"; ahora también
+  // alimenta el gráfico "Ventas vs Gastos — Por Mes") y su gasto propio por
+  // mes (nuevo, mismo gráfico).
   const [produccionPorMes, setProduccionPorMes] = useState<Record<string, number>>({});
+  const [produccionGastosPorMesHistorico, setProduccionGastosPorMesHistorico] = useState<Record<string, number>>({});
 
   // Total de sucursales disponibles (de Cierre de Caja) — se calcula temprano
   // porque `computed`, `computedDateRange`, `computedComp` y el efecto de
@@ -335,12 +338,20 @@ export default function DashboardPage() {
 
     const realChartData = mesesDisponibles.map((key, i) => {
       const mes = parseInt(key.split('-')[1], 10);
-      const ventas = !filtroActivo
+      let ventas = !filtroActivo
         ? (chartData[i]?.ventas ?? 0)
         : sucursales.reduce((s, suc) => s + (porLocalMes[suc]?.[key]?.ventas ?? 0), 0);
-      const gastos = !filtroActivo
+      let gastos = !filtroActivo
         ? (gastosPorMes[key] ?? 0)
         : sucursales.reduce((s, suc) => s + (gastosPorMesSucursal[suc]?.[key] ?? 0), 0);
+      if (!filtroActivo) {
+        // Mismo criterio que la tarjeta KPI (ver Task 3): venta COMPLETA de
+        // Producción (no se excluye nada, se cancela sola con el costo que
+        // el local ya anotó) y su gasto propio, mes a mes. Distribuidora
+        // queda afuera, solo referencial.
+        ventas += produccionPorMes[key] ?? 0;
+        gastos += produccionGastosPorMesHistorico[key] ?? 0;
+      }
       return { dia: MESES_SHORT[mes] + ' ' + key.split('-')[0], ventas, gastos };
     });
 
@@ -371,7 +382,7 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursales, mesFiltro, modoFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales]);
+  }, [ccData, vData, filters.sucursales, mesFiltro, modoFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales, produccionPorMes, produccionGastosPorMesHistorico]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
@@ -517,11 +528,10 @@ export default function DashboardPage() {
     });
   }, [ccData, selectedSucursales, produccionPorMes]);
 
-  // Ventas de Producción por mes, solo cuando se la elige para comparar: al no
-  // salir de Cierre de Caja, "Distribución por Sucursal" no puede alimentar su
-  // línea del gráfico con porLocalMes como al resto de las sucursales.
+  // Series históricas de Producción por mes — se traen una sola vez que haya
+  // meses disponibles (no solo cuando se elige "comparar por sucursal"),
+  // porque el gráfico "Ventas vs Gastos — Por Mes" las necesita siempre.
   useEffect(() => {
-    if (!selectedSucursales.includes('Producción')) return;
     if (!ccData?.mesesDisponibles?.length) return;
     if (Object.keys(produccionPorMes).length > 0) return; // ya se trajo
 
@@ -537,9 +547,13 @@ export default function DashboardPage() {
       .then(r => r.json())
       .then(d => {
         if (cancelled || !d?.ok) return;
-        const map: Record<string, number> = {};
-        for (const item of d.ventasPorMes ?? []) map[item.key] = item.ventas ?? 0;
-        setProduccionPorMes(map);
+        const ventas: Record<string, number> = {};
+        for (const item of d.ventasPorMes ?? []) ventas[item.key] = item.ventas ?? 0;
+        setProduccionPorMes(ventas);
+
+        const gastos: Record<string, number> = {};
+        for (const item of d.gastosPorMes ?? []) gastos[item.key] = item.monto ?? 0;
+        setProduccionGastosPorMesHistorico(gastos);
       })
       .catch(() => {});
 
