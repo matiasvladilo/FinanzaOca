@@ -6,10 +6,17 @@
  *
  * IMPORTANTE — esta ruta NO devuelve ventas, y es deliberado: los pedidos de la
  * Distribuidora se cargan en ConectOca bajo el mismo business_id que Producción,
- * así que sus ventas ya están contadas en /api/produccion-data. Traerlas acá
- * las duplicaría.
+ * pero /api/produccion-data EXCLUYE esos ítems (ver esCategoriaDistribuidora)
+ * porque son mercadería de Distribuidora, no producción propia. Como
+ * Distribuidora vende a costo (sin margen), no hay ninguna "venta" propia que
+ * valga la pena trackear — lo único relevante es su gasto, y ese ya queda
+ * anotado en la planilla del local que compra (proveedor "Distribuidora Oca",
+ * ver normalizeProveedorName en src/lib/data/parsers.ts). Traer las ventas acá
+ * no sumaría nada nuevo.
  *
- * Los gastos tampoco se suman a los de Producción: van como línea propia.
+ * El gasto tampoco se suma a los de Producción ni al total consolidado del
+ * dashboard (src/app/page.tsx, `computed`/`computedDateRange`): va como línea
+ * propia, solo referencial — ya está contado en el gasto del local.
  *
  * Query params (modo mes):
  *   mesDesde  → "YYYY-MM"  (default: hace 2 meses)
