@@ -224,13 +224,15 @@ function instanteEnZona(
  * puede tener un `created_at` cuya fecha UTC ya sea el día 1 del mes
  * siguiente). Devuelve '' para un input inválido o vacío.
  */
+const FORMATO_MES_CHILE = new Intl.DateTimeFormat('en-US', {
+  timeZone: TZ_NEGOCIO,
+  year: 'numeric', month: '2-digit',
+});
+
 export function mesLocalDesdeInstante(isoInstante: string): string {
   const d = new Date(isoInstante);
   if (isNaN(d.getTime())) return '';
-  const partes = new Intl.DateTimeFormat('en-US', {
-    timeZone: TZ_NEGOCIO,
-    year: 'numeric', month: '2-digit',
-  }).formatToParts(d);
+  const partes = FORMATO_MES_CHILE.formatToParts(d);
   const p: Record<string, string> = {};
   for (const x of partes) if (x.type !== 'literal') p[x.type] = x.value;
   return `${p.year}-${p.month}`;
