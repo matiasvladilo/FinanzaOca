@@ -25,12 +25,14 @@ export default function ResumenSucursales({
 }: ResumenSucursalesProps) {
   if (loading) return <Skeleton className="h-full min-h-[200px]" />;
 
-  const totalGastos = Object.values(gastosPorSucursal).reduce((s, v) => s + v.gastos, 0);
-
-  // Unidades que aportan gastos pero no ventas (hoy: Distribuidora, cuyos
-  // pedidos se cargan en ConectOca y ya se cuentan dentro de Producción).
-  // Sin estas filas el total de gastos del pie no cuadraría con la tabla.
+  // Unidades que aportan gastos pero no ventas (hoy: Distribuidora, que
+  // vende a costo a los locales — su gasto ya está contado en las Facturas
+  // de cada local, por eso se muestra como fila referencial pero NO entra
+  // en el total del pie, igual que en "Gastos Totales" del dashboard).
   const conVentas  = new Set(distribucion.map(d => d.nombre));
+  const totalGastos = Object.entries(gastosPorSucursal)
+    .filter(([nombre]) => conVentas.has(nombre))
+    .reduce((s, [, v]) => s + v.gastos, 0);
   const soloGastos = Object.entries(gastosPorSucursal)
     .filter(([nombre, v]) => !conVentas.has(nombre) && v.gastos > 0)
     .sort(([, a], [, b]) => b.gastos - a.gastos)

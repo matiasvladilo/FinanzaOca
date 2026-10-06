@@ -66,7 +66,9 @@ export default function DashboardPage() {
   const [vData, setVData]       = useState<VentasResponse | null>(null);
   const [loading, setLoading]   = useState(true);
   const [produccionSummary, setProduccionSummary] = useState<ProductionSummary | null>(null);
-  // Distribuidora aporta solo gastos: sus ventas ya vienen contadas en Producción
+  // Distribuidora aporta solo gastos: vende a costo a los locales (sin
+  // margen), así que no hay venta propia que valga la pena trackear — ver
+  // distribuidora-data/route.ts.
   const [distribuidoraGastos, setDistribuidoraGastos] = useState<{ hastaHoy: number; finDeMes: number }>({ hastaHoy: 0, finDeMes: 0 });
   // Series históricas de Producción (todos los meses, no solo el filtrado):
   // ventas por mes (ya se usaba para "comparar por sucursal"; ahora también
@@ -74,6 +76,7 @@ export default function DashboardPage() {
   // mes (nuevo, mismo gráfico).
   const [produccionPorMes, setProduccionPorMes] = useState<Record<string, number>>({});
   const [produccionGastosPorMesHistorico, setProduccionGastosPorMesHistorico] = useState<Record<string, number>>({});
+  const [produccionGastosPorMesHistoricoFinDeMes, setProduccionGastosPorMesHistoricoFinDeMes] = useState<Record<string, number>>({});
 
   // Total de sucursales disponibles (de Cierre de Caja) — se calcula temprano
   // porque `computed`, `computedDateRange`, `computedComp` y el efecto de
@@ -302,8 +305,10 @@ export default function DashboardPage() {
       gastosPorSucursal['Producción'] = { gastos: produccionGastosActivo };
     }
 
-    // Distribuidora entra como línea de gasto propia, sin ventas: las suyas se
-    // cargan en ConectOca y ya están dentro de Producción.
+    // Distribuidora entra como línea de gasto propia, solo referencial: su
+    // gasto ya está contado en las Facturas del local que le compra (vende
+    // a costo) — no se suma a totalGastos, ver fix 3 más arriba en esta
+    // misma tarea.
     if (!filtroActivo && distribuidoraGastosActivo > 0) {
       gastosPorSucursal['Distribuidora'] = { gastos: distribuidoraGastosActivo };
     }
@@ -350,7 +355,9 @@ export default function DashboardPage() {
         // el local ya anotó) y su gasto propio, mes a mes. Distribuidora
         // queda afuera, solo referencial.
         ventas += produccionPorMes[key] ?? 0;
-        gastos += produccionGastosPorMesHistorico[key] ?? 0;
+        gastos += (modoEfectivo === 'total'
+          ? (produccionGastosPorMesHistoricoFinDeMes[key] ?? produccionGastosPorMesHistorico[key])
+          : produccionGastosPorMesHistorico[key]) ?? 0;
       }
       return { dia: MESES_SHORT[mes] + ' ' + key.split('-')[0], ventas, gastos };
     });
@@ -382,7 +389,7 @@ export default function DashboardPage() {
       medioPago: medioPagoMontos,
       gastosPorSucursal,
     };
-  }, [ccData, vData, filters.sucursales, mesFiltro, modoFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales, produccionPorMes, produccionGastosPorMesHistorico]);
+  }, [ccData, vData, filters.sucursales, mesFiltro, modoFiltro, modoGastos, produccionSummary, distribuidoraGastos, totalSucursales, produccionPorMes, produccionGastosPorMesHistorico, produccionGastosPorMesHistoricoFinDeMes]);
 
   // ── Filtro por rango de días (calcula sobre registros diarios) ───────────
   const computedDateRange = useMemo(() => {
@@ -530,10 +537,15 @@ export default function DashboardPage() {
 
   // Series históricas de Producción por mes — se traen una sola vez que haya
   // meses disponibles (no solo cuando se elige "comparar por sucursal"),
-  // porque el gráfico "Ventas vs Gastos — Por Mes" las necesita siempre.
+  // porque el gráfico "Ventas vs Gastos — Por Mes" las necesita siempre. El
+  // ref evita reintentos infinitos si la API responde ok con un array vacío
+  // (Supabase sin configurar, o un error transitorio en la paginación de
+  // fetchVentasSupabase) — sin él, guardar {} dispara el efecto de nuevo.
+  const produccionHistoricoFetchedRef = useRef(false);
   useEffect(() => {
     if (!ccData?.mesesDisponibles?.length) return;
-    if (Object.keys(produccionPorMes).length > 0) return; // ya se trajo
+    if (produccionHistoricoFetchedRef.current) return;
+    produccionHistoricoFetchedRef.current = true;
 
     const meses = [...ccData.mesesDisponibles].sort();
     const params = new URLSearchParams({
@@ -551,14 +563,18 @@ export default function DashboardPage() {
         for (const item of d.ventasPorMes ?? []) ventas[item.key] = item.ventas ?? 0;
         setProduccionPorMes(ventas);
 
-        const gastos: Record<string, number> = {};
-        for (const item of d.gastosPorMes ?? []) gastos[item.key] = item.monto ?? 0;
-        setProduccionGastosPorMesHistorico(gastos);
+        const gastosHastaHoy: Record<string, number> = {};
+        for (const item of d.gastosPorMes ?? []) gastosHastaHoy[item.key] = item.monto ?? 0;
+        setProduccionGastosPorMesHistorico(gastosHastaHoy);
+
+        const gastosFinDeMes: Record<string, number> = {};
+        for (const item of d.finDeMes?.gastosPorMes ?? []) gastosFinDeMes[item.key] = item.monto ?? 0;
+        setProduccionGastosPorMesHistoricoFinDeMes(gastosFinDeMes);
       })
       .catch(() => {});
 
     return () => { cancelled = true; };
-  }, [selectedSucursales, ccData, produccionPorMes]);
+  }, [ccData]);
 
   // ── Sucursales para el filtro del Header ─────────────────────────────────
   const sucursalesDisponibles = useMemo(() => {
