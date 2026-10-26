@@ -637,20 +637,27 @@ export default function DashboardPage() {
               <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
             {dateOpen && (
-              <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-4 min-w-[260px]">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3">Rango de fechas</p>
+              <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl z-50 p-4 min-w-[260px]"
+                style={{ boxShadow: 'var(--card-shadow), 0 8px 24px -8px rgba(0,0,0,0.18)' }}>
+                <p className="text-[10px] font-medium text-gray-400 mb-3">Rango de fechas</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Desde</label>
-                    <input type="date" value={fechaDesde}
-                      onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors" />
+                    <label className="text-[10px] text-gray-400 font-medium mb-1 block">Desde</label>
+                    <div className="relative">
+                      <input type="date" value={fechaDesde}
+                        onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
+                        className="w-full border border-gray-200 rounded-lg pl-2.5 pr-7 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer" />
+                      <Calendar className="w-3.5 h-3.5 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-3)' }} />
+                    </div>
                   </div>
                   <div>
-                    <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Hasta</label>
-                    <input type="date" value={fechaHasta}
-                      onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors" />
+                    <label className="text-[10px] text-gray-400 font-medium mb-1 block">Hasta</label>
+                    <div className="relative">
+                      <input type="date" value={fechaHasta}
+                        onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
+                        className="w-full border border-gray-200 rounded-lg pl-2.5 pr-7 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer" />
+                      <Calendar className="w-3.5 h-3.5 pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-3)' }} />
+                    </div>
                   </div>
                 </div>
                 {modoFiltro === 'dia' && (

@@ -143,6 +143,13 @@ body {
   border-color: var(--border-2);
 }
 
+/* Date inputs: el popover nativo de calendario del navegador hereda el
+   esquema de color del SO si no se le dice nada — en dark/dracula queda
+   un calendario blanco y brillante encima de una UI oscura. */
+:is(.dark, .dracula) input[type="date"] {
+  color-scheme: dark;
+}
+
 /* Selects de "comparar locales" (A/B, Dashboard): la regla de arriba
    (`:is(.dark, .dracula) select {...}`) les gana en especificidad a las
    clases `dark:bg-*`/`dark:text-*` de Tailwind, así que necesitan su
