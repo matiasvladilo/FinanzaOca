@@ -7,6 +7,7 @@ import {
   AreaChart, Area,
   LineChart, Line,
   BarChart, Bar,
+  PieChart, Pie, Legend,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, Cell,
 } from 'recharts';
@@ -15,6 +16,7 @@ import {
   Download, TrendingUp, TrendingDown,
   DollarSign, ShoppingCart,
   BarChart2, Receipt, Activity, LayoutGrid, GitCompare, Wallet,
+  Maximize2, List as ListIcon, PieChart as PieChartIcon,
 } from 'lucide-react';
 import clsx from 'clsx';
 import MonthMultiSelect from '@/components/ui/MonthMultiSelect';
@@ -428,6 +430,10 @@ function keyToLabel(key: string) {
   return `${MESES_LABELS[parseInt(mes, 10)]} ${anio}`;
 }
 
+// Paleta para el gráfico de torta de Top Proveedores (hasta 8 proveedores,
+// ver el slice(0, 8) de buildTopProveedores).
+const PIE_COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#EF4444', '#06B6D4', '#84CC16'];
+
 // ── Helpers para selección de meses múltiples ────────────────────────────
 /** Mes actual si está en la lista, si no el más reciente disponible. */
 function mesDefault(meses: string[]): string {
@@ -485,6 +491,66 @@ function formatDayLabel(iso: string): string {
 function formatWeekLabel(iso: string): string {
   const [, m, d] = iso.split('-');
   return `Sem ${parseInt(d)}/${parseInt(m)}`;
+}
+
+// ─── Cuerpo de "Proyección de Ventas" (chico en la card, grande en el modal) ──
+interface ProyeccionRow {
+  local: string;
+  real: number;
+  restante: number;
+  proyeccion: number;
+  diasConRegistros: number;
+  totalDias: number;
+  color: string;
+}
+function ProyeccionBody({ data, total, height = 200 }: { data: ProyeccionRow[]; total: number; height?: number }) {
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart data={data} layout="vertical" barCategoryGap="20%" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
+          <XAxis type="number" hide />
+          <YAxis type="category" dataKey="local" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} width={58} />
+          <Tooltip
+            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload;
+              return (
+                <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
+                  style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
+                  <p className="font-bold mb-1.5">{d.local}</p>
+                  <p style={{ color: 'var(--text-3)' }}>Real: <span className="font-semibold" style={{ color: d.color }}>{fmtFull(d.real)}</span></p>
+                  <p style={{ color: 'var(--text-3)' }}>Proyección: <span className="font-semibold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span></p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>{d.diasConRegistros} días con registros / {d.totalDias} días del mes</p>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="real" stackId="p" name="Real" radius={[0, 0, 0, 0]}>
+            {data.map((d, i) => <Cell key={i} fill={d.color} />)}
+          </Bar>
+          <Bar dataKey="restante" stackId="p" name="Proyección restante" radius={[0, 4, 4, 0]}>
+            {data.map((d, i) => <Cell key={i} fill={d.color} fillOpacity={0.2} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="mt-3 space-y-2">
+        {data.map(d => (
+          <div key={d.local} className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
+              <span style={{ color: 'var(--text-2)' }}>{d.local}</span>
+            </div>
+            <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-t pt-2 text-[11px]" style={{ borderColor: 'var(--border)' }}>
+          <span className="font-bold uppercase tracking-wide" style={{ color: 'var(--text)' }}>Total</span>
+          <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(total)}</span>
+        </div>
+      </div>
+    </>
+  );
 }
 
 // ─── Modal de detalle de proveedor ────────────────────────
@@ -636,6 +702,9 @@ export default function VentasPage() {
   const [loadingSheet, setLoadingSheet] = useState(true);
   // Modal de proveedor
   const [proveedorModal, setProveedorModal] = useState<{ nombre: string; localFilter: string | null } | null>(null);
+  // Proyección de Ventas expandida (modal) y vista de Top Proveedores (lista/torta)
+  const [proyeccionExpandida, setProyeccionExpandida] = useState(false);
+  const [proveedoresVista, setProveedoresVista] = useState<'lista' | 'torta'>('lista');
   // Presupuesto (50% de ventas dinámico)
   const [presupuestoOn, setPresupuestoOn] = useState(false);
   const [facturasSinFecha, setFacturasSinFecha] = useState<FacturaSinFecha[]>([]);
@@ -1684,6 +1753,15 @@ export default function VentasPage() {
           <div className="sm:col-span-1 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Proyección de Ventas</h3>
+              {proyeccionData.length > 0 && (
+                <button
+                  onClick={() => setProyeccionExpandida(true)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
+                  title="Ver en grande" aria-label="Expandir Proyección de Ventas"
+                  style={{ color: 'var(--text-3)' }}>
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <p className="text-[10px] mb-4" style={{ color: 'var(--text-3)' }}>
               (Ventas reales / días con registro) × días del mes
@@ -1695,51 +1773,7 @@ export default function VentasPage() {
                 </p>
               </div>
             ) : (
-              <>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={proyeccionData} layout="vertical" barCategoryGap="20%" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
-                    <XAxis type="number" hide />
-                    <YAxis type="category" dataKey="local" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} width={58} />
-                    <Tooltip
-                      cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const d = payload[0]?.payload;
-                        return (
-                          <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
-                            style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
-                            <p className="font-bold mb-1.5">{d.local}</p>
-                            <p style={{ color: 'var(--text-3)' }}>Real: <span className="font-semibold" style={{ color: d.color }}>{fmtFull(d.real)}</span></p>
-                            <p style={{ color: 'var(--text-3)' }}>Proyección: <span className="font-semibold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span></p>
-                            <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>{d.diasConRegistros} días con registros / {d.totalDias} días del mes</p>
-                          </div>
-                        );
-                      }}
-                    />
-                    <Bar dataKey="real" stackId="p" name="Real" radius={[0, 0, 0, 0]}>
-                      {proyeccionData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                    </Bar>
-                    <Bar dataKey="restante" stackId="p" name="Proyección restante" radius={[0, 4, 4, 0]}>
-                      {proyeccionData.map((d, i) => <Cell key={i} fill={d.color} fillOpacity={0.2} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="mt-3 space-y-2">
-                  {proyeccionData.map(d => (
-                    <div key={d.local} className="flex items-center justify-between text-[11px]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
-                        <span style={{ color: 'var(--text-2)' }}>{d.local}</span>
-                      </div>
-                      <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between border-t pt-2 text-[11px]" style={{ borderColor: 'var(--border)' }}>
-                    <span className="font-bold uppercase tracking-wide" style={{ color: 'var(--text)' }}>Total</span>
-                    <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(proyeccionTotal)}</span>
-                  </div>
-                </div>
-              </>
+              <ProyeccionBody data={proyeccionData} total={proyeccionTotal} height={200} />
             )}
           </div>
 
@@ -1747,20 +1781,80 @@ export default function VentasPage() {
           <div className="sm:col-span-2 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Top Proveedores</h3>
-              <button
-                onClick={() => {
-                  exportToCSV(filteredData.topProveedores.map((p, i) => ({
-                    '#': i + 1, Proveedor: p.nombre, 'Monto CLP': p.monto,
-                    '% del Total': gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) + '%' : '—',
-                  })), 'top_proveedores');
-                  toast('Top proveedores exportado');
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
-                <Download className="w-3 h-3" />CSV
-              </button>
+              <div className="flex items-center gap-2">
+                {!filteredData.hasComp && (
+                  <div className="flex items-center rounded-lg p-0.5 gap-0.5" style={{ background: 'var(--hover)' }}>
+                    <button
+                      onClick={() => setProveedoresVista('lista')}
+                      title="Ver como lista" aria-label="Ver como lista" aria-pressed={proveedoresVista === 'lista'}
+                      className="w-7 h-7 flex items-center justify-center rounded-md transition-all"
+                      style={proveedoresVista === 'lista'
+                        ? { background: 'var(--card)', color: 'var(--active-text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+                        : { color: 'var(--text-3)' }}>
+                      <ListIcon className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setProveedoresVista('torta')}
+                      title="Ver como gráfico de pastel" aria-label="Ver como gráfico de pastel" aria-pressed={proveedoresVista === 'torta'}
+                      className="w-7 h-7 flex items-center justify-center rounded-md transition-all"
+                      style={proveedoresVista === 'torta'
+                        ? { background: 'var(--card)', color: 'var(--active-text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+                        : { color: 'var(--text-3)' }}>
+                      <PieChartIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    exportToCSV(filteredData.topProveedores.map((p, i) => ({
+                      '#': i + 1, Proveedor: p.nombre, 'Monto CLP': p.monto,
+                      '% del Total': gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) + '%' : '—',
+                    })), 'top_proveedores');
+                    toast('Top proveedores exportado');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
+                  <Download className="w-3 h-3" />CSV
+                </button>
+              </div>
             </div>
 
-            {filteredData.hasComp && filteredData.topProveedoresComp.length > 0 ? (
+            {!loadingSheet && !filteredData.hasComp && proveedoresVista === 'torta' ? (
+              /* ── Vista de torta ── */
+              filteredData.topProveedores.length === 0 ? (
+                <p className="text-[11px] text-gray-400 py-8 text-center">Sin datos para el período seleccionado</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={320}>
+                  <PieChart>
+                    <Pie
+                      data={filteredData.topProveedores.map(p => ({ name: p.nombre || '(sin nombre)', value: p.monto }))}
+                      dataKey="value" nameKey="name"
+                      cx="38%" cy="50%" innerRadius={55} outerRadius={105}
+                      paddingAngle={2}
+                    >
+                      {filteredData.topProveedores.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0];
+                        const value = (d.value as number) ?? 0;
+                        const pct = gastosReal > 0 ? ((value / gastosReal) * 100).toFixed(1) : '0';
+                        return (
+                          <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
+                            style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
+                            <p className="font-bold mb-1">{d.name}</p>
+                            <p style={{ color: 'var(--text-3)' }}>{fmtFull(value)} · {pct}%</p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={8}
+                      wrapperStyle={{ fontSize: 11 }}
+                      formatter={(value: string) => <span style={{ color: 'var(--text-2)' }}>{value}</span>} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )
+            ) : filteredData.hasComp && filteredData.topProveedoresComp.length > 0 ? (
               /* ── Modo comparativo: 2 columnas ── */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
@@ -1864,6 +1958,37 @@ export default function VentasPage() {
           detalle={proveedorDetalle}
           onClose={() => setProveedorModal(null)}
         />
+      )}
+
+      {/* Modal Proyección de Ventas expandida */}
+      {proyeccionExpandida && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setProyeccionExpandida(false)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl overflow-y-auto"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+              <div>
+                <h2 className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>Proyección de Ventas</h2>
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>
+                  (Ventas reales / días con registro) × días del mes
+                </p>
+              </div>
+              <button
+                onClick={() => setProyeccionExpandida(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-400 text-lg leading-none"
+              >✕</button>
+            </div>
+            <div className="px-6 py-5">
+              <ProyeccionBody data={proyeccionData} total={proyeccionTotal} height={420} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
