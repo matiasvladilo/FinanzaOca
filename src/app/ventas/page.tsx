@@ -17,7 +17,7 @@ import {
   BarChart2, Receipt, Activity, LayoutGrid, GitCompare, Wallet,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { PeriodSelect } from '@/components/ui/PeriodSelect';
+import MonthMultiSelect from '@/components/ui/MonthMultiSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
@@ -1330,17 +1330,16 @@ export default function VentasPage() {
         <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
 
-          {/* Período mes — UI de un solo valor temporal; el Task 2 la reemplaza por MonthMultiSelect */}
-          <PeriodSelect
+          {/* Período: meses múltiples (incluye combinaciones no contiguas) */}
+          <MonthMultiSelect
             label="Período"
-            value={mesesSelOrdenados.length === 1 ? mesesSelOrdenados[0] : ''}
-            options={mesesDisponibles.map(m => ({ label: keyToLabel(m), value: m }))}
-            onChange={v => {
-              setMesesSel(v ? new Set([v]) : new Set(mesesDisponibles));
+            mesesDisponibles={mesesDisponibles}
+            selected={mesesSel}
+            onChange={next => {
+              setMesesSel(next);
               setModoFiltro('mes');
               setFechaDesde(''); setFechaHasta('');
             }}
-            allLabel="Todos los meses"
           />
 
           {/* Rango días */}
