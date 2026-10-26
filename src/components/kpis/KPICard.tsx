@@ -26,24 +26,17 @@ const ACCENT_ICON: Record<string, string> = {
   gray:  'text-gray-500 dark:text-gray-400',
 };
 
-const ACCENT_BORDER: Record<string, string> = {
-  blue:  'border-l-blue-500',
-  red:   'border-l-red-500',
-  green: 'border-l-emerald-500',
-  gray:  'border-l-gray-400',
-};
-
 export default function KPICard({
   label, value, sub, delta, deltaPositive, icon, accent = 'blue',
 }: KPICardProps) {
   return (
-    <div className={'bg-white dark:bg-gray-900 rounded-2xl p-4 lg:p-5 flex flex-col gap-3 border-l-[3px] border border-gray-100 dark:border-gray-800 ' + ACCENT_BORDER[accent]}
+    <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 lg:p-5 flex flex-col gap-3 border border-gray-100 dark:border-gray-800"
       style={{ boxShadow: 'var(--card-shadow)' }}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold tracking-widest text-gray-400 dark:text-gray-500 uppercase">
+        <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500">
           {label}
         </span>
-        <div className={'w-8 h-8 rounded-xl flex items-center justify-center ' + ACCENT_BG[accent]}>
+        <div className={'w-7 h-7 rounded-lg flex items-center justify-center ' + ACCENT_BG[accent]}>
           <span className={ACCENT_ICON[accent]}>{icon}</span>
         </div>
       </div>
