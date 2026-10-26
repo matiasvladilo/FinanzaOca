@@ -143,6 +143,33 @@ body {
   border-color: var(--border-2);
 }
 
+/* Selects de "comparar locales" (A/B, Dashboard): la regla de arriba
+   (`:is(.dark, .dracula) select {...}`) les gana en especificidad a las
+   clases `dark:bg-*`/`dark:text-*` de Tailwind, así que necesitan su
+   propia regla para mostrar el tinte de acento en dark. B usa rosa en vez
+   de morado para seguir distinguiéndose de A en dracula, donde azul y
+   morado ya convergen en el mismo violeta del tema. */
+:is(.dark, .dracula) select.bg-blue-50 {
+  background-color: rgba(37, 99, 235, 0.18);
+  color: #60a5fa;
+  border-color: transparent;
+}
+:is(.dark, .dracula) select.bg-pink-50 {
+  background-color: rgba(236, 72, 153, 0.18);
+  color: #f472b6;
+  border-color: transparent;
+}
+.dracula select.bg-blue-50 {
+  background-color: rgba(189,147,249,0.18);
+  color: #bd93f9;
+  border-color: transparent;
+}
+.dracula select.bg-pink-50 {
+  background-color: rgba(255,121,198,0.18);
+  color: #ff79c6;
+  border-color: transparent;
+}
+
 /* Dracula: accentos azules → morado */
 .dracula .text-blue-600 { color: #bd93f9; }
 .dracula .text-blue-500 { color: #bd93f9; }

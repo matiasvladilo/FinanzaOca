@@ -16,6 +16,7 @@ type AccentColor = 'blue' | 'violet';
  *  porque no depende de un fondo pastel fijo). */
 const ACCENT: Record<AccentColor, {
   triggerActive: string;
+  triggerActiveSoft: string;
   hoverBorder: string;
   hoverText: string;
   hoverTextDark: string;
@@ -24,6 +25,7 @@ const ACCENT: Record<AccentColor, {
 }> = {
   blue: {
     triggerActive: 'bg-blue-600 border-blue-600 text-white',
+    triggerActiveSoft: 'bg-blue-50 dark:bg-blue-950 border-transparent text-blue-600 dark:text-blue-400',
     hoverBorder: 'hover:border-blue-400',
     hoverText: 'hover:text-blue-600',
     hoverTextDark: 'hover:text-blue-400',
@@ -32,6 +34,7 @@ const ACCENT: Record<AccentColor, {
   },
   violet: {
     triggerActive: 'bg-violet-600 border-violet-600 text-white',
+    triggerActiveSoft: 'bg-violet-50 dark:bg-violet-950 border-transparent text-violet-600 dark:text-violet-400',
     hoverBorder: 'hover:border-violet-400',
     hoverText: 'hover:text-violet-600',
     hoverTextDark: 'hover:text-violet-400',
@@ -53,6 +56,9 @@ interface PeriodSelectProps {
   dark?: boolean;
   /** Color de acento del trigger y del dropdown. Default: 'blue'. */
   accentColor?: AccentColor;
+  /** 'soft' usa el estilo tintado (fondo pastel + texto de color) en vez
+   *  del estilo sólido-saturado. Default: 'solid' (comportamiento actual). */
+  variant?: 'solid' | 'soft';
 }
 
 export function PeriodSelect({
@@ -64,6 +70,7 @@ export function PeriodSelect({
   size = 'md',
   dark = false,
   accentColor = 'blue',
+  variant = 'solid',
 }: PeriodSelectProps) {
   const [open, setOpen] = useState(false);
   // Controla la animación de entrada: el panel se monta con opacidad 0 /
@@ -101,17 +108,18 @@ export function PeriodSelect({
         onClick={() => setOpen(o => !o)}
         suppressHydrationWarning
         className={clsx(
-          'flex items-center gap-1 border rounded-xl font-medium transition-all select-none',
+          'flex items-center gap-1 border font-medium transition-all select-none',
+          variant === 'soft' ? 'rounded-lg' : 'rounded-xl',
           size === 'sm' ? 'px-2.5 py-1.5 text-[11px]' : 'px-3.5 py-2 text-[12px]',
           isFiltered
-            ? accent.triggerActive
+            ? (variant === 'soft' ? accent.triggerActiveSoft : accent.triggerActive)
             : dark
               ? clsx('bg-slate-700 border-slate-600 text-slate-200', accent.hoverBorder, accent.hoverTextDark)
               : clsx('bg-white border-gray-200 text-gray-600', accent.hoverBorder, accent.hoverText),
         )}
       >
         {label && (
-          <span suppressHydrationWarning className={clsx('text-[10px] font-bold uppercase tracking-widest', isFiltered ? 'opacity-80' : 'opacity-60')}>
+          <span suppressHydrationWarning className={clsx(variant === 'soft' ? 'text-[10px] font-medium' : 'text-[10px] font-bold uppercase tracking-widest', isFiltered ? 'opacity-80' : 'opacity-60')}>
             {label}
           </span>
         )}

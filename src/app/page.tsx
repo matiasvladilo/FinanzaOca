@@ -613,6 +613,7 @@ export default function DashboardPage() {
               options={mesesDisponiblesCombinados.map(key => ({ label: mesLabel(key), value: key }))}
               onChange={v => { setMesFiltro(v); setModoFiltro('mes'); }}
               allLabel="Todos los meses"
+              variant="soft"
             />
           )}
 
@@ -726,6 +727,7 @@ export default function DashboardPage() {
                   options={mesesDisponiblesCombinados.map(key => ({ label: mesLabel(key), value: key }))}
                   onChange={setMesComp}
                   allLabel="Seleccionar mes"
+                  variant="soft"
                 />
               ) : (
                 <>
@@ -737,7 +739,7 @@ export default function DashboardPage() {
                   </select>
                   <span className="text-gray-400 text-[11px] font-bold">vs</span>
                   <select value={localB} onChange={e => setLocalB(e.target.value)}
-                    className="border border-transparent bg-purple-50 dark:bg-purple-950 rounded-lg px-3 py-2 text-[12px] font-medium text-purple-600 dark:text-purple-400 outline-none">
+                    className="border border-transparent bg-pink-50 dark:bg-pink-950 rounded-lg px-3 py-2 text-[12px] font-medium text-pink-600 dark:text-pink-400 outline-none">
                     {sucursalesDisponibles.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
