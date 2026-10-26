@@ -21,10 +21,10 @@ export default function Header({ title = 'Data Analytics Desk' }: HeaderProps) {
   const meta = THEME_META[theme];
 
   return (
-    <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b sticky top-0 z-30 transition-colors"
+    <header className="flex items-center justify-between px-3 sm:px-6 py-4 sm:py-5 border-b sticky top-0 z-30 transition-colors"
       style={{ background: 'var(--header-bg)', borderColor: 'var(--border)' }}>
 
-      <h1 className="text-[14px] sm:text-[18px] font-bold tracking-tight shrink-0" style={{ color: 'var(--text)' }}>
+      <h1 className="text-[14px] sm:text-[18px] font-semibold tracking-tight shrink-0" style={{ color: 'var(--text)' }}>
         {title}
       </h1>
 
