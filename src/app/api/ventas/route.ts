@@ -274,7 +274,12 @@ async function fetchVentasRaw() {
       mesKey: `${r.anio}-${String(r.mes).padStart(2, '0')}`,
       sucursal: r.sucursal,
       monto: r.monto,
-      proveedor: r.proveedor,
+      // Mismo criterio que `topProveedores` más arriba: unifica las variantes
+      // tipeadas a mano de un mismo proveedor (ver normalizeProveedorName) —
+      // sin esto, Top Proveedores en /ventas mostraba "PANADERIA",
+      // "Panadería" y "panaderia y pasteleria" como tres proveedores
+      // distintos en vez de uno solo.
+      proveedor: normalizeProveedorName(r.proveedor),
       subtipo: r.subtipo,
     }));
 
