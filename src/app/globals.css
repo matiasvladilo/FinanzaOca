@@ -24,7 +24,7 @@
   --skeleton:       #f3f4f6;
   --chart-grid:     #e9ecef;
   --chart-axis:     #9CA3AF;
-  --card-shadow:    0 1px 3px 0 rgba(0,0,0,0.07), 0 1px 2px -1px rgba(0,0,0,0.05);
+  --card-shadow:    0 1px 2px 0 rgba(0,0,0,0.04);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -48,7 +48,7 @@
   --skeleton:       #334155;
   --chart-grid:     #2a3547;
   --chart-axis:     #64748b;
-  --card-shadow:    0 4px 6px -1px rgba(0,0,0,0.25), 0 2px 4px -2px rgba(0,0,0,0.15);
+  --card-shadow:    0 1px 3px 0 rgba(0,0,0,0.3);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -72,7 +72,7 @@
   --skeleton:       #44475a;
   --chart-grid:     #44475a;
   --chart-axis:     #6272a4;
-  --card-shadow:    0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -2px rgba(0,0,0,0.2);
+  --card-shadow:    0 1px 3px 0 rgba(0,0,0,0.3);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -81,7 +81,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -153,6 +153,17 @@ body {
 .dracula .ring-blue-500   { --tw-ring-color: #bd93f9; }
 .dracula .hover\:text-blue-600:hover  { color: #bd93f9; }
 .dracula .hover\:border-blue-400:hover { border-color: #bd93f9; }
+
+/* Dracula: acentos secundarios del toolbar de filtros (Comparar / Total·Hasta hoy) */
+.dracula .bg-purple-50      { background-color: rgba(189,147,249,0.18); }
+.dracula .text-purple-600   { color: #bd93f9; }
+.dracula .hover\:text-purple-600:hover   { color: #bd93f9; }
+.dracula .hover\:border-purple-400:hover { border-color: #bd93f9; }
+
+.dracula .bg-emerald-50      { background-color: rgba(80,250,123,0.18); }
+.dracula .text-emerald-600   { color: #50fa7b; }
+.dracula .hover\:text-emerald-600:hover   { color: #50fa7b; }
+.dracula .hover\:border-emerald-400:hover { border-color: #50fa7b; }
 
 /* Recharts — fondo transparente siempre */
 .recharts-wrapper,
