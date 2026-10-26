@@ -617,6 +617,12 @@ export default function VentasPage() {
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
   const [mesesSel, setMesesSel] = useState<Set<string>>(new Set());
   const mesesSelOrdenados = [...mesesSel].sort();
+  // mesDesde/mesHasta son el mín/máx de mesesSel, no un rango real — sirven
+  // para "¿hay un solo mes elegido?" (mesDesde === mesHasta) y como tramo a
+  // pedirle al backend de Producción, pero NUNCA para filtrar datos por
+  // rango (m >= mesDesde && m <= mesHasta): con una selección no contigua
+  // eso volvería a incluir los meses salteados. Para filtrar, usar siempre
+  // mesesSel.has(m).
   const mesDesde = mesesSelOrdenados[0] ?? '';
   const mesHasta = mesesSelOrdenados[mesesSelOrdenados.length - 1] ?? '';
   const [modoGastos, setModoGastos] = useState<'total' | 'hastaHoy'>('total');
@@ -911,7 +917,16 @@ export default function VentasPage() {
 
     // ── Helper: top proveedores filtrado ─────────────────────────────────────
     function buildTopProveedores(fDesde: string, fHasta: string, meses: Set<string> | null, modo: 'dia' | 'mes', localFilter: string | null = null) {
-      if (localFilter === PRODUCCION_LOCAL) return produccionTopProveedores;
+      if (localFilter === PRODUCCION_LOCAL) {
+        // El ranking de Producción viene pre-agregado del backend sobre todo
+        // el tramo mín↔máx pedido (ver el fetch a /api/produccion-data más
+        // arriba) — no tiene desglose por mes para filtrar en el cliente. Si
+        // la selección no es contigua, ese tramo incluye meses salteados que
+        // acá no se puede excluir, así que se oculta en vez de mostrar un
+        // número mezclado con meses que el usuario no eligió.
+        if (modo === 'mes' && meses && meses.size > 1 && !esContiguo([...meses].sort())) return [];
+        return produccionTopProveedores;
+      }
       const provMap: Record<string, number> = {};
       const provNombre: Record<string, string> = {};
       for (const r of rawDiasGastos) {
