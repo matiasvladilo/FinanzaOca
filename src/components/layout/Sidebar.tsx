@@ -66,8 +66,8 @@ export default function Sidebar() {
         {/* Logo */}
         <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--sidebar-border)' }}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-md flex-shrink-0">
-              <BarChart3 className="w-5 h-5 text-white" />
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--active-bg)' }}>
+              <BarChart3 className="w-4 h-4" style={{ color: 'var(--active-text)' }} />
             </div>
             <div>
               <p className="text-[13px] font-bold leading-tight" style={{ color: 'var(--text)' }}>Admin Panel</p>
@@ -84,7 +84,7 @@ export default function Sidebar() {
               <Link
                 key={href}
                 href={href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150"
                 style={active
                   ? { background: 'var(--active-bg)', color: 'var(--active-text)' }
                   : { color: 'var(--text-3)' }}
