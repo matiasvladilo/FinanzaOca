@@ -1600,7 +1600,7 @@ export default function VentasPage() {
                   <button key={m} onClick={() => setMetrica(m)}
                     className={clsx('px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all capitalize',
                       metrica === m ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-                    {m === 'ambos' ? 'Comparar' : m.charAt(0).toUpperCase() + m.slice(1)}
+                    {m === 'ambos' ? 'Ventas + Gastos' : m.charAt(0).toUpperCase() + m.slice(1)}
                   </button>
                 ))}
               </div>
