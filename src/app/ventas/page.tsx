@@ -427,6 +427,35 @@ function keyToLabel(key: string) {
   const [anio, mes] = key.split('-');
   return `${MESES_LABELS[parseInt(mes, 10)]} ${anio}`;
 }
+
+// ── Helpers para selección de meses múltiples ────────────────────────────
+/** Mes actual si está en la lista, si no el más reciente disponible. */
+function mesDefault(meses: string[]): string {
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  return meses.includes(mesActual) ? mesActual : meses[meses.length - 1];
+}
+/** ¿La lista ordenada de meses "YYYY-MM" es una secuencia consecutiva? */
+function esContiguo(meses: string[]): boolean {
+  for (let i = 1; i < meses.length; i++) {
+    const [y0, m0] = meses[i - 1].split('-').map(Number);
+    const [y1, m1] = meses[i].split('-').map(Number);
+    if ((y1 * 12 + m1) - (y0 * 12 + m0) !== 1) return false;
+  }
+  return true;
+}
+/** Label para un conjunto de meses: 1 mes → el mes; contiguos → rango "A – B";
+ *  hasta 4 sueltos → lista separada por comas; más → "N meses". */
+function formatMesesLabel(mesesOrdenados: string[]): string {
+  if (mesesOrdenados.length === 0) return 'Sin período';
+  if (mesesOrdenados.length === 1) return keyToLabel(mesesOrdenados[0]);
+  if (esContiguo(mesesOrdenados)) {
+    return `${keyToLabel(mesesOrdenados[0])} – ${keyToLabel(mesesOrdenados[mesesOrdenados.length - 1])}`;
+  }
+  if (mesesOrdenados.length <= 4) return mesesOrdenados.map(keyToLabel).join(', ');
+  return `${mesesOrdenados.length} meses`;
+}
+
 type MesSlice = { ventas: number; efectivo: number; tarjeta: number; transf: number };
 type DiaCaja = { fecha: string; local: string; ventas: number; efectivo: number; tarjeta: number; transf: number };
 type DiaGasto = { fecha: string; mesKey?: string; sucursal: string; monto: number; proveedor?: string; subtipo?: string };
@@ -586,9 +615,10 @@ export default function VentasPage() {
   const [produccionMesFinDeMes, setProduccionMesFinDeMes] = useState<Record<string, ProductionMonth>>({});
   const [produccionTopProveedores, setProduccionTopProveedores] = useState<{ nombre: string; monto: number }[]>([]);
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
-  const [mesDesde, setMesDesde] = useState('');
-  const [mesHasta, setMesHasta] = useState('');
-  const [mesPill, setMesPill] = useState('');
+  const [mesesSel, setMesesSel] = useState<Set<string>>(new Set());
+  const mesesSelOrdenados = [...mesesSel].sort();
+  const mesDesde = mesesSelOrdenados[0] ?? '';
+  const mesHasta = mesesSelOrdenados[mesesSelOrdenados.length - 1] ?? '';
   const [modoGastos, setModoGastos] = useState<'total' | 'hastaHoy'>('total');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
@@ -653,13 +683,7 @@ export default function VentasPage() {
         const meses = [...new Set([...setCaja, ...setFactura])].sort();
         setMesesDisponibles(meses);
         if (meses.length) {
-          // Default: mes actual si está disponible, si no el más reciente
-          const hoy = new Date();
-          const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
-          const seleccionado = meses.includes(mesActual) ? mesActual : meses[meses.length - 1];
-          setMesDesde(seleccionado);
-          setMesHasta(seleccionado);
-          setMesPill(seleccionado);
+          setMesesSel(new Set([mesDefault(meses)]));
         }
         // Si el usuario tiene restricción de local, pre-seleccionarlo
         const lr = getLocalRestriction();
@@ -668,6 +692,15 @@ export default function VentasPage() {
       .catch(() => {})
       .finally(() => setLoadingSheet(false));
   }, []);
+
+  // Si el usuario vacía la selección de meses (botón "Ninguno" del selector),
+  // evita que los cálculos se queden sin ningún mes — vuelve al mismo default
+  // que al cargar los datos.
+  useEffect(() => {
+    if (mesesSel.size === 0 && mesesDisponibles.length > 0) {
+      setMesesSel(new Set([mesDefault(mesesDisponibles)]));
+    }
+  }, [mesesSel, mesesDisponibles]);
 
   useEffect(() => {
     if (modoFiltro === 'dia' && (!fechaDesde || !fechaHasta)) return;
@@ -817,13 +850,13 @@ export default function VentasPage() {
       return { data, porLocal };
     }
 
-    // ── Helper: chart data para un rango de meses ────────────────────────────
-    function buildMonthChart(mDesde: string, mHasta: string, localFilter: string | null = null) {
+    // ── Helper: chart data para un conjunto de meses ──────────────────────────
+    function buildMonthChart(mesesFiltro: Set<string>, localFilter: string | null = null) {
       const includeProduccion = localFilter === null || localFilter === PRODUCCION_LOCAL;
       const locals = localFilter !== null
         ? (localFilter === PRODUCCION_LOCAL ? [] : [localFilter])
         : Object.keys(rawLocalMes);
-      const meses = mesesDisponibles.filter(m => (!mDesde || m >= mDesde) && (!mHasta || m <= mHasta));
+      const meses = mesesDisponibles.filter(m => mesesFiltro.has(m));
       const byMes: Record<string, { ventas: number; gastos: number }> = {};
       for (const local of locals) {
         for (const mes of meses) {
@@ -877,7 +910,7 @@ export default function VentasPage() {
     }
 
     // ── Helper: top proveedores filtrado ─────────────────────────────────────
-    function buildTopProveedores(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
+    function buildTopProveedores(fDesde: string, fHasta: string, meses: Set<string> | null, modo: 'dia' | 'mes', localFilter: string | null = null) {
       if (localFilter === PRODUCCION_LOCAL) return produccionTopProveedores;
       const provMap: Record<string, number> = {};
       const provNombre: Record<string, string> = {};
@@ -890,8 +923,7 @@ export default function VentasPage() {
         } else {
           // Usar mesKey (mes de pago) si disponible; si no, usar YYYY-MM de la fecha de emisión
           const mes = r.mesKey ?? r.fecha.slice(0, 7);
-          if (mDesde && mes < mDesde) continue;
-          if (mHasta && mes > mHasta) continue;
+          if (meses && !meses.has(mes)) continue;
         }
         const key = r.proveedor.toLowerCase();
         if (!provNombre[key]) provNombre[key] = r.proveedor;
@@ -901,7 +933,7 @@ export default function VentasPage() {
     }
 
     // ── Helper: transacciones (cierres de caja) filtrado ─────────────────────
-    function buildTransacciones(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
+    function buildTransacciones(fDesde: string, fHasta: string, meses: Set<string> | null, modo: 'dia' | 'mes', localFilter: string | null = null) {
       let count = 0;
       for (const r of rawDiasCaja) {
         if (!r.fecha) continue;
@@ -911,8 +943,7 @@ export default function VentasPage() {
           if (fHasta && r.fecha > fHasta) continue;
         } else {
           const mes = r.fecha.slice(0, 7);
-          if (mDesde && mes < mDesde) continue;
-          if (mHasta && mes > mHasta) continue;
+          if (meses && !meses.has(mes)) continue;
         }
         count++;
       }
@@ -920,8 +951,8 @@ export default function VentasPage() {
     }
 
     // ── Helpers multi-local ───────────────────────────────────────────────────
-    function buildMultiLocalMonthChart(mDesde: string, mHasta: string, locals: string[]): MultiChartRow[] {
-      const meses = mesesDisponibles.filter(m => (!mDesde || m >= mDesde) && (!mHasta || m <= mHasta));
+    function buildMultiLocalMonthChart(mesesFiltro: Set<string>, locals: string[]): MultiChartRow[] {
+      const meses = mesesDisponibles.filter(m => mesesFiltro.has(m));
       return meses.map(m => {
         const row: MultiChartRow = { fecha: keyToLabel(m) };
         for (let i = 0; i < locals.length; i++) {
@@ -999,7 +1030,7 @@ export default function VentasPage() {
       if (modoFiltro === 'dia') {
         multiChartData = buildMultiLocalDayChart(fechaDesde, fechaHasta, localSel);
       } else {
-        multiChartData = buildMultiLocalMonthChart(mesDesde, mesHasta, localSel);
+        multiChartData = buildMultiLocalMonthChart(mesesSel, localSel);
       }
       const perLocalTotals = localSel.map((_, i) => ({
         ventas: multiChartData.reduce((s, r) => s + ((r[`ventas_${i}`] as number) ?? 0), 0),
@@ -1016,16 +1047,16 @@ export default function VentasPage() {
       const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
       localSel.forEach((local, i) => { porLocalFiltrado[local] = perLocalTotals[i]; });
       const topProveedores = modoFiltro === 'dia'
-        ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[0])
-        : buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[0]);
+        ? buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', localSel[0])
+        : buildTopProveedores('', '', mesesSel, 'mes', localSel[0]);
       const topProveedoresComp = localSel.length === 2
         ? (modoFiltro === 'dia'
-          ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[1])
-          : buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]))
+          ? buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', localSel[1])
+          : buildTopProveedores('', '', mesesSel, 'mes', localSel[1]))
         : [];
       const totalTransacciones = modoFiltro === 'dia'
-        ? buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', localSel[0])
-        : buildTransacciones('', '', mesDesde, mesHasta, 'mes', localSel[0]);
+        ? buildTransacciones(fechaDesde, fechaHasta, null, 'dia', localSel[0])
+        : buildTransacciones('', '', mesesSel, 'mes', localSel[0]);
       return {
         totalVentas, totalGastos, totalVentasComp, totalGastosComp,
         chartData: multiChartData as unknown as ChartRow[],
@@ -1054,23 +1085,23 @@ export default function VentasPage() {
       }
       const totalVentas = dataA.reduce((s, r) => s + r.ventas, 0);
       const totalGastos = dataA.reduce((s, r) => s + r.gastos, 0);
-      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', dataAFilter);
-      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', dataAFilter);
-      const topProveedoresComp = isLocalComp ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[1]) : [];
+      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, null, 'dia', dataAFilter);
+      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', dataAFilter);
+      const topProveedoresComp = isLocalComp ? buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', localSel[1]) : [];
       return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: isLocalComp, totalTransacciones, topProveedores, topProveedoresComp };
     }
 
     // ── Modo mes ─────────────────────────────────────────────────────────────
-    const dataA = buildMonthChart(mesDesde, mesHasta, dataAFilter);
+    const dataA = buildMonthChart(mesesSel, dataAFilter);
     let chartData: ChartRow[] = dataA;
     let totalVentasComp = 0, totalGastosComp = 0;
     if (isLocalComp) {
-      const dataB = buildMonthChart(mesDesde, mesHasta, localSel[1]);
+      const dataB = buildMonthChart(mesesSel, localSel[1]);
       totalVentasComp = dataB.reduce((s, r) => s + r.ventas, 0);
       totalGastosComp = dataB.reduce((s, r) => s + r.gastos, 0);
       chartData = mergeWithComp(dataA, dataB);
     } else if (isPeriodComp) {
-      const dataB = buildMonthChart(compMes, compMes, localFilter);
+      const dataB = buildMonthChart(new Set([compMes]), localFilter);
       totalVentasComp = dataB.reduce((s, r) => s + r.ventas, 0);
       totalGastosComp = dataB.reduce((s, r) => s + r.gastos, 0);
       chartData = mergeWithComp(dataA, dataB);
@@ -1078,7 +1109,7 @@ export default function VentasPage() {
     const totalVentas = dataA.reduce((s, r) => s + r.ventas, 0);
     const totalGastos = dataA.reduce((s, r) => s + r.gastos, 0);
 
-    const mesesFiltrados = mesesDisponibles.filter(m => (!mesDesde || m >= mesDesde) && (!mesHasta || m <= mesHasta));
+    const mesesFiltrados = mesesDisponibles.filter(m => mesesSel.has(m));
     const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
     const localsToShow = localSel.length > 0 ? localSel : [...Object.keys(rawLocalMes), PRODUCCION_LOCAL];
     for (const local of localsToShow) {
@@ -1116,13 +1147,13 @@ export default function VentasPage() {
       }
     }
 
-    const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes', dataAFilter);
-    const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes', dataAFilter);
-    const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]) : [];
+    const totalTransacciones = buildTransacciones('', '', mesesSel, 'mes', dataAFilter);
+    const topProveedores = buildTopProveedores('', '', mesesSel, 'mes', dataAFilter);
+    const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesesSel, 'mes', localSel[1]) : [];
     const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
     return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores, topProveedoresComp };
   }, [rawLocalMes, modoGastos, rawGastosMesHastaHoy, rawGastosMesFinDeMes, rawGastosMesSucursalHastaHoy, rawGastosMesSucursalFinDeMes, rawDiasCaja, rawDiasGastos, produccionMesHastaHoy, produccionMesFinDeMes, produccionTopProveedores, localSel,
-      mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
+      mesesSel, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compOn, compMes]);
 
   // ── Detalle de proveedor seleccionado ──────────────────────
@@ -1137,8 +1168,7 @@ export default function VentasPage() {
       if (localFilter && r.sucursal !== localFilter) continue;
       const mes = r.fecha?.slice(0, 7) ?? '';
       if (modoFiltro === 'mes') {
-        if (mesDesde && mes < mesDesde) continue;
-        if (mesHasta && mes > mesHasta) continue;
+        if (!mesesSel.has(mes)) continue;
       } else {
         if (fechaDesde && r.fecha < fechaDesde) continue;
         if (fechaHasta && r.fecha > fechaHasta) continue;
@@ -1151,7 +1181,7 @@ export default function VentasPage() {
     const meses = Object.entries(porMes).sort(([a], [b]) => a.localeCompare(b));
     const locales = Object.entries(porLocal).sort(([, a], [, b]) => b - a);
     return { total, meses, locales };
-  }, [proveedorModal, rawDiasGastos, mesDesde, mesHasta, fechaDesde, fechaHasta, modoFiltro]);
+  }, [proveedorModal, rawDiasGastos, mesesSel, fechaDesde, fechaHasta, modoFiltro]);
 
   const ventasReal = filteredData.totalVentas;
   const gastosReal = filteredData.totalGastos;
@@ -1177,13 +1207,12 @@ export default function VentasPage() {
         if (fechaHasta && r.fecha > fechaHasta) continue;
       } else {
         const mes = r.fecha.slice(0, 7);
-        if (mesDesde && mes < mesDesde) continue;
-        if (mesHasta && mes > mesHasta) continue;
+        if (!mesesSel.has(mes)) continue;
       }
       sum += r.monto;
     }
     return sum;
-  }, [rawDiasGastos, localSel, modoFiltro, fechaDesde, fechaHasta, mesDesde, mesHasta]);
+  }, [rawDiasGastos, localSel, modoFiltro, fechaDesde, fechaHasta, mesesSel]);
   const indiceP = ventasReal > 0 ? ((gastosSinPanaderia / ventasReal) * 100).toFixed(1) : '0.0';
   const chartData = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
   const localRestriccion = getLocalRestriction(); // null si puede ver todos
@@ -1239,7 +1268,7 @@ export default function VentasPage() {
 
   // ── Proyección de ventas ───────────────────────────────────
   const proyeccionData = useMemo(() => {
-    if (!mesDesde) return [];
+    if (mesesSel.size !== 1) return [];
     // Misma derivación que en filteredData (ver comentario más arriba).
     const modoEfectivo: 'total' | 'hastaHoy' =
       modoFiltro !== 'mes' || mesDesde !== mesHasta ? 'hastaHoy'
@@ -1281,7 +1310,7 @@ export default function VentasPage() {
         color: getSucursalColor(local),
       };
     }).filter(d => d.proyeccion > 0 || d.real > 0);
-  }, [rawDiasCaja, rawLocalMes, produccionMesHastaHoy, produccionMesFinDeMes, modoGastos, modoFiltro, mesDesde, mesHasta, localSel, localesDisponibles]);
+  }, [rawDiasCaja, rawLocalMes, produccionMesHastaHoy, produccionMesFinDeMes, modoGastos, modoFiltro, mesesSel, localSel, localesDisponibles]);
 
   const proyeccionTotal = useMemo(() => {
     return proyeccionData.reduce((sum, item) => sum + item.proyeccion, 0);
@@ -1301,19 +1330,13 @@ export default function VentasPage() {
         <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
 
-          {/* Período mes */}
+          {/* Período mes — UI de un solo valor temporal; el Task 2 la reemplaza por MonthMultiSelect */}
           <PeriodSelect
             label="Período"
-            value={mesPill}
+            value={mesesSelOrdenados.length === 1 ? mesesSelOrdenados[0] : ''}
             options={mesesDisponibles.map(m => ({ label: keyToLabel(m), value: m }))}
             onChange={v => {
-              setMesPill(v);
-              if (v) {
-                setMesDesde(v); setMesHasta(v);
-              } else if (mesesDisponibles.length) {
-                setMesDesde(mesesDisponibles[0]);
-                setMesHasta(mesesDisponibles[mesesDisponibles.length - 1]);
-              }
+              setMesesSel(v ? new Set([v]) : new Set(mesesDisponibles));
               setModoFiltro('mes');
               setFechaDesde(''); setFechaHasta('');
             }}
@@ -1345,12 +1368,12 @@ export default function VentasPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1">Desde</p>
-                    <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); setMesPill(''); }}
+                    <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); }}
                       className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1">Hasta</p>
-                    <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); setMesPill(''); }}
+                    <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); }}
                       className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
                   </div>
                 </div>
@@ -1527,9 +1550,7 @@ export default function VentasPage() {
                 ? localSel[0]
                 : modoFiltro === 'dia' && (fechaDesde || fechaHasta)
                   ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
-                  : mesDesde
-                    ? (mesDesde === mesHasta ? keyToLabel(mesDesde) : `${keyToLabel(mesDesde)} – ${keyToLabel(mesHasta)}`)
-                    : 'Período A'
+                  : formatMesesLabel(mesesSelOrdenados)
             }
             labelB={
               isLocalComp
@@ -1586,9 +1607,9 @@ export default function VentasPage() {
               </div>
 
               {/* Rango activo */}
-              {mesDesde && mesHasta && (
+              {mesesSelOrdenados.length > 0 && (
                 <span className="text-[11px] text-gray-500 bg-gray-100 rounded-xl px-3 py-1.5 font-medium">
-                  {keyToLabel(mesDesde)}{mesDesde !== mesHasta ? ` – ${keyToLabel(mesHasta)}` : ''}
+                  {formatMesesLabel(mesesSelOrdenados)}
                 </span>
               )}
             </div>
@@ -1655,7 +1676,9 @@ export default function VentasPage() {
             </p>
             {proyeccionData.length === 0 ? (
               <div className="flex items-center justify-center h-[180px]">
-                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Sin datos para proyectar</p>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {mesesSel.size !== 1 ? 'Elegí un solo mes para ver la proyección' : 'Sin datos para proyectar'}
+                </p>
               </div>
             ) : (
               <>
