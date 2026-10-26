@@ -621,9 +621,9 @@ export default function DashboardPage() {
             <button
               onClick={() => setDateOpen(o => !o)}
               className={clsx(
-                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                'flex items-center gap-1.5 border rounded-lg px-3.5 py-2 text-[12px] font-medium transition-all',
                 modoFiltro === 'dia'
-                  ? 'bg-blue-600 border-blue-600 text-white'
+                  ? 'bg-blue-50 dark:bg-blue-950 border-transparent text-blue-600 dark:text-blue-400'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
               )}
             >
@@ -691,9 +691,9 @@ export default function DashboardPage() {
               }
             }}
             className={clsx(
-              'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+              'flex items-center gap-1.5 border rounded-lg px-3.5 py-2 text-[12px] font-medium transition-all',
               compOn
-                ? 'bg-purple-600 border-purple-600 text-white'
+                ? 'bg-purple-50 dark:bg-purple-950 border-transparent text-purple-600 dark:text-purple-400'
                 : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
             )}
           >
@@ -705,12 +705,14 @@ export default function DashboardPage() {
           {compOn && (
             <>
               {/* Toggle Meses / Locales */}
-              <div className="flex items-center rounded-xl overflow-hidden border border-gray-200">
+              <div className="flex items-center rounded-lg overflow-hidden border border-gray-200">
                 {(['mes', 'local'] as const).map(t => (
                   <button key={t} onClick={() => setCompareType(t)}
                     className={clsx(
                       'px-3 py-2 text-[11px] font-semibold transition-all',
-                      compareType === t ? 'bg-purple-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50',
+                      compareType === t
+                        ? 'bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
+                        : 'bg-white text-gray-500 hover:bg-gray-50',
                     )}>
                     {t === 'mes' ? 'Meses' : 'Locales'}
                   </button>
@@ -728,14 +730,14 @@ export default function DashboardPage() {
               ) : (
                 <>
                   <select value={localA} onChange={e => setLocalA(e.target.value)}
-                    className="border border-blue-300 bg-blue-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-blue-700 outline-none">
+                    className="border border-transparent bg-blue-50 dark:bg-blue-950 rounded-lg px-3 py-2 text-[12px] font-medium text-blue-600 dark:text-blue-400 outline-none">
                     {sucursalesDisponibles.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                   <span className="text-gray-400 text-[11px] font-bold">vs</span>
                   <select value={localB} onChange={e => setLocalB(e.target.value)}
-                    className="border border-purple-300 bg-purple-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-purple-700 outline-none">
+                    className="border border-transparent bg-purple-50 dark:bg-purple-950 rounded-lg px-3 py-2 text-[12px] font-medium text-purple-600 dark:text-purple-400 outline-none">
                     {sucursalesDisponibles.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
@@ -752,9 +754,9 @@ export default function DashboardPage() {
             <button
               onClick={() => setModoGastos(m => m === 'total' ? 'hastaHoy' : 'total')}
               className={clsx(
-                'flex items-center gap-1 border rounded-xl px-3 py-2 text-[11px] font-semibold transition-all',
+                'flex items-center gap-1 border rounded-lg px-3 py-2 text-[11px] font-semibold transition-all',
                 modoGastos === 'total'
-                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                  ? 'bg-emerald-50 dark:bg-emerald-950 border-transparent text-emerald-600 dark:text-emerald-400'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600',
               )}
             >
