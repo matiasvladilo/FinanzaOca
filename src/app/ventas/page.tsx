@@ -1823,36 +1823,39 @@ export default function VentasPage() {
               filteredData.topProveedores.length === 0 ? (
                 <p className="text-[11px] text-gray-400 py-8 text-center">Sin datos para el período seleccionado</p>
               ) : (
-                <ResponsiveContainer width="100%" height={320}>
-                  <PieChart>
-                    <Pie
-                      data={filteredData.topProveedores.map(p => ({ name: p.nombre || '(sin nombre)', value: p.monto }))}
-                      dataKey="value" nameKey="name"
-                      cx="38%" cy="50%" innerRadius={55} outerRadius={105}
-                      paddingAngle={2}
-                    >
-                      {filteredData.topProveedores.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const d = payload[0];
-                        const value = (d.value as number) ?? 0;
-                        const pct = gastosReal > 0 ? ((value / gastosReal) * 100).toFixed(1) : '0';
-                        return (
-                          <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
-                            style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
-                            <p className="font-bold mb-1">{d.name}</p>
-                            <p style={{ color: 'var(--text-3)' }}>{fmtFull(value)} · {pct}%</p>
-                          </div>
-                        );
-                      }}
-                    />
-                    <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={8}
-                      wrapperStyle={{ fontSize: 11 }}
-                      formatter={(value: string) => <span style={{ color: 'var(--text-2)' }}>{value}</span>} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <div className="min-h-[320px]">
+                  <ResponsiveContainer width="100%" height={320} minWidth={280}>
+                    <PieChart>
+                      <Pie
+                        isAnimationActive={false}
+                        data={filteredData.topProveedores.map(p => ({ name: p.nombre || '(sin nombre)', value: p.monto }))}
+                        dataKey="value" nameKey="name"
+                        cx="38%" cy="50%" innerRadius={55} outerRadius={105}
+                        paddingAngle={2}
+                      >
+                        {filteredData.topProveedores.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0];
+                          const value = (d.value as number) ?? 0;
+                          const pct = gastosReal > 0 ? ((value / gastosReal) * 100).toFixed(1) : '0';
+                          return (
+                            <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
+                              style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
+                              <p className="font-bold mb-1">{d.name}</p>
+                              <p style={{ color: 'var(--text-3)' }}>{fmtFull(value)} · {pct}%</p>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={8}
+                        wrapperStyle={{ fontSize: 11 }}
+                        formatter={(value: string) => <span style={{ color: 'var(--text-2)' }}>{value}</span>} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               )
             ) : filteredData.hasComp && filteredData.topProveedoresComp.length > 0 ? (
               /* ── Modo comparativo: 2 columnas ── */
