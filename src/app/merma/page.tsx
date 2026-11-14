@@ -505,21 +505,22 @@ export default function MermaPage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen bg-gray-50 relative">
       {/* Header */}
-      <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 bg-white border-b border-gray-100 sticky top-0 z-30">
-        <h1 className="text-[18px] font-bold text-gray-900">Dashboard de Merma</h1>
+      <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30"
+        style={{ background: 'var(--header-bg)' }}>
+        <h1 className="text-[18px] font-bold" style={{ color: 'var(--header-text)' }}>Dashboard de Merma</h1>
         <div className="hidden sm:flex items-center gap-2 flex-1 max-w-xs mx-3 sm:mx-6">
-          <div className="flex items-center gap-2 w-full bg-gray-100 rounded-full px-3 py-2">
-            <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+          <div className="flex items-center gap-2 w-full bg-white/10 rounded-full px-3 py-2">
+            <Search className="w-3.5 h-3.5 text-white/60 flex-shrink-0" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Buscar producto o registro..."
-              className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400"
+              className="bg-transparent text-[12px] text-white outline-none w-full placeholder-white/50"
             />
           </div>
         </div>
-        <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
+        <button className="relative p-2 text-white/70 hover:text-white transition-colors">
           <Bell className="w-4 h-4" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
         </button>
