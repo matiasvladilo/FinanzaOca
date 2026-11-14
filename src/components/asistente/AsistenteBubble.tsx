@@ -46,7 +46,6 @@ function posicionPorDefecto(): Pos {
 export default function AsistenteBubble() {
   const [esAdmin, setEsAdmin] = useState(false);
   const [vista, setVista] = useState<ChatView>('closed');
-  const [esOscuro, setEsOscuro] = useState(false);
   const [pos, setPos] = useState<Pos | null>(null);
   // La conversación vive acá, no en AsistenteChat: este componente no se
   // desmonta al cerrar el panel (solo cambia `abierto`), así que cerrar y
@@ -67,20 +66,6 @@ export default function AsistenteBubble() {
   useEffect(() => {
     setEsAdmin(getClientSession()?.role === 'admin');
 
-    // El tema real de la app no es el de preferencia del SO — el usuario lo
-    // puede fijar a mano (claro/oscuro/dracula) vía el toggle del header,
-    // guardado en localStorage y aplicado como clase en <html> (ver
-    // ThemeProvider). Leer matchMedia acá quedaría desincronizado del tema
-    // que el usuario realmente eligió, y nunca detectaría "dracula" (que
-    // globals.css trata igual que "dark"). Nos fijamos directo en la clase
-    // real de <html>, con un observer para que la burbuja siga el cambio de
-    // tema sin necesitar recargar la página.
-    const root = document.documentElement;
-    const actualizarTema = () => setEsOscuro(root.classList.contains('dark') || root.classList.contains('dracula'));
-    actualizarTema();
-    const observer = new MutationObserver(actualizarTema);
-    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-
     // Posición inicial: la última que el usuario dejó, re-clampeada por si
     // la guardó en una pantalla más grande y ahora es más chica (o al revés).
     let inicial: Pos;
@@ -96,7 +81,6 @@ export default function AsistenteBubble() {
     window.addEventListener('resize', onResize);
 
     return () => {
-      observer.disconnect();
       window.removeEventListener('resize', onResize);
     };
   }, []);
@@ -186,7 +170,7 @@ export default function AsistenteBubble() {
         style={pos ? { left: pos.x, top: pos.y } : { right: EDGE_MARGIN, bottom: EDGE_MARGIN }}
       >
         <Image
-          src={esOscuro ? '/assistant/agente-oscuro.png' : '/assistant/agente-claro.png'}
+          src="/assistant/agente-claro.png"
           alt="Asistente"
           width={56}
           height={56}
