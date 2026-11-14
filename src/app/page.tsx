@@ -599,7 +599,6 @@ export default function DashboardPage() {
       <Header
         filters={filters}
         onFiltersChange={setFilters}
-        title="Data Analytics Desk"
       />
 
       <main className="flex-1 px-4 lg:px-6 py-4 lg:py-5 space-y-4 lg:space-y-5 pb-6">

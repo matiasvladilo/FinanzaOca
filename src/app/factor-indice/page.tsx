@@ -429,7 +429,6 @@ export default function FactorIndicePage() {
       <Header
         filters={headerFiltersStub}
         onFiltersChange={() => {}}
-        title="Factor Índice"
       />
 
       {/* ── Subheader filters ── */}
