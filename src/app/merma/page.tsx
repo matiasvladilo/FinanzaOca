@@ -562,8 +562,8 @@ export default function MermaPage() {
               className={clsx(
                 'flex items-center gap-1 border rounded-xl px-2.5 py-1.5 text-[11px] font-medium transition-all',
                 (fechaDesde || fechaHasta)
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-slate-700 border-slate-600 text-slate-200 hover:border-blue-400 hover:text-blue-400',
+                  ? 'bg-white text-slate-900 border-white'
+                  : 'bg-slate-700 border-slate-600 text-slate-200 hover:border-white/40 hover:text-white',
               )}
             >
               <CalendarDays className="w-3 h-3 opacity-70" />

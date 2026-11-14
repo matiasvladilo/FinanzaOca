@@ -1410,8 +1410,8 @@ export default function VentasPage() {
 
       {/* ── Header ── */}
       <header className="flex items-center justify-between flex-wrap px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30 transition-colors gap-2"
-        style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
-        <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
+        style={{ background: 'var(--header-bg)' }}>
+        <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--header-text)' }}>Ventas & Gastos</h1>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
 
           {/* Período: meses múltiples (incluye combinaciones no contiguas) */}
@@ -1433,7 +1433,7 @@ export default function VentasPage() {
               className={clsx(
                 'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
                 modoFiltro === 'dia' || fechaDesde || fechaHasta
-                  ? 'bg-blue-600 border-blue-600 text-white'
+                  ? 'bg-white border-white text-[#053b84]'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600'
               )}
             >
@@ -1497,7 +1497,7 @@ export default function VentasPage() {
                 className={clsx(
                   'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
                   compOn
-                    ? 'bg-purple-600 border-purple-600 text-white'
+                    ? 'bg-white border-white text-purple-700'
                     : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
                 )}
               >
@@ -1543,11 +1543,11 @@ export default function VentasPage() {
             </button>
           )}
 
-          <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 w-44">
-            <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            <input type="text" placeholder="Buscar..." className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400" />
+          <div className="hidden sm:flex items-center gap-2 bg-white/10 rounded-full px-3 py-2 w-44">
+            <Search className="w-3.5 h-3.5 text-white/60 flex-shrink-0" />
+            <input type="text" placeholder="Buscar..." className="bg-transparent text-[12px] text-white outline-none w-full placeholder-white/50" />
           </div>
-          <button className="hidden sm:block relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
+          <button className="hidden sm:block relative p-2 text-white/70 hover:text-white transition-colors">
             <Bell className="w-4 h-4" />
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
           </button>

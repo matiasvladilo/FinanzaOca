@@ -64,7 +64,7 @@ body {
 .bg-blue-600 { background-color: var(--brand-navy); }
 .bg-blue-700 { background-color: var(--brand-navy-dark); }
 
-.text-blue-200 { color: var(--brand-navy-soft); }
+.text-blue-200 { color: #c7d6ee; }
 .text-blue-300 { color: var(--brand-navy-soft); }
 .text-blue-400 { color: var(--brand-navy-soft); }
 .text-blue-500 { color: var(--active-text); }

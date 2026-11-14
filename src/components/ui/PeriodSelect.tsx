@@ -30,7 +30,7 @@ const ACCENT: Record<AccentColor, {
     hoverText: 'hover:text-blue-600',
     hoverTextDark: 'hover:text-blue-400',
     solidText: 'text-blue-600',
-    rgb: '37, 99, 235', // blue-600
+    rgb: '5, 59, 132', // navy de marca
   },
   violet: {
     triggerActive: 'bg-violet-600 border-violet-600 text-white',
@@ -112,9 +112,11 @@ export function PeriodSelect({
           variant === 'soft' ? 'rounded-lg' : 'rounded-xl',
           size === 'sm' ? 'px-2.5 py-1.5 text-[11px]' : 'px-3.5 py-2 text-[12px]',
           isFiltered
-            ? (variant === 'soft' ? accent.triggerActiveSoft : accent.triggerActive)
+            ? (variant === 'soft'
+                ? accent.triggerActiveSoft
+                : dark ? 'bg-white border-white text-slate-900' : accent.triggerActive)
             : dark
-              ? clsx('bg-slate-700 border-slate-600 text-slate-200', accent.hoverBorder, accent.hoverTextDark)
+              ? 'bg-slate-700 border-slate-600 text-slate-200 hover:border-white/40 hover:text-white'
               : clsx('bg-white border-gray-200 text-gray-600', accent.hoverBorder, accent.hoverText),
         )}
       >

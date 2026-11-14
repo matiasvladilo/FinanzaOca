@@ -433,7 +433,7 @@ export default function FactorIndicePage() {
 
       {/* ── Subheader filters ── */}
       <div className="flex flex-wrap items-center justify-between px-3 sm:px-6 py-3 gap-2 sm:gap-3 transition-colors"
-        style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
+        style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
 
         <div className="flex flex-wrap items-center gap-2">
 
