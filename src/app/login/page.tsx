@@ -2,9 +2,8 @@
 
 /**
  * Login corporativo "La Oca" — mismo lenguaje visual que el resto de la app
- * (ver .claude/skills/la-oca-style): panel de marca navy con el wordmark a la
- * izquierda y formulario sobre blanco a la derecha. En mobile el panel navy
- * se reduce a una franja superior con el wordmark.
+ * (ver .claude/skills/la-oca-style): franja navy arriba con el wordmark y
+ * una tarjeta blanca centrada con el formulario. Simple a propósito.
  *
  * La lógica de autenticación no cambia: POST /api/auth/login y, si responde
  * ok, navegación completa a "/" para que el middleware lea la cookie nueva.
@@ -12,16 +11,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import {
-  User, Lock, Eye, EyeOff, AlertCircle, Loader2,
-  BarChart3, Wallet, ShieldCheck, ArrowRight,
-} from 'lucide-react';
-
-const PILARES = [
-  { icon: BarChart3,   text: 'Ventas, gastos y merma de todos los locales en un solo lugar' },
-  { icon: Wallet,      text: 'Factor Índice y presupuesto medidos por caja, mes a mes' },
-  { icon: ShieldCheck, text: 'Acceso por usuario y local, con datos protegidos' },
-] as const;
+import { User, Lock, Eye, EyeOff, AlertCircle, Loader2, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -60,65 +50,23 @@ export default function LoginPage() {
 
   return (
     // fixed + z alto: el login tapa cualquier elemento global del layout.
-    <div className="fixed inset-0 z-[9999] flex flex-col md:flex-row overflow-y-auto"
+    <div className="fixed inset-0 z-[9999] flex flex-col overflow-y-auto"
       style={{ background: 'var(--bg)' }}>
 
-      {/* ── Panel de marca ─────────────────────────────────────────────── */}
-      <aside className="relative overflow-hidden md:w-[44%] lg:w-[46%] shrink-0 flex flex-col justify-between px-6 py-6 md:px-12 md:py-12"
-        style={{ background: 'var(--brand-navy)' }}>
-
-        {/* Gráfico abstracto de fondo: líneas de tendencia muy tenues */}
-        <svg aria-hidden className="hidden md:block absolute inset-x-0 bottom-0 w-full h-[55%] pointer-events-none"
-          viewBox="0 0 400 220" preserveAspectRatio="none">
-          {[0, 1, 2, 3].map(i => (
-            <line key={i} x1="0" x2="400" y1={40 + i * 50} y2={40 + i * 50} stroke="white" strokeOpacity="0.06" />
-          ))}
-          <path d="M0 190 C 60 175, 90 150, 140 155 S 230 110, 280 95 S 360 50, 400 35 L 400 220 L 0 220 Z"
-            fill="white" fillOpacity="0.04" />
-          <path d="M0 190 C 60 175, 90 150, 140 155 S 230 110, 280 95 S 360 50, 400 35"
-            fill="none" stroke="white" strokeOpacity="0.22" strokeWidth="1.5" />
-          <path d="M0 205 C 70 200, 120 185, 170 188 S 260 160, 310 150 S 370 120, 400 112"
-            fill="none" stroke="white" strokeOpacity="0.10" strokeWidth="1.2" />
-        </svg>
-
-        <div className="relative">
-          <Image
-            src="/brand/la-oca-wordmark.png"
-            alt="La Oca"
-            width={1536}
-            height={364}
-            priority
-            className="h-8 md:h-11 w-auto select-none"
-          />
-        </div>
-
-        <div className="relative hidden md:block max-w-md">
-          <div className="h-1 w-10 rounded-full mb-6" style={{ background: 'var(--brand-mustard)' }} />
-          <h2 className="text-[30px] lg:text-[34px] font-bold leading-tight text-white tracking-tight">
-            Centro financiero
-          </h2>
-          <p className="mt-3 text-[15px] leading-relaxed text-white/70">
-            La información financiera de La Oca, clara y al día, para decidir con datos.
-          </p>
-          <ul className="mt-9 space-y-4">
-            {PILARES.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10">
-                  <Icon className="h-4 w-4 text-white" strokeWidth={1.75} />
-                </span>
-                <span className="text-[14px] leading-snug text-white/85 pt-1.5">{text}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <p className="relative hidden md:block text-[12px] text-white/45">
-          © {new Date().getFullYear()} La Oca · FinanzasOca
-        </p>
-      </aside>
+      {/* ── Franja de marca: mismo header navy con wordmark que el resto de la app ── */}
+      <header className="shrink-0 px-6 py-5 sm:px-10 sm:py-6" style={{ background: 'var(--brand-navy)' }}>
+        <Image
+          src="/brand/la-oca-wordmark.png"
+          alt="La Oca"
+          width={1536}
+          height={364}
+          priority
+          className="h-8 sm:h-9 w-auto select-none"
+        />
+      </header>
 
       {/* ── Formulario ─────────────────────────────────────────────────── */}
-      <main className="flex-1 flex items-center justify-center px-5 py-10 md:px-10">
+      <main className="flex-1 flex items-center justify-center px-5 py-10">
         <div className="w-full max-w-[400px]">
           <div className="rounded-2xl bg-white px-6 py-8 sm:px-9 sm:py-10"
             style={{ border: '1px solid var(--border-2)', boxShadow: '0 1px 2px rgba(0,0,0,0.04), 0 12px 32px -12px rgba(5,59,132,0.12)' }}>
