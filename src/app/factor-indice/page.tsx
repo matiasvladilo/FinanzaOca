@@ -91,7 +91,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                 marginLeft: 'auto',
                 fontWeight: 800,
                 fontSize: 13,
-                color: isRisk ? '#ef4444' : '#22c55e',
+                color: isRisk ? 'var(--risk-text)' : '#22c55e',
                 letterSpacing: '-0.02em',
               }}>
                 {p.value}%
@@ -99,8 +99,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
               <span style={{
                 fontSize: 9, fontWeight: 700,
                 padding: '2px 5px', borderRadius: 20,
-                background: isRisk ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
-                color: isRisk ? '#ef4444' : '#22c55e',
+                background: isRisk ? 'rgba(217,128,128,0.16)' : 'rgba(34,197,94,0.12)',
+                color: isRisk ? 'var(--risk-text)' : '#22c55e',
               }}>
                 {isRisk ? 'RIESGO' : 'OK'}
               </span>
@@ -554,13 +554,13 @@ export default function FactorIndicePage() {
             </p>
             <FactorGauge value={loading ? null : factorGlobal} optimized={isOpt} loading={loading} />
             <p className="text-[24px] font-black leading-none -mt-2"
-              style={{ color: loading ? 'var(--text-3)' : isOpt ? 'var(--text)' : '#EF4444' }}>
+              style={{ color: loading ? 'var(--text-3)' : isOpt ? 'var(--text)' : 'var(--risk-text)' }}>
               {loading ? '…' : factorGlobal !== null ? `${factorGlobal}%` : '—'}
             </p>
             {factorGlobal !== null && !loading && (
               <div className={clsx(
                 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold',
-                isOpt ? 'border-green-400 text-green-600' : 'border-red-400 text-red-600'
+                isOpt ? 'border-green-400 text-green-600' : 'border-[var(--risk-border)] text-[var(--risk-text)]'
               )}>
                 {isOpt ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                 {isOpt ? 'OPTIMIZADO' : 'EN RIESGO'}
@@ -618,7 +618,7 @@ export default function FactorIndicePage() {
                   <div key={a.key} className={clsx('rounded-xl p-4 mt-3', a.acknowledged ? 'opacity-60' : '')}
                     style={{ border: '1px solid var(--border-2)', background: a.acknowledged ? 'var(--hover)' : 'var(--card)' }}>
                     <div className="flex items-start justify-between mb-1">
-                      <p className={clsx('text-[12px] font-bold', a.tipo === 'critical' ? 'text-red-500' : 'text-orange-500')}>
+                      <p className={clsx('text-[12px] font-bold', a.tipo === 'critical' ? 'text-[var(--risk-text)]' : 'text-orange-500')}>
                         {a.local} sobre el umbral
                       </p>
                       <span className="text-[10px] whitespace-nowrap ml-2" style={{ color: 'var(--text-3)' }}>{a.periodo}</span>
@@ -802,7 +802,7 @@ export default function FactorIndicePage() {
                                 // Mismo umbral que el gráfico y la tarjeta de arriba (60%) — antes decía
                                 // 50 acá y 60 en todo el resto de la página: un 55% se veía verde en el
                                 // gráfico y rojo en este detalle, mismo número, dos lecturas contradictorias.
-                                idx !== undefined ? (idx <= 60 ? 'text-green-500' : 'text-red-500') : '')}
+                                idx !== undefined ? (idx <= 60 ? 'text-green-500' : 'text-[var(--risk-text)]') : '')}
                                 style={idx === undefined ? { color: 'var(--text-3)' } : undefined}>
                                 {idx !== undefined ? `${idx}%` : '—'}
                               </p>

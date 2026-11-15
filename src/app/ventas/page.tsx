@@ -12,7 +12,7 @@ import {
   ResponsiveContainer, LabelList, Cell,
 } from 'recharts';
 import {
-  Search, Bell, Calendar, ChevronDown,
+  Calendar, ChevronDown,
   Download, TrendingUp, TrendingDown,
   DollarSign, ShoppingCart,
   BarChart2, Receipt, Activity, LayoutGrid, GitCompare, Wallet,
@@ -26,6 +26,7 @@ import { toast } from '@/components/ui/Toast';
 import { getSucursalColor } from '@/config/sucursales';
 import FacturasSinFecha, { type FacturaSinFecha } from '@/components/dashboard/FacturasSinFecha';
 import SucursalFilter from '@/components/ui/SucursalFilter';
+import Header from '@/components/layout/Header';
 
 // ─── tipos ───────────────────────────────────────────────
 type Periodo = '7D' | '14D' | '30D';
@@ -1408,10 +1409,12 @@ export default function VentasPage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
 
-      {/* ── Header ── */}
-      <header className="flex items-center justify-between flex-wrap px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30 transition-colors gap-2"
-        style={{ background: 'var(--header-bg)' }}>
-        <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--header-text)' }}>Ventas & Gastos</h1>
+      <Header />
+
+      {/* ── Sub-barra: título + filtros (clara, igual que Factor Índice) ── */}
+      <div className="flex items-center justify-between flex-wrap px-3 sm:px-6 py-3 gap-2 transition-colors"
+        style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+        <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
 
           {/* Período: meses múltiples (incluye combinaciones no contiguas) */}
@@ -1433,7 +1436,7 @@ export default function VentasPage() {
               className={clsx(
                 'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
                 modoFiltro === 'dia' || fechaDesde || fechaHasta
-                  ? 'bg-white border-white text-[#053b84]'
+                  ? 'bg-blue-50 border-blue-200 text-blue-700'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600'
               )}
             >
@@ -1497,7 +1500,7 @@ export default function VentasPage() {
                 className={clsx(
                   'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
                   compOn
-                    ? 'bg-white border-white text-purple-700'
+                    ? 'bg-purple-50 border-purple-300 text-purple-700'
                     : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
                 )}
               >
@@ -1542,17 +1545,8 @@ export default function VentasPage() {
               {modoGastos === 'total' ? 'Total' : 'Hasta hoy'}
             </button>
           )}
-
-          <div className="hidden sm:flex items-center gap-2 bg-white/10 rounded-full px-3 py-2 w-44">
-            <Search className="w-3.5 h-3.5 text-white/60 flex-shrink-0" />
-            <input type="text" placeholder="Buscar..." className="bg-transparent text-[12px] text-white outline-none w-full placeholder-white/50" />
-          </div>
-          <button className="hidden sm:block relative p-2 text-white/70 hover:text-white transition-colors">
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
         </div>
-      </header>
+      </div>
 
       <main className="flex-1 px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 pb-8">
 

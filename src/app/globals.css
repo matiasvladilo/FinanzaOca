@@ -35,6 +35,12 @@
   --brand-navy-dark:  #03285c;
   --brand-mustard:    #f9c404;
   --brand-orange:     #e28b29;
+
+  /* Estado "en riesgo" (Factor Índice): rojo apagado en vez del #ef4444
+     saturado de Tailwind — se lee como alerta sin gritar. */
+  --risk:          #d98080; /* rellenos: arco del gauge */
+  --risk-text:     #b04a4e; /* texto sobre fondo claro (contraste AA) */
+  --risk-border:   #efc4c4;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
