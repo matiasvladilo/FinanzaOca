@@ -1,10 +1,13 @@
 @import "tailwindcss";
 
-/* ── Dark mode: activa solo en .dark ────────────────────────────────────── */
+/* El selector dark: de Tailwind se deja apuntando a una clase que ya no
+   se agrega nunca a <html> (el sistema de theming se eliminó — ver Task 3).
+   Esto neutraliza para siempre cualquier clase dark: suelta que haya
+   quedado en componentes, sin tener que salir a borrarlas una por una. */
 @variant dark (&:where(.dark, .dark *));
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TEMA: LIGHT (default)
+   TEMA ÚNICO: "La Oca corporate"
 ══════════════════════════════════════════════════════════════════════════ */
 :root {
   --bg:             #f5f6fa;
@@ -16,63 +19,28 @@
   --text-3:         #9ca3af;
   --sidebar-bg:     #ffffff;
   --sidebar-border: #f3f4f6;
-  --header-bg:      #ffffff;
+  --header-bg:      #053b84;
+  --header-text:    #ffffff;
   --hover:          #f9fafb;
-  --active-bg:      #eff6ff;
-  --active-text:    #2563eb;
+  --active-bg:      #fff7e0;
+  --active-text:    #053b84;
   --divider:        #f9fafb;
   --skeleton:       #f3f4f6;
   --chart-grid:     #e9ecef;
   --chart-axis:     #9CA3AF;
-  --card-shadow:    0 1px 3px 0 rgba(0,0,0,0.07), 0 1px 2px -1px rgba(0,0,0,0.05);
-}
+  --card-shadow:    0 1px 2px 0 rgba(0,0,0,0.04);
 
-/* ══════════════════════════════════════════════════════════════════════════
-   TEMA: DARK
-══════════════════════════════════════════════════════════════════════════ */
-.dark {
-  --bg:             #0f172a;
-  --card:           #1e293b;
-  --border:         #334155;
-  --border-2:       #475569;
-  --text:           #f1f5f9;
-  --text-2:         #94a3b8;
-  --text-3:         #64748b;
-  --sidebar-bg:     #1e293b;
-  --sidebar-border: #334155;
-  --header-bg:      #1e293b;
-  --hover:          #334155;
-  --active-bg:      #172554;
-  --active-text:    #60a5fa;
-  --divider:        #334155;
-  --skeleton:       #334155;
-  --chart-grid:     #2a3547;
-  --chart-axis:     #64748b;
-  --card-shadow:    0 4px 6px -1px rgba(0,0,0,0.25), 0 2px 4px -2px rgba(0,0,0,0.15);
-}
+  --brand-navy:       #053b84;
+  --brand-navy-soft:  #4d77b8;
+  --brand-navy-dark:  #03285c;
+  --brand-mustard:    #f9c404;
+  --brand-orange:     #e28b29;
 
-/* ══════════════════════════════════════════════════════════════════════════
-   TEMA: DRACULA
-══════════════════════════════════════════════════════════════════════════ */
-.dracula {
-  --bg:             #282a36;
-  --card:           #44475a;
-  --border:         #6272a4;
-  --border-2:       #6272a4;
-  --text:           #f8f8f2;
-  --text-2:         #cdd6f4;
-  --text-3:         #6272a4;
-  --sidebar-bg:     #21222c;
-  --sidebar-border: #44475a;
-  --header-bg:      #21222c;
-  --hover:          rgba(98,114,164,0.25);
-  --active-bg:      rgba(189,147,249,0.18);
-  --active-text:    #bd93f9;
-  --divider:        #44475a;
-  --skeleton:       #44475a;
-  --chart-grid:     #44475a;
-  --chart-axis:     #6272a4;
-  --card-shadow:    0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -2px rgba(0,0,0,0.2);
+  /* Estado "en riesgo" (Factor Índice): rojo apagado en vez del #ef4444
+     saturado de Tailwind — se lee como alerta sin gritar. */
+  --risk:          #d98080; /* rellenos: arco del gauge */
+  --risk-text:     #b04a4e; /* texto sobre fondo claro (contraste AA) */
+  --risk-border:   #efc4c4;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -81,7 +49,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -89,70 +57,60 @@ body {
 * { box-sizing: border-box; }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   OVERRIDES GLOBALES — aplican a TODAS las páginas automáticamente.
-   Usan selectores de doble clase para superar la especificidad de Tailwind.
-   Esto permite que todas las páginas funcionen en dark/dracula sin
-   necesitar agregar dark: a cada componente.
+   ACENTOS DE MARCA — clases Tailwind "duras" en azul usadas en toda la app
+   (filtros, botones, KPI cards, chat del asistente, etc.) pasan a la paleta
+   La Oca. Mismo mecanismo que antes usaban los overrides de .dark/.dracula,
+   pero sin prefijo de clase de tema porque ahora solo hay un look.
 ══════════════════════════════════════════════════════════════════════════ */
 
-/* Fondos */
-:is(.dark, .dracula) .bg-white   { background-color: var(--card); }
-:is(.dark, .dracula) .bg-gray-50 { background-color: var(--bg); }
-:is(.dark, .dracula) .bg-gray-100 { background-color: var(--hover); }
-:is(.dark, .dracula) .bg-gray-200 { background-color: var(--divider); }
+.bg-blue-50  { background-color: var(--active-bg); }
+.bg-blue-100 { background-color: var(--active-bg); }
+.bg-blue-300 { background-color: var(--brand-navy-soft); }
+.bg-blue-500 { background-color: var(--brand-navy); }
+.bg-blue-600 { background-color: var(--brand-navy); }
+.bg-blue-700 { background-color: var(--brand-navy-dark); }
 
-/* Layout especiales */
-.dark aside, .dracula aside   { background-color: var(--sidebar-bg) !important; border-color: var(--sidebar-border) !important; }
-.dark header, .dracula header { background-color: var(--header-bg) !important; border-color: var(--border) !important; }
+.text-blue-200 { color: #c7d6ee; }
+.text-blue-300 { color: var(--brand-navy-soft); }
+.text-blue-400 { color: var(--brand-navy-soft); }
+.text-blue-500 { color: var(--active-text); }
+.text-blue-600 { color: var(--active-text); }
+.text-blue-700 { color: var(--brand-navy-dark); }
+.text-blue-800 { color: var(--brand-navy-dark); }
 
-/* Texto */
-:is(.dark, .dracula) .text-gray-900 { color: var(--text); }
-:is(.dark, .dracula) .text-gray-800 { color: var(--text); }
-:is(.dark, .dracula) .text-gray-700 { color: var(--text-2); }
-:is(.dark, .dracula) .text-gray-600 { color: var(--text-2); }
-:is(.dark, .dracula) .text-gray-500 { color: var(--text-3); }
-:is(.dark, .dracula) .text-gray-400 { color: var(--text-3); }
-:is(.dark, .dracula) .text-gray-300 { color: var(--text-2); }
+.border-blue-200 { border-color: var(--brand-navy-soft); }
+.border-blue-400 { border-color: var(--brand-navy-soft); }
+.border-blue-600 { border-color: var(--brand-navy); }
 
-/* Bordes */
-:is(.dark, .dracula) .border-gray-50  { border-color: var(--divider); }
-:is(.dark, .dracula) .border-gray-100 { border-color: var(--border); }
-:is(.dark, .dracula) .border-gray-200 { border-color: var(--border-2); }
+.ring-blue-200 { --tw-ring-color: var(--brand-navy-soft); }
+.ring-blue-300 { --tw-ring-color: var(--brand-navy-soft); }
+.ring-blue-400 { --tw-ring-color: var(--brand-navy-soft); }
+.ring-blue-500 { --tw-ring-color: var(--brand-navy); }
+.ring-blue-700 { --tw-ring-color: var(--brand-navy-dark); }
 
-/* Hover sobre filas/items */
-:is(.dark, .dracula) .hover\:bg-gray-50:hover  { background-color: var(--hover); }
-:is(.dark, .dracula) .hover\:bg-gray-100:hover { background-color: var(--hover); }
+.hover\:bg-blue-300:hover      { background-color: var(--brand-navy-soft); }
+.hover\:bg-blue-700:hover      { background-color: var(--brand-navy-dark); }
+.hover\:border-blue-400:hover  { border-color: var(--brand-navy); }
+.hover\:text-blue-300:hover    { color: var(--brand-navy-soft); }
+.hover\:text-blue-400:hover    { color: var(--brand-navy-soft); }
+.hover\:text-blue-600:hover    { color: var(--brand-navy); }
+.hover\:text-blue-800:hover    { color: var(--brand-navy-dark); }
 
-/* Pill filter hover - mantener color de acento en dark/dracula */
-.dark .hover\:text-blue-600:hover   { color: #60a5fa; }
-.dark .hover\:border-blue-400:hover { border-color: #60a5fa; }
+.focus\:border-blue-400:focus                 { border-color: var(--brand-navy); }
+.focus-visible\:border-blue-400:focus-visible { border-color: var(--brand-navy); }
+.focus-visible\:ring-blue-400:focus-visible   { --tw-ring-color: var(--brand-navy-soft); }
+.focus-visible\:ring-blue-500:focus-visible   { --tw-ring-color: var(--brand-navy); }
 
-/* Divide lines */
-:is(.dark, .dracula) .divide-gray-100 > * + * { border-color: var(--divider); }
-:is(.dark, .dracula) .divide-gray-200 > * + * { border-color: var(--border); }
-
-/* Badges / pills que usan bg-gray-* sin colores específicos */
-:is(.dark, .dracula) .bg-gray-50.text-gray-600 { background-color: var(--hover); color: var(--text-2); }
-
-/* Inputs */
-:is(.dark, .dracula) input,
-:is(.dark, .dracula) textarea,
-:is(.dark, .dracula) select {
-  background-color: var(--card);
-  color: var(--text);
-  border-color: var(--border-2);
+/* Selects de "comparar locales" (A/B, Dashboard/Ventas) */
+select.bg-blue-50 {
+  background-color: var(--active-bg);
+  color: var(--active-text);
+  border-color: transparent;
 }
 
-/* Dracula: accentos azules → morado */
-.dracula .text-blue-600 { color: #bd93f9; }
-.dracula .text-blue-500 { color: #bd93f9; }
-.dracula .bg-blue-600   { background-color: #bd93f9; color: #282a36; }
-.dracula .bg-blue-50    { background-color: rgba(189,147,249,0.15); }
-.dracula .border-blue-600 { border-color: #bd93f9; }
-.dracula .border-blue-400 { border-color: #bd93f9; }
-.dracula .ring-blue-500   { --tw-ring-color: #bd93f9; }
-.dracula .hover\:text-blue-600:hover  { color: #bd93f9; }
-.dracula .hover\:border-blue-400:hover { border-color: #bd93f9; }
+/* ══════════════════════════════════════════════════════════════════════════
+   OTROS OVERRIDES GLOBALES (sin relación con el theming, se mantienen)
+══════════════════════════════════════════════════════════════════════════ */
 
 /* Recharts — fondo transparente siempre */
 .recharts-wrapper,
@@ -182,5 +140,4 @@ body {
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
-:is(.dark, .dracula) ::-webkit-scrollbar-thumb { background: var(--border-2); }
 ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }

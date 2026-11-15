@@ -52,7 +52,7 @@ export default function FactorGauge({ value, threshold = 60, optimized, loading 
       {!loading && value !== null && (
         <>
           <path d={describeArc(CX, CY, R, GAUGE_START, valueAngle)} fill="none"
-            stroke={optimized ? '#22C55E' : '#EF4444'} strokeWidth={STROKE} strokeLinecap="round" />
+            stroke={optimized ? '#22C55E' : 'var(--risk)'} strokeWidth={STROKE} strokeLinecap="round" />
           <line x1={thresholdP1.x} y1={thresholdP1.y} x2={thresholdP2.x} y2={thresholdP2.y}
             stroke="var(--text-3)" strokeWidth={2} />
         </>

@@ -7,23 +7,26 @@ import {
   AreaChart, Area,
   LineChart, Line,
   BarChart, Bar,
+  PieChart, Pie, Legend,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, Cell,
 } from 'recharts';
 import {
-  Search, Bell, Calendar, ChevronDown,
+  Calendar, ChevronDown,
   Download, TrendingUp, TrendingDown,
   DollarSign, ShoppingCart,
   BarChart2, Receipt, Activity, LayoutGrid, GitCompare, Wallet,
+  Maximize2, List as ListIcon, PieChart as PieChartIcon,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { PeriodSelect } from '@/components/ui/PeriodSelect';
+import MonthMultiSelect from '@/components/ui/MonthMultiSelect';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import { exportToCSV } from '@/lib/csv-export';
 import { toast } from '@/components/ui/Toast';
 import { getSucursalColor } from '@/config/sucursales';
 import FacturasSinFecha, { type FacturaSinFecha } from '@/components/dashboard/FacturasSinFecha';
 import SucursalFilter from '@/components/ui/SucursalFilter';
+import Header from '@/components/layout/Header';
 
 // ─── tipos ───────────────────────────────────────────────
 type Periodo = '7D' | '14D' | '30D';
@@ -427,6 +430,39 @@ function keyToLabel(key: string) {
   const [anio, mes] = key.split('-');
   return `${MESES_LABELS[parseInt(mes, 10)]} ${anio}`;
 }
+
+// Paleta para el gráfico de torta de Top Proveedores (hasta 8 proveedores,
+// ver el slice(0, 8) de buildTopProveedores).
+const PIE_COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#EF4444', '#06B6D4', '#84CC16'];
+
+// ── Helpers para selección de meses múltiples ────────────────────────────
+/** Mes actual si está en la lista, si no el más reciente disponible. */
+function mesDefault(meses: string[]): string {
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  return meses.includes(mesActual) ? mesActual : meses[meses.length - 1];
+}
+/** ¿La lista ordenada de meses "YYYY-MM" es una secuencia consecutiva? */
+function esContiguo(meses: string[]): boolean {
+  for (let i = 1; i < meses.length; i++) {
+    const [y0, m0] = meses[i - 1].split('-').map(Number);
+    const [y1, m1] = meses[i].split('-').map(Number);
+    if ((y1 * 12 + m1) - (y0 * 12 + m0) !== 1) return false;
+  }
+  return true;
+}
+/** Label para un conjunto de meses: 1 mes → el mes; contiguos → rango "A – B";
+ *  hasta 4 sueltos → lista separada por comas; más → "N meses". */
+function formatMesesLabel(mesesOrdenados: string[]): string {
+  if (mesesOrdenados.length === 0) return 'Sin período';
+  if (mesesOrdenados.length === 1) return keyToLabel(mesesOrdenados[0]);
+  if (esContiguo(mesesOrdenados)) {
+    return `${keyToLabel(mesesOrdenados[0])} – ${keyToLabel(mesesOrdenados[mesesOrdenados.length - 1])}`;
+  }
+  if (mesesOrdenados.length <= 4) return mesesOrdenados.map(keyToLabel).join(', ');
+  return `${mesesOrdenados.length} meses`;
+}
+
 type MesSlice = { ventas: number; efectivo: number; tarjeta: number; transf: number };
 type DiaCaja = { fecha: string; local: string; ventas: number; efectivo: number; tarjeta: number; transf: number };
 type DiaGasto = { fecha: string; mesKey?: string; sucursal: string; monto: number; proveedor?: string; subtipo?: string };
@@ -456,6 +492,66 @@ function formatDayLabel(iso: string): string {
 function formatWeekLabel(iso: string): string {
   const [, m, d] = iso.split('-');
   return `Sem ${parseInt(d)}/${parseInt(m)}`;
+}
+
+// ─── Cuerpo de "Proyección de Ventas" (chico en la card, grande en el modal) ──
+interface ProyeccionRow {
+  local: string;
+  real: number;
+  restante: number;
+  proyeccion: number;
+  diasConRegistros: number;
+  totalDias: number;
+  color: string;
+}
+function ProyeccionBody({ data, total, height = 200 }: { data: ProyeccionRow[]; total: number; height?: number }) {
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart data={data} layout="vertical" barCategoryGap="20%" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
+          <XAxis type="number" hide />
+          <YAxis type="category" dataKey="local" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} width={58} />
+          <Tooltip
+            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload;
+              return (
+                <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
+                  style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
+                  <p className="font-bold mb-1.5">{d.local}</p>
+                  <p style={{ color: 'var(--text-3)' }}>Real: <span className="font-semibold" style={{ color: d.color }}>{fmtFull(d.real)}</span></p>
+                  <p style={{ color: 'var(--text-3)' }}>Proyección: <span className="font-semibold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span></p>
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>{d.diasConRegistros} días con registros / {d.totalDias} días del mes</p>
+                </div>
+              );
+            }}
+          />
+          <Bar dataKey="real" stackId="p" name="Real" radius={[0, 0, 0, 0]}>
+            {data.map((d, i) => <Cell key={i} fill={d.color} />)}
+          </Bar>
+          <Bar dataKey="restante" stackId="p" name="Proyección restante" radius={[0, 4, 4, 0]}>
+            {data.map((d, i) => <Cell key={i} fill={d.color} fillOpacity={0.2} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="mt-3 space-y-2">
+        {data.map(d => (
+          <div key={d.local} className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
+              <span style={{ color: 'var(--text-2)' }}>{d.local}</span>
+            </div>
+            <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between border-t pt-2 text-[11px]" style={{ borderColor: 'var(--border)' }}>
+          <span className="font-bold uppercase tracking-wide" style={{ color: 'var(--text)' }}>Total</span>
+          <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(total)}</span>
+        </div>
+      </div>
+    </>
+  );
 }
 
 // ─── Modal de detalle de proveedor ────────────────────────
@@ -586,9 +682,16 @@ export default function VentasPage() {
   const [produccionMesFinDeMes, setProduccionMesFinDeMes] = useState<Record<string, ProductionMonth>>({});
   const [produccionTopProveedores, setProduccionTopProveedores] = useState<{ nombre: string; monto: number }[]>([]);
   const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
-  const [mesDesde, setMesDesde] = useState('');
-  const [mesHasta, setMesHasta] = useState('');
-  const [mesPill, setMesPill] = useState('');
+  const [mesesSel, setMesesSel] = useState<Set<string>>(new Set());
+  const mesesSelOrdenados = [...mesesSel].sort();
+  // mesDesde/mesHasta son el mín/máx de mesesSel, no un rango real — sirven
+  // para "¿hay un solo mes elegido?" (mesDesde === mesHasta) y como tramo a
+  // pedirle al backend de Producción, pero NUNCA para filtrar datos por
+  // rango (m >= mesDesde && m <= mesHasta): con una selección no contigua
+  // eso volvería a incluir los meses salteados. Para filtrar, usar siempre
+  // mesesSel.has(m).
+  const mesDesde = mesesSelOrdenados[0] ?? '';
+  const mesHasta = mesesSelOrdenados[mesesSelOrdenados.length - 1] ?? '';
   const [modoGastos, setModoGastos] = useState<'total' | 'hastaHoy'>('total');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
@@ -600,6 +703,9 @@ export default function VentasPage() {
   const [loadingSheet, setLoadingSheet] = useState(true);
   // Modal de proveedor
   const [proveedorModal, setProveedorModal] = useState<{ nombre: string; localFilter: string | null } | null>(null);
+  // Proyección de Ventas expandida (modal) y vista de Top Proveedores (lista/torta)
+  const [proyeccionExpandida, setProyeccionExpandida] = useState(false);
+  const [proveedoresVista, setProveedoresVista] = useState<'lista' | 'torta'>('lista');
   // Presupuesto (50% de ventas dinámico)
   const [presupuestoOn, setPresupuestoOn] = useState(false);
   const [facturasSinFecha, setFacturasSinFecha] = useState<FacturaSinFecha[]>([]);
@@ -653,13 +759,7 @@ export default function VentasPage() {
         const meses = [...new Set([...setCaja, ...setFactura])].sort();
         setMesesDisponibles(meses);
         if (meses.length) {
-          // Default: mes actual si está disponible, si no el más reciente
-          const hoy = new Date();
-          const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
-          const seleccionado = meses.includes(mesActual) ? mesActual : meses[meses.length - 1];
-          setMesDesde(seleccionado);
-          setMesHasta(seleccionado);
-          setMesPill(seleccionado);
+          setMesesSel(new Set([mesDefault(meses)]));
         }
         // Si el usuario tiene restricción de local, pre-seleccionarlo
         const lr = getLocalRestriction();
@@ -668,6 +768,15 @@ export default function VentasPage() {
       .catch(() => {})
       .finally(() => setLoadingSheet(false));
   }, []);
+
+  // Si el usuario vacía la selección de meses (botón "Ninguno" del selector),
+  // evita que los cálculos se queden sin ningún mes — vuelve al mismo default
+  // que al cargar los datos.
+  useEffect(() => {
+    if (mesesSel.size === 0 && mesesDisponibles.length > 0) {
+      setMesesSel(new Set([mesDefault(mesesDisponibles)]));
+    }
+  }, [mesesSel, mesesDisponibles]);
 
   useEffect(() => {
     if (modoFiltro === 'dia' && (!fechaDesde || !fechaHasta)) return;
@@ -817,13 +926,13 @@ export default function VentasPage() {
       return { data, porLocal };
     }
 
-    // ── Helper: chart data para un rango de meses ────────────────────────────
-    function buildMonthChart(mDesde: string, mHasta: string, localFilter: string | null = null) {
+    // ── Helper: chart data para un conjunto de meses ──────────────────────────
+    function buildMonthChart(mesesFiltro: Set<string>, localFilter: string | null = null) {
       const includeProduccion = localFilter === null || localFilter === PRODUCCION_LOCAL;
       const locals = localFilter !== null
         ? (localFilter === PRODUCCION_LOCAL ? [] : [localFilter])
         : Object.keys(rawLocalMes);
-      const meses = mesesDisponibles.filter(m => (!mDesde || m >= mDesde) && (!mHasta || m <= mHasta));
+      const meses = mesesDisponibles.filter(m => mesesFiltro.has(m));
       const byMes: Record<string, { ventas: number; gastos: number }> = {};
       for (const local of locals) {
         for (const mes of meses) {
@@ -877,8 +986,17 @@ export default function VentasPage() {
     }
 
     // ── Helper: top proveedores filtrado ─────────────────────────────────────
-    function buildTopProveedores(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
-      if (localFilter === PRODUCCION_LOCAL) return produccionTopProveedores;
+    function buildTopProveedores(fDesde: string, fHasta: string, meses: Set<string> | null, modo: 'dia' | 'mes', localFilter: string | null = null) {
+      if (localFilter === PRODUCCION_LOCAL) {
+        // El ranking de Producción viene pre-agregado del backend sobre todo
+        // el tramo mín↔máx pedido (ver el fetch a /api/produccion-data más
+        // arriba) — no tiene desglose por mes para filtrar en el cliente. Si
+        // la selección no es contigua, ese tramo incluye meses salteados que
+        // acá no se puede excluir, así que se oculta en vez de mostrar un
+        // número mezclado con meses que el usuario no eligió.
+        if (modo === 'mes' && meses && meses.size > 1 && !esContiguo([...meses].sort())) return [];
+        return produccionTopProveedores;
+      }
       const provMap: Record<string, number> = {};
       const provNombre: Record<string, string> = {};
       for (const r of rawDiasGastos) {
@@ -890,8 +1008,7 @@ export default function VentasPage() {
         } else {
           // Usar mesKey (mes de pago) si disponible; si no, usar YYYY-MM de la fecha de emisión
           const mes = r.mesKey ?? r.fecha.slice(0, 7);
-          if (mDesde && mes < mDesde) continue;
-          if (mHasta && mes > mHasta) continue;
+          if (meses && !meses.has(mes)) continue;
         }
         const key = r.proveedor.toLowerCase();
         if (!provNombre[key]) provNombre[key] = r.proveedor;
@@ -901,7 +1018,7 @@ export default function VentasPage() {
     }
 
     // ── Helper: transacciones (cierres de caja) filtrado ─────────────────────
-    function buildTransacciones(fDesde: string, fHasta: string, mDesde: string, mHasta: string, modo: 'dia' | 'mes', localFilter: string | null = null) {
+    function buildTransacciones(fDesde: string, fHasta: string, meses: Set<string> | null, modo: 'dia' | 'mes', localFilter: string | null = null) {
       let count = 0;
       for (const r of rawDiasCaja) {
         if (!r.fecha) continue;
@@ -911,8 +1028,7 @@ export default function VentasPage() {
           if (fHasta && r.fecha > fHasta) continue;
         } else {
           const mes = r.fecha.slice(0, 7);
-          if (mDesde && mes < mDesde) continue;
-          if (mHasta && mes > mHasta) continue;
+          if (meses && !meses.has(mes)) continue;
         }
         count++;
       }
@@ -920,8 +1036,8 @@ export default function VentasPage() {
     }
 
     // ── Helpers multi-local ───────────────────────────────────────────────────
-    function buildMultiLocalMonthChart(mDesde: string, mHasta: string, locals: string[]): MultiChartRow[] {
-      const meses = mesesDisponibles.filter(m => (!mDesde || m >= mDesde) && (!mHasta || m <= mHasta));
+    function buildMultiLocalMonthChart(mesesFiltro: Set<string>, locals: string[]): MultiChartRow[] {
+      const meses = mesesDisponibles.filter(m => mesesFiltro.has(m));
       return meses.map(m => {
         const row: MultiChartRow = { fecha: keyToLabel(m) };
         for (let i = 0; i < locals.length; i++) {
@@ -999,7 +1115,7 @@ export default function VentasPage() {
       if (modoFiltro === 'dia') {
         multiChartData = buildMultiLocalDayChart(fechaDesde, fechaHasta, localSel);
       } else {
-        multiChartData = buildMultiLocalMonthChart(mesDesde, mesHasta, localSel);
+        multiChartData = buildMultiLocalMonthChart(mesesSel, localSel);
       }
       const perLocalTotals = localSel.map((_, i) => ({
         ventas: multiChartData.reduce((s, r) => s + ((r[`ventas_${i}`] as number) ?? 0), 0),
@@ -1016,16 +1132,16 @@ export default function VentasPage() {
       const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
       localSel.forEach((local, i) => { porLocalFiltrado[local] = perLocalTotals[i]; });
       const topProveedores = modoFiltro === 'dia'
-        ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[0])
-        : buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[0]);
+        ? buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', localSel[0])
+        : buildTopProveedores('', '', mesesSel, 'mes', localSel[0]);
       const topProveedoresComp = localSel.length === 2
         ? (modoFiltro === 'dia'
-          ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[1])
-          : buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]))
+          ? buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', localSel[1])
+          : buildTopProveedores('', '', mesesSel, 'mes', localSel[1]))
         : [];
       const totalTransacciones = modoFiltro === 'dia'
-        ? buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', localSel[0])
-        : buildTransacciones('', '', mesDesde, mesHasta, 'mes', localSel[0]);
+        ? buildTransacciones(fechaDesde, fechaHasta, null, 'dia', localSel[0])
+        : buildTransacciones('', '', mesesSel, 'mes', localSel[0]);
       return {
         totalVentas, totalGastos, totalVentasComp, totalGastosComp,
         chartData: multiChartData as unknown as ChartRow[],
@@ -1054,23 +1170,23 @@ export default function VentasPage() {
       }
       const totalVentas = dataA.reduce((s, r) => s + r.ventas, 0);
       const totalGastos = dataA.reduce((s, r) => s + r.gastos, 0);
-      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, '', '', 'dia', dataAFilter);
-      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', dataAFilter);
-      const topProveedoresComp = isLocalComp ? buildTopProveedores(fechaDesde, fechaHasta, '', '', 'dia', localSel[1]) : [];
+      const totalTransacciones = buildTransacciones(fechaDesde, fechaHasta, null, 'dia', dataAFilter);
+      const topProveedores = buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', dataAFilter);
+      const topProveedoresComp = isLocalComp ? buildTopProveedores(fechaDesde, fechaHasta, null, 'dia', localSel[1]) : [];
       return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado: porLocal, hasComp: isLocalComp, totalTransacciones, topProveedores, topProveedoresComp };
     }
 
     // ── Modo mes ─────────────────────────────────────────────────────────────
-    const dataA = buildMonthChart(mesDesde, mesHasta, dataAFilter);
+    const dataA = buildMonthChart(mesesSel, dataAFilter);
     let chartData: ChartRow[] = dataA;
     let totalVentasComp = 0, totalGastosComp = 0;
     if (isLocalComp) {
-      const dataB = buildMonthChart(mesDesde, mesHasta, localSel[1]);
+      const dataB = buildMonthChart(mesesSel, localSel[1]);
       totalVentasComp = dataB.reduce((s, r) => s + r.ventas, 0);
       totalGastosComp = dataB.reduce((s, r) => s + r.gastos, 0);
       chartData = mergeWithComp(dataA, dataB);
     } else if (isPeriodComp) {
-      const dataB = buildMonthChart(compMes, compMes, localFilter);
+      const dataB = buildMonthChart(new Set([compMes]), localFilter);
       totalVentasComp = dataB.reduce((s, r) => s + r.ventas, 0);
       totalGastosComp = dataB.reduce((s, r) => s + r.gastos, 0);
       chartData = mergeWithComp(dataA, dataB);
@@ -1078,7 +1194,7 @@ export default function VentasPage() {
     const totalVentas = dataA.reduce((s, r) => s + r.ventas, 0);
     const totalGastos = dataA.reduce((s, r) => s + r.gastos, 0);
 
-    const mesesFiltrados = mesesDisponibles.filter(m => (!mesDesde || m >= mesDesde) && (!mesHasta || m <= mesHasta));
+    const mesesFiltrados = mesesDisponibles.filter(m => mesesSel.has(m));
     const porLocalFiltrado: Record<string, { ventas: number; gastos: number }> = {};
     const localsToShow = localSel.length > 0 ? localSel : [...Object.keys(rawLocalMes), PRODUCCION_LOCAL];
     for (const local of localsToShow) {
@@ -1116,13 +1232,13 @@ export default function VentasPage() {
       }
     }
 
-    const totalTransacciones = buildTransacciones('', '', mesDesde, mesHasta, 'mes', dataAFilter);
-    const topProveedores = buildTopProveedores('', '', mesDesde, mesHasta, 'mes', dataAFilter);
-    const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesDesde, mesHasta, 'mes', localSel[1]) : [];
+    const totalTransacciones = buildTransacciones('', '', mesesSel, 'mes', dataAFilter);
+    const topProveedores = buildTopProveedores('', '', mesesSel, 'mes', dataAFilter);
+    const topProveedoresComp = isLocalComp ? buildTopProveedores('', '', mesesSel, 'mes', localSel[1]) : [];
     const hasComp = isLocalComp || (isPeriodComp && totalVentasComp > 0);
     return { totalVentas, totalGastos, totalVentasComp, totalGastosComp, chartData, porLocalFiltrado, hasComp, totalTransacciones, topProveedores, topProveedoresComp };
   }, [rawLocalMes, modoGastos, rawGastosMesHastaHoy, rawGastosMesFinDeMes, rawGastosMesSucursalHastaHoy, rawGastosMesSucursalFinDeMes, rawDiasCaja, rawDiasGastos, produccionMesHastaHoy, produccionMesFinDeMes, produccionTopProveedores, localSel,
-      mesDesde, mesHasta, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
+      mesesSel, mesesDisponibles, fechaDesde, fechaHasta, modoFiltro,
       compOn, compMes]);
 
   // ── Detalle de proveedor seleccionado ──────────────────────
@@ -1137,8 +1253,7 @@ export default function VentasPage() {
       if (localFilter && r.sucursal !== localFilter) continue;
       const mes = r.fecha?.slice(0, 7) ?? '';
       if (modoFiltro === 'mes') {
-        if (mesDesde && mes < mesDesde) continue;
-        if (mesHasta && mes > mesHasta) continue;
+        if (!mesesSel.has(mes)) continue;
       } else {
         if (fechaDesde && r.fecha < fechaDesde) continue;
         if (fechaHasta && r.fecha > fechaHasta) continue;
@@ -1151,7 +1266,7 @@ export default function VentasPage() {
     const meses = Object.entries(porMes).sort(([a], [b]) => a.localeCompare(b));
     const locales = Object.entries(porLocal).sort(([, a], [, b]) => b - a);
     return { total, meses, locales };
-  }, [proveedorModal, rawDiasGastos, mesDesde, mesHasta, fechaDesde, fechaHasta, modoFiltro]);
+  }, [proveedorModal, rawDiasGastos, mesesSel, fechaDesde, fechaHasta, modoFiltro]);
 
   const ventasReal = filteredData.totalVentas;
   const gastosReal = filteredData.totalGastos;
@@ -1177,13 +1292,12 @@ export default function VentasPage() {
         if (fechaHasta && r.fecha > fechaHasta) continue;
       } else {
         const mes = r.fecha.slice(0, 7);
-        if (mesDesde && mes < mesDesde) continue;
-        if (mesHasta && mes > mesHasta) continue;
+        if (!mesesSel.has(mes)) continue;
       }
       sum += r.monto;
     }
     return sum;
-  }, [rawDiasGastos, localSel, modoFiltro, fechaDesde, fechaHasta, mesDesde, mesHasta]);
+  }, [rawDiasGastos, localSel, modoFiltro, fechaDesde, fechaHasta, mesesSel]);
   const indiceP = ventasReal > 0 ? ((gastosSinPanaderia / ventasReal) * 100).toFixed(1) : '0.0';
   const chartData = filteredData.chartData.length > 0 ? filteredData.chartData : rawData['30D'];
   const localRestriccion = getLocalRestriction(); // null si puede ver todos
@@ -1239,7 +1353,7 @@ export default function VentasPage() {
 
   // ── Proyección de ventas ───────────────────────────────────
   const proyeccionData = useMemo(() => {
-    if (!mesDesde) return [];
+    if (mesesSel.size !== 1) return [];
     // Misma derivación que en filteredData (ver comentario más arriba).
     const modoEfectivo: 'total' | 'hastaHoy' =
       modoFiltro !== 'mes' || mesDesde !== mesHasta ? 'hastaHoy'
@@ -1281,7 +1395,7 @@ export default function VentasPage() {
         color: getSucursalColor(local),
       };
     }).filter(d => d.proyeccion > 0 || d.real > 0);
-  }, [rawDiasCaja, rawLocalMes, produccionMesHastaHoy, produccionMesFinDeMes, modoGastos, modoFiltro, mesDesde, mesHasta, localSel, localesDisponibles]);
+  }, [rawDiasCaja, rawLocalMes, produccionMesHastaHoy, produccionMesFinDeMes, modoGastos, modoFiltro, mesesSel, localSel, localesDisponibles]);
 
   const proyeccionTotal = useMemo(() => {
     return proyeccionData.reduce((sum, item) => sum + item.proyeccion, 0);
@@ -1295,29 +1409,24 @@ export default function VentasPage() {
   return (
     <div className="flex flex-col flex-1 min-h-screen" style={{ background: 'var(--bg)' }}>
 
-      {/* ── Header ── */}
-      <header className="flex items-center justify-between flex-wrap px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-30 transition-colors gap-2"
-        style={{ background: 'var(--header-bg)', borderBottom: '1px solid var(--border)' }}>
+      <Header />
+
+      {/* ── Sub-barra: título + filtros (clara, igual que Factor Índice) ── */}
+      <div className="flex items-center justify-between flex-wrap px-3 sm:px-6 py-3 gap-2 transition-colors"
+        style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
         <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--text)' }}>Ventas & Gastos</h1>
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
 
-          {/* Período mes */}
-          <PeriodSelect
+          {/* Período: meses múltiples (incluye combinaciones no contiguas) */}
+          <MonthMultiSelect
             label="Período"
-            value={mesPill}
-            options={mesesDisponibles.map(m => ({ label: keyToLabel(m), value: m }))}
-            onChange={v => {
-              setMesPill(v);
-              if (v) {
-                setMesDesde(v); setMesHasta(v);
-              } else if (mesesDisponibles.length) {
-                setMesDesde(mesesDisponibles[0]);
-                setMesHasta(mesesDisponibles[mesesDisponibles.length - 1]);
-              }
+            mesesDisponibles={mesesDisponibles}
+            selected={mesesSel}
+            onChange={next => {
+              setMesesSel(next);
               setModoFiltro('mes');
               setFechaDesde(''); setFechaHasta('');
             }}
-            allLabel="Todos los meses"
           />
 
           {/* Rango días */}
@@ -1327,7 +1436,7 @@ export default function VentasPage() {
               className={clsx(
                 'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
                 modoFiltro === 'dia' || fechaDesde || fechaHasta
-                  ? 'bg-blue-600 border-blue-600 text-white'
+                  ? 'bg-blue-50 border-blue-200 text-blue-700'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600'
               )}
             >
@@ -1345,12 +1454,12 @@ export default function VentasPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1">Desde</p>
-                    <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); setMesPill(''); }}
+                    <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); }}
                       className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-400 mb-1">Hasta</p>
-                    <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); setMesPill(''); }}
+                    <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); }}
                       className="w-full text-[12px] border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-400" />
                   </div>
                 </div>
@@ -1391,7 +1500,7 @@ export default function VentasPage() {
                 className={clsx(
                   'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
                   compOn
-                    ? 'bg-purple-600 border-purple-600 text-white'
+                    ? 'bg-purple-50 border-purple-300 text-purple-700'
                     : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
                 )}
               >
@@ -1436,17 +1545,8 @@ export default function VentasPage() {
               {modoGastos === 'total' ? 'Total' : 'Hasta hoy'}
             </button>
           )}
-
-          <div className="hidden sm:flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2 w-44">
-            <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            <input type="text" placeholder="Buscar..." className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400" />
-          </div>
-          <button className="hidden sm:block relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
         </div>
-      </header>
+      </div>
 
       <main className="flex-1 px-3 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 pb-8">
 
@@ -1527,9 +1627,7 @@ export default function VentasPage() {
                 ? localSel[0]
                 : modoFiltro === 'dia' && (fechaDesde || fechaHasta)
                   ? `${fechaDesde || '…'} → ${fechaHasta || '…'}`
-                  : mesDesde
-                    ? (mesDesde === mesHasta ? keyToLabel(mesDesde) : `${keyToLabel(mesDesde)} – ${keyToLabel(mesHasta)}`)
-                    : 'Período A'
+                  : formatMesesLabel(mesesSelOrdenados)
             }
             labelB={
               isLocalComp
@@ -1580,15 +1678,15 @@ export default function VentasPage() {
                   <button key={m} onClick={() => setMetrica(m)}
                     className={clsx('px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all capitalize',
                       metrica === m ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-                    {m === 'ambos' ? 'Comparar' : m.charAt(0).toUpperCase() + m.slice(1)}
+                    {m === 'ambos' ? 'Ventas + Gastos' : m.charAt(0).toUpperCase() + m.slice(1)}
                   </button>
                 ))}
               </div>
 
               {/* Rango activo */}
-              {mesDesde && mesHasta && (
+              {mesesSelOrdenados.length > 0 && (
                 <span className="text-[11px] text-gray-500 bg-gray-100 rounded-xl px-3 py-1.5 font-medium">
-                  {keyToLabel(mesDesde)}{mesDesde !== mesHasta ? ` – ${keyToLabel(mesHasta)}` : ''}
+                  {formatMesesLabel(mesesSelOrdenados)}
                 </span>
               )}
             </div>
@@ -1649,60 +1747,27 @@ export default function VentasPage() {
           <div className="sm:col-span-1 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Proyección de Ventas</h3>
+              {proyeccionData.length > 0 && (
+                <button
+                  onClick={() => setProyeccionExpandida(true)}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
+                  title="Ver en grande" aria-label="Expandir Proyección de Ventas"
+                  style={{ color: 'var(--text-3)' }}>
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <p className="text-[10px] mb-4" style={{ color: 'var(--text-3)' }}>
               (Ventas reales / días con registro) × días del mes
             </p>
             {proyeccionData.length === 0 ? (
               <div className="flex items-center justify-center h-[180px]">
-                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>Sin datos para proyectar</p>
+                <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {mesesSel.size !== 1 ? 'Elegí un solo mes para ver la proyección' : 'Sin datos para proyectar'}
+                </p>
               </div>
             ) : (
-              <>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={proyeccionData} layout="vertical" barCategoryGap="20%" margin={{ left: 4, right: 16, top: 4, bottom: 4 }}>
-                    <XAxis type="number" hide />
-                    <YAxis type="category" dataKey="local" tick={{ fontSize: 11, fill: 'var(--chart-axis)' }} axisLine={false} tickLine={false} width={58} />
-                    <Tooltip
-                      cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const d = payload[0]?.payload;
-                        return (
-                          <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
-                            style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
-                            <p className="font-bold mb-1.5">{d.local}</p>
-                            <p style={{ color: 'var(--text-3)' }}>Real: <span className="font-semibold" style={{ color: d.color }}>{fmtFull(d.real)}</span></p>
-                            <p style={{ color: 'var(--text-3)' }}>Proyección: <span className="font-semibold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span></p>
-                            <p className="text-[10px] mt-1" style={{ color: 'var(--text-3)' }}>{d.diasConRegistros} días con registros / {d.totalDias} días del mes</p>
-                          </div>
-                        );
-                      }}
-                    />
-                    <Bar dataKey="real" stackId="p" name="Real" radius={[0, 0, 0, 0]}>
-                      {proyeccionData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                    </Bar>
-                    <Bar dataKey="restante" stackId="p" name="Proyección restante" radius={[0, 4, 4, 0]}>
-                      {proyeccionData.map((d, i) => <Cell key={i} fill={d.color} fillOpacity={0.2} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="mt-3 space-y-2">
-                  {proyeccionData.map(d => (
-                    <div key={d.local} className="flex items-center justify-between text-[11px]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
-                        <span style={{ color: 'var(--text-2)' }}>{d.local}</span>
-                      </div>
-                      <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(d.proyeccion)}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between border-t pt-2 text-[11px]" style={{ borderColor: 'var(--border)' }}>
-                    <span className="font-bold uppercase tracking-wide" style={{ color: 'var(--text)' }}>Total</span>
-                    <span className="font-bold" style={{ color: 'var(--text)' }}>{fmtFull(proyeccionTotal)}</span>
-                  </div>
-                </div>
-              </>
+              <ProyeccionBody data={proyeccionData} total={proyeccionTotal} height={200} />
             )}
           </div>
 
@@ -1710,20 +1775,83 @@ export default function VentasPage() {
           <div className="sm:col-span-2 rounded-2xl p-5 shadow-sm" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[14px] font-bold" style={{ color: 'var(--text)' }}>Top Proveedores</h3>
-              <button
-                onClick={() => {
-                  exportToCSV(filteredData.topProveedores.map((p, i) => ({
-                    '#': i + 1, Proveedor: p.nombre, 'Monto CLP': p.monto,
-                    '% del Total': gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) + '%' : '—',
-                  })), 'top_proveedores');
-                  toast('Top proveedores exportado');
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
-                <Download className="w-3 h-3" />CSV
-              </button>
+              <div className="flex items-center gap-2">
+                {!filteredData.hasComp && (
+                  <div className="flex items-center rounded-lg p-0.5 gap-0.5" style={{ background: 'var(--hover)' }}>
+                    <button
+                      onClick={() => setProveedoresVista('lista')}
+                      title="Ver como lista" aria-label="Ver como lista" aria-pressed={proveedoresVista === 'lista'}
+                      className="w-7 h-7 flex items-center justify-center rounded-md transition-all"
+                      style={proveedoresVista === 'lista'
+                        ? { background: 'var(--card)', color: 'var(--active-text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+                        : { color: 'var(--text-3)' }}>
+                      <ListIcon className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setProveedoresVista('torta')}
+                      title="Ver como gráfico de pastel" aria-label="Ver como gráfico de pastel" aria-pressed={proveedoresVista === 'torta'}
+                      className="w-7 h-7 flex items-center justify-center rounded-md transition-all"
+                      style={proveedoresVista === 'torta'
+                        ? { background: 'var(--card)', color: 'var(--active-text)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }
+                        : { color: 'var(--text-3)' }}>
+                      <PieChartIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    exportToCSV(filteredData.topProveedores.map((p, i) => ({
+                      '#': i + 1, Proveedor: p.nombre, 'Monto CLP': p.monto,
+                      '% del Total': gastosReal > 0 ? ((p.monto / gastosReal) * 100).toFixed(1) + '%' : '—',
+                    })), 'top_proveedores');
+                    toast('Top proveedores exportado');
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
+                  <Download className="w-3 h-3" />CSV
+                </button>
+              </div>
             </div>
 
-            {filteredData.hasComp && filteredData.topProveedoresComp.length > 0 ? (
+            {!loadingSheet && !filteredData.hasComp && proveedoresVista === 'torta' ? (
+              /* ── Vista de torta ── */
+              filteredData.topProveedores.length === 0 ? (
+                <p className="text-[11px] text-gray-400 py-8 text-center">Sin datos para el período seleccionado</p>
+              ) : (
+                <div className="min-h-[320px]">
+                  <ResponsiveContainer width="100%" height={320} minWidth={280}>
+                    <PieChart>
+                      <Pie
+                        isAnimationActive={false}
+                        data={filteredData.topProveedores.map(p => ({ name: p.nombre || '(sin nombre)', value: p.monto }))}
+                        dataKey="value" nameKey="name"
+                        cx="38%" cy="50%" innerRadius={55} outerRadius={105}
+                        paddingAngle={2}
+                      >
+                        {filteredData.topProveedores.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const d = payload[0];
+                          const value = (d.value as number) ?? 0;
+                          const pct = gastosReal > 0 ? ((value / gastosReal) * 100).toFixed(1) : '0';
+                          return (
+                            <div className="rounded-xl shadow-lg px-3 py-2.5 text-[11px]"
+                              style={{ background: 'var(--card)', border: '1px solid var(--border-2)', color: 'var(--text)' }}>
+                              <p className="font-bold mb-1">{d.name}</p>
+                              <p style={{ color: 'var(--text-3)' }}>{fmtFull(value)} · {pct}%</p>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" iconSize={8}
+                        wrapperStyle={{ fontSize: 11 }}
+                        formatter={(value: string) => <span style={{ color: 'var(--text-2)' }}>{value}</span>} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )
+            ) : filteredData.hasComp && filteredData.topProveedoresComp.length > 0 ? (
               /* ── Modo comparativo: 2 columnas ── */
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
@@ -1827,6 +1955,37 @@ export default function VentasPage() {
           detalle={proveedorDetalle}
           onClose={() => setProveedorModal(null)}
         />
+      )}
+
+      {/* Modal Proyección de Ventas expandida */}
+      {proyeccionExpandida && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setProyeccionExpandida(false)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl overflow-y-auto"
+            style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b sticky top-0" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
+              <div>
+                <h2 className="text-[16px] font-bold" style={{ color: 'var(--text)' }}>Proyección de Ventas</h2>
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-3)' }}>
+                  (Ventas reales / días con registro) × días del mes
+                </p>
+              </div>
+              <button
+                onClick={() => setProyeccionExpandida(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-400 text-lg leading-none"
+              >✕</button>
+            </div>
+            <div className="px-6 py-5">
+              <ProyeccionBody data={proyeccionData} total={proyeccionTotal} height={420} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

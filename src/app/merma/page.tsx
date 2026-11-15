@@ -13,7 +13,6 @@ import {
 } from 'recharts';
 import {
   Search,
-  Bell,
   Download,
   ChevronDown,
   TrendingDown,
@@ -26,6 +25,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { PeriodSelect } from '@/components/ui/PeriodSelect';
+import Header from '@/components/layout/Header';
 import { ComparisonPanel } from '@/components/ui/ComparisonPanel';
 import ExploradorMerma from '@/components/merma/ExploradorMerma';
 import MermaSinFechaPanel, { type MermaSinFechaItem } from '@/components/merma/MermaSinFecha';
@@ -504,29 +504,27 @@ export default function MermaPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-screen bg-gray-50 relative">
-      {/* Header */}
-      <header className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 bg-white border-b border-gray-100 sticky top-0 z-30">
-        <h1 className="text-[18px] font-bold text-gray-900">Dashboard de Merma</h1>
-        <div className="hidden sm:flex items-center gap-2 flex-1 max-w-xs mx-3 sm:mx-6">
-          <div className="flex items-center gap-2 w-full bg-gray-100 rounded-full px-3 py-2">
-            <Search className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+      <Header />
+
+      {/* ── Sub-barra: título + buscador + filtros (clara, igual que el resto) ──
+          sticky justo debajo del Header de marca (60px mobile / 72px sm+). */}
+      <div className="sticky top-[60px] sm:top-[72px] z-20 px-3 sm:px-6 py-3 space-y-2.5"
+        style={{ background: 'var(--card)', borderBottom: '1px solid var(--border)' }}>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-[16px] sm:text-[18px] font-bold shrink-0" style={{ color: 'var(--text)' }}>Merma</h1>
+          <div className="flex items-center gap-2 w-full max-w-xs rounded-full px-3 py-2 border"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border-2)' }}>
+            <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-3)' }} />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Buscar producto o registro..."
-              className="bg-transparent text-[12px] text-gray-600 outline-none w-full placeholder-gray-400"
+              className="bg-transparent text-[12px] outline-none w-full placeholder-gray-400"
+              style={{ color: 'var(--text)' }}
             />
           </div>
         </div>
-        <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
-      </header>
-
-      {/* ── Barra de Filtros ───────────────────────────────────────────────── */}
-      <div className="sticky top-[61px] z-20 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700 px-3 py-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* Filtro por mes - Lista desplegable, siempre cae en el mes en curso */}
           <PeriodSelect
@@ -536,10 +534,9 @@ export default function MermaPage() {
             onChange={v => { setMesFiltro(v); setFechaDesde(''); setFechaHasta(''); setShowDatePicker(false); }}
             allLabel="Todos los meses"
             size="sm"
-            dark
           />
 
-          <span className="border-l border-slate-600 h-4 mx-0.5" />
+          <span className="border-l border-gray-200 h-4 mx-0.5" />
 
           {/* Filtro por local */}
           {localOpts.length > 1 && (
@@ -550,7 +547,6 @@ export default function MermaPage() {
               onChange={setLocalFiltro}
               allLabel="Todos los locales"
               size="sm"
-              dark
             />
           )}
 
@@ -562,7 +558,7 @@ export default function MermaPage() {
                 'flex items-center gap-1 border rounded-xl px-2.5 py-1.5 text-[11px] font-medium transition-all',
                 (fechaDesde || fechaHasta)
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-slate-700 border-slate-600 text-slate-200 hover:border-blue-400 hover:text-blue-400',
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
               )}
             >
               <CalendarDays className="w-3 h-3 opacity-70" />
@@ -608,7 +604,7 @@ export default function MermaPage() {
             )}
           </div>
 
-          <span className="border-l border-slate-600 h-4 mx-0.5" />
+          <span className="border-l border-gray-200 h-4 mx-0.5" />
 
           {/* Toggle comparación */}
           <button
@@ -623,7 +619,7 @@ export default function MermaPage() {
               'flex items-center gap-1 border rounded-xl px-2.5 py-1.5 text-[11px] font-medium transition-all',
               compOn
                 ? 'bg-purple-600 border-purple-600 text-white'
-                : 'bg-slate-700 border-slate-600 text-slate-200 hover:border-purple-400 hover:text-purple-400',
+                : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
             )}
           >
             <GitCompare className="w-3.5 h-3.5 opacity-80" />

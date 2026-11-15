@@ -13,6 +13,7 @@ import KPICard from '@/components/kpis/KPICard';
 import Skeleton from '@/components/ui/Skeleton';
 import TopProgressBar from '@/components/ui/TopProgressBar';
 import SucursalFilter from '@/components/ui/SucursalFilter';
+import DateRangeCalendar from '@/components/ui/DateRangeCalendar';
 import type { DashboardFilters } from '@/types';
 import { getLocalRestriction } from '@/lib/session-client';
 import type { CierreCajaResponse, VentasResponse } from '@/types/api';
@@ -598,7 +599,6 @@ export default function DashboardPage() {
       <Header
         filters={filters}
         onFiltersChange={setFilters}
-        title="Data Analytics Desk"
       />
 
       <main className="flex-1 px-4 lg:px-6 py-4 lg:py-5 space-y-4 lg:space-y-5 pb-6">
@@ -613,6 +613,7 @@ export default function DashboardPage() {
               options={mesesDisponiblesCombinados.map(key => ({ label: mesLabel(key), value: key }))}
               onChange={v => { setMesFiltro(v); setModoFiltro('mes'); }}
               allLabel="Todos los meses"
+              variant="soft"
             />
           )}
 
@@ -621,9 +622,9 @@ export default function DashboardPage() {
             <button
               onClick={() => setDateOpen(o => !o)}
               className={clsx(
-                'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+                'flex items-center gap-1.5 border rounded-lg px-3.5 py-2 text-[12px] font-medium transition-all',
                 modoFiltro === 'dia'
-                  ? 'bg-blue-600 border-blue-600 text-white'
+                  ? 'bg-blue-50 dark:bg-blue-950 border-transparent text-blue-600 dark:text-blue-400'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600',
               )}
             >
@@ -636,22 +637,18 @@ export default function DashboardPage() {
               <ChevronDown className="w-3 h-3 opacity-70" />
             </button>
             {dateOpen && (
-              <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-4 min-w-[260px]">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-3">Rango de fechas</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Desde</label>
-                    <input type="date" value={fechaDesde}
-                      onChange={e => { setFechaDesde(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-400 font-semibold mb-1 block">Hasta</label>
-                    <input type="date" value={fechaHasta}
-                      onChange={e => { setFechaHasta(e.target.value); setModoFiltro('dia'); setMesFiltro(''); }}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:border-blue-400 transition-colors" />
-                  </div>
-                </div>
+              <div className="absolute left-0 top-full mt-1.5 bg-white border border-gray-200 rounded-xl z-50 p-4 w-[300px]"
+                style={{ boxShadow: 'var(--card-shadow), 0 8px 24px -8px rgba(0,0,0,0.18)' }}>
+                <DateRangeCalendar
+                  desde={fechaDesde}
+                  hasta={fechaHasta}
+                  onRangeChange={(d, h) => {
+                    setFechaDesde(d);
+                    setFechaHasta(h);
+                    setModoFiltro('dia');
+                    setMesFiltro('');
+                  }}
+                />
                 {modoFiltro === 'dia' && (
                   <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setModoFiltro('mes'); setDateOpen(false); }}
                     className="mt-3 text-[11px] text-red-400 hover:text-red-600 font-semibold flex items-center gap-1">
@@ -691,9 +688,9 @@ export default function DashboardPage() {
               }
             }}
             className={clsx(
-              'flex items-center gap-1.5 border rounded-xl px-3.5 py-2 text-[12px] font-medium transition-all',
+              'flex items-center gap-1.5 border rounded-lg px-3.5 py-2 text-[12px] font-medium transition-all',
               compOn
-                ? 'bg-purple-600 border-purple-600 text-white'
+                ? 'bg-purple-50 dark:bg-purple-950 border-transparent text-purple-600 dark:text-purple-400'
                 : 'bg-white border-gray-200 text-gray-600 hover:border-purple-400 hover:text-purple-600',
             )}
           >
@@ -705,12 +702,14 @@ export default function DashboardPage() {
           {compOn && (
             <>
               {/* Toggle Meses / Locales */}
-              <div className="flex items-center rounded-xl overflow-hidden border border-gray-200">
+              <div className="flex items-center rounded-lg overflow-hidden border border-gray-200">
                 {(['mes', 'local'] as const).map(t => (
                   <button key={t} onClick={() => setCompareType(t)}
                     className={clsx(
                       'px-3 py-2 text-[11px] font-semibold transition-all',
-                      compareType === t ? 'bg-purple-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50',
+                      compareType === t
+                        ? 'bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400'
+                        : 'bg-white text-gray-500 hover:bg-gray-50',
                     )}>
                     {t === 'mes' ? 'Meses' : 'Locales'}
                   </button>
@@ -724,18 +723,19 @@ export default function DashboardPage() {
                   options={mesesDisponiblesCombinados.map(key => ({ label: mesLabel(key), value: key }))}
                   onChange={setMesComp}
                   allLabel="Seleccionar mes"
+                  variant="soft"
                 />
               ) : (
                 <>
                   <select value={localA} onChange={e => setLocalA(e.target.value)}
-                    className="border border-blue-300 bg-blue-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-blue-700 outline-none">
+                    className="border border-transparent bg-blue-50 dark:bg-blue-950 rounded-lg px-3 py-2 text-[12px] font-medium text-blue-600 dark:text-blue-400 outline-none">
                     {sucursalesDisponibles.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                   <span className="text-gray-400 text-[11px] font-bold">vs</span>
                   <select value={localB} onChange={e => setLocalB(e.target.value)}
-                    className="border border-purple-300 bg-purple-50 rounded-xl px-3 py-2 text-[12px] font-semibold text-purple-700 outline-none">
+                    className="border border-transparent bg-pink-50 dark:bg-pink-950 rounded-lg px-3 py-2 text-[12px] font-medium text-pink-600 dark:text-pink-400 outline-none">
                     {sucursalesDisponibles.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
@@ -752,9 +752,9 @@ export default function DashboardPage() {
             <button
               onClick={() => setModoGastos(m => m === 'total' ? 'hastaHoy' : 'total')}
               className={clsx(
-                'flex items-center gap-1 border rounded-xl px-3 py-2 text-[11px] font-semibold transition-all',
+                'flex items-center gap-1 border rounded-lg px-3 py-2 text-[11px] font-semibold transition-all',
                 modoGastos === 'total'
-                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                  ? 'bg-emerald-50 dark:bg-emerald-950 border-transparent text-emerald-600 dark:text-emerald-400'
                   : 'bg-white border-gray-200 text-gray-600 hover:border-emerald-400 hover:text-emerald-600',
               )}
             >
